@@ -290,7 +290,7 @@ components:
 
 ## Overview
 
-finote는 토스(Toss)의 디자인 언어를 따른다 — 차분하고, 신뢰감 있고, **숫자가 주인공**인 한국형 핀테크 미감. 바탕은 부드러운 연회색 floor(`{colors.canvas}` — #F2F4F6)이고 그 위에 **둥근 흰색 카드**(`{component.card}`)가 떠 있다. 브랜드 색은 **토스 블루**(`{colors.primary}` — #3182F6) 하나로, 주요 CTA·활성 상태·핵심 강조에만 아껴 쓴다.
+dotori는 토스(Toss)의 디자인 언어를 따른다 — 차분하고, 신뢰감 있고, **숫자가 주인공**인 한국형 핀테크 미감. 바탕은 부드러운 연회색 floor(`{colors.canvas}` — #F2F4F6)이고 그 위에 **둥근 흰색 카드**(`{component.card}`)가 떠 있다. 브랜드 색은 **토스 블루**(`{colors.primary}` — #3182F6) 하나로, 주요 CTA·활성 상태·핵심 강조에만 아껴 쓴다.
 
 타이포는 **Pretendard**(토스 Product Sans의 오픈 대체 폰트)로 통일하고, **큰 굵은 숫자**가 화면을 지배한다. 본문은 weight 400으로 차분하게 유지하고, 금액·수익률만 weight 700으로 키운다.
 
