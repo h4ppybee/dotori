@@ -7,6 +7,7 @@ import { TextInput } from "@/components/ui/TextInput";
 import { makeSalt, deriveKey, makeVerifier, checkVerifier } from "@/lib/crypto/crypto";
 import { getSettings, putSettings, listMembers, upsertMember } from "@/lib/db/local-store";
 import { useAppStore } from "@/stores/app-store";
+import { BottomTabBar } from "@/components/BottomTabBar";
 
 type Mode = "loading" | "setup" | "unlock";
 
@@ -54,9 +55,17 @@ export function LockGate({ children }: LockGateProps) {
     };
   }, []);
 
-  // 이미 잠금 해제된 경우 children 렌더링
+  // 이미 잠금 해제된 경우 children + 하단 탭바 렌더링.
+  // 콘텐츠가 탭바(56px) + safe-area 뒤로 가리지 않도록 하단 패딩을 둔다.
   if (!locked) {
-    return <>{children}</>;
+    return (
+      <>
+        <div style={{ paddingBottom: "calc(56px + env(safe-area-inset-bottom))" }}>
+          {children}
+        </div>
+        <BottomTabBar />
+      </>
+    );
   }
 
   if (mode === "loading") {

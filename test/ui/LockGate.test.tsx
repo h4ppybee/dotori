@@ -1,6 +1,12 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+
+// 잠금 해제 시 LockGate가 BottomTabBar를 렌더링하므로 usePathname을 모킹한다.
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/",
+}));
+
 import { LockGate } from "@/components/LockGate";
 import { db } from "@/lib/db/schema";
 import { getSettings, putSettings, listMembers } from "@/lib/db/local-store";
