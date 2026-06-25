@@ -124,6 +124,20 @@ describe("buildPortfolio — MANUAL with no prevClose and no manualPrice", () =>
   });
 });
 
+describe("buildPortfolio — empty portfolio", () => {
+  it("returns zeroed totals and empty collections", () => {
+    const vm = buildPortfolio({ holdings: [], prices: [], sectorOverrides: {} });
+    expect(vm.rows).toEqual([]);
+    expect(vm.totalCostKrw).toBe(0);
+    expect(vm.totalValueKrw).toBe(0);
+    expect(vm.totalPnlKrw).toBe(0);
+    expect(vm.returnPct).toBe(0);
+    expect(vm.totalDailyPnlKrw).toBeUndefined();
+    expect(vm.bySector).toEqual([]);
+    expect(vm.byHolding).toEqual([]);
+  });
+});
+
 describe("buildPortfolio — KRW-only with no fx provided does not throw", () => {
   it("builds without fx", () => {
     expect(() =>

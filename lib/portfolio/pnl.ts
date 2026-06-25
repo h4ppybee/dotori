@@ -44,7 +44,7 @@ interface DailyPnlInput {
  * 일간 손익을 보유 종목 자체 통화 기준으로 계산한다. (spec §3 세 갈래)
  * - AUTO: tossDailyPnl 그대로 (없으면 undefined)
  * - MANUAL + prevClose 있음: (price - prevClose) * quantity
- * - MANUAL + prevClose 없음: undefined
+ * - MANUAL + prevClose/price/quantity 중 하나라도 없음: undefined
  */
 export function dailyPnl(input: DailyPnlInput): number | undefined {
   if (input.source === "AUTO") {

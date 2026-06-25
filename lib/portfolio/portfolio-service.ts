@@ -2,7 +2,7 @@ import type { Holding, PriceCache } from "@/lib/types";
 import { resolveSector } from "@/lib/sector/sector-map";
 import { mergeHoldings } from "@/lib/portfolio/merge";
 import { toKrw } from "@/lib/portfolio/fx";
-import { holdingValue, holdingCost, holdingPnl, returnPct, dailyPnl } from "@/lib/portfolio/pnl";
+import { holdingValue, holdingCost, returnPct, dailyPnl } from "@/lib/portfolio/pnl";
 import { bySector, byHolding } from "@/lib/portfolio/ratios";
 
 export interface PortfolioRow {
