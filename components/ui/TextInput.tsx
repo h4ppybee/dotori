@@ -8,6 +8,7 @@ interface TextInputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, "on
   onChange: (value: string) => void;
   masked?: boolean;
   placeholder?: string;
+  inputId?: string;
 }
 
 /**
@@ -22,6 +23,7 @@ export function TextInput({
   masked = false,
   placeholder,
   type,
+  inputId,
   className = "",
   ...rest
 }: TextInputProps) {
@@ -29,10 +31,14 @@ export function TextInput({
 
   return (
     <div className={`flex flex-col gap-[6px] ${className}`}>
-      <label className="text-[13px] font-semibold leading-[1.45] text-body-soft">
+      <label
+        htmlFor={inputId}
+        className="text-[13px] font-semibold leading-[1.45] text-body-soft"
+      >
         {label}
       </label>
       <input
+        id={inputId}
         type={inputType}
         value={value}
         placeholder={placeholder}
