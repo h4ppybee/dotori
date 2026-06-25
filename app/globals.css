@@ -1,29 +1,29 @@
 @import "tailwindcss";
 
 @theme {
-  /* === Brand & Primary === */
-  --color-primary: #3182F6;
-  --color-primary-active: #1B64DA;
-  --color-primary-pressed: #1957C2;
-  --color-primary-disabled: #C9DDFF;
-  --color-primary-surface: #E8F3FF;
+  /* === Brand & Primary (갈색 계열) === */
+  --color-primary: #A87342;
+  --color-primary-active: #8E5E34;
+  --color-primary-pressed: #774C28;
+  --color-primary-disabled: #E4D3BF;
+  --color-primary-surface: #F3E9DD;
 
-  /* === Text (Greyscale) === */
-  --color-ink: #191F28;
-  --color-body: #4E5968;
-  --color-body-soft: #6B7684;
-  --color-muted: #8B95A1;
-  --color-muted-soft: #B0B8C1;
+  /* === Text (Warm Greyscale) === */
+  --color-ink: #2B2B2B;
+  --color-body: #4B4742;
+  --color-body-soft: #6F6A63;
+  --color-muted: #8C8C8C;
+  --color-muted-soft: #B5AEA4;
 
   /* === Hairline === */
-  --color-hairline: #E5E8EB;
-  --color-hairline-soft: #F2F4F6;
+  --color-hairline: #F1ECE4;
+  --color-hairline-soft: #F7F3EC;
 
   /* === Surface === */
-  --color-canvas: #F2F4F6;
+  --color-canvas: #FCFBF8;
   --color-surface-card: #FFFFFF;
-  --color-surface-soft: #F9FAFB;
-  --color-surface-strong: #E5E8EB;
+  --color-surface-soft: #FAF7F1;
+  --color-surface-strong: #EDE7DD;
 
   /* === On-color === */
   --color-on-primary: #FFFFFF;
@@ -34,7 +34,7 @@
   --color-up-surface: #FDECEE;
   --color-down: #3182F6;
   --color-down-surface: #E8F3FF;
-  --color-flat: #8B95A1;
+  --color-flat: #8C8C8C;
   --color-warning: #FF9800;
   --color-success: #15803D;
 
@@ -60,9 +60,9 @@
   --spacing-section: 64px;
 
   /* === Shadows === */
-  --shadow-card: 0 1px 4px rgba(0,23,51,.04), 0 2px 12px rgba(0,23,51,.04);
-  --shadow-card-hover: 0 4px 16px rgba(0,23,51,.08);
-  --shadow-floating: 0 8px 24px rgba(0,23,51,.12);
+  --shadow-card: 0 1px 4px rgba(60,45,30,.05), 0 2px 12px rgba(60,45,30,.05);
+  --shadow-card-hover: 0 4px 16px rgba(60,45,30,.09);
+  --shadow-floating: 0 8px 24px rgba(60,45,30,.13);
 }
 
 body {

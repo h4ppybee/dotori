@@ -1,32 +1,32 @@
 ---
 version: alpha
 name: Toss-style-design-analysis
-description: A Korean fintech aesthetic modeled on Toss — calm, trustworthy, and number-forward. The base canvas is a soft light-grey floor (`#F2F4F6`) carrying pure-white cards with generous radii; Toss Blue (`#3182F6`) is the single brand voltage, reserved for primary CTAs, active states, and key emphasis. Type runs Pretendard (the open substitute for Toss Product Sans) at a tight greyscale hierarchy — large bold numerals dominate, body text stays calm at weight 400. Korean stock-market semantics apply: gains/up are RED (`#F04452`), losses/down are BLUE (`#3182F6`) — the inverse of Western convention. All copy follows Toss UX-writing: 해요체, active voice, positive framing. Depth comes from card-on-grey layering and soft shadows, never heavy borders.
+description: A Korean fintech aesthetic modeled on Toss — calm, trustworthy, and number-forward. The base canvas is a soft warm-cream floor (`#FCFBF8`) carrying pure-white cards with generous radii; a warm acorn brown (`#A87342`) is the single brand voltage, reserved for primary CTAs, active states, and key emphasis. Type runs Pretendard (the open substitute for Toss Product Sans) at a tight greyscale hierarchy — large bold numerals dominate, body text stays calm at weight 400. Korean stock-market semantics apply: gains/up are RED (`#F04452`), losses/down are BLUE (`#3182F6`) — the inverse of Western convention. All copy follows Toss UX-writing: 해요체, active voice, positive framing. Depth comes from card-on-grey layering and soft shadows, never heavy borders.
 
 colors:
-  primary: "#3182F6"
-  primary-active: "#1B64DA"
-  primary-pressed: "#1957C2"
-  primary-disabled: "#C9DDFF"
-  primary-surface: "#E8F3FF"
-  ink: "#191F28"
-  body: "#4E5968"
-  body-soft: "#6B7684"
-  muted: "#8B95A1"
-  muted-soft: "#B0B8C1"
-  hairline: "#E5E8EB"
-  hairline-soft: "#F2F4F6"
-  canvas: "#F2F4F6"
+  primary: "#A87342"
+  primary-active: "#8E5E34"
+  primary-pressed: "#774C28"
+  primary-disabled: "#E4D3BF"
+  primary-surface: "#F3E9DD"
+  ink: "#2B2B2B"
+  body: "#4B4742"
+  body-soft: "#6F6A63"
+  muted: "#8C8C8C"
+  muted-soft: "#B5AEA4"
+  hairline: "#F1ECE4"
+  hairline-soft: "#F7F3EC"
+  canvas: "#FCFBF8"
   surface-card: "#FFFFFF"
-  surface-soft: "#F9FAFB"
-  surface-strong: "#E5E8EB"
+  surface-soft: "#FAF7F1"
+  surface-strong: "#EDE7DD"
   on-primary: "#FFFFFF"
   on-ink: "#FFFFFF"
   semantic-up: "#F04452"
   semantic-up-surface: "#FDECEE"
   semantic-down: "#3182F6"
   semantic-down-surface: "#E8F3FF"
-  semantic-flat: "#8B95A1"
+  semantic-flat: "#8C8C8C"
   semantic-warning: "#FF9800"
   semantic-success: "#15803D"
 
@@ -285,12 +285,12 @@ components:
     padding: 14px 16px
   donut-chart:
     trackColor: "{colors.hairline}"
-    palette: ["#3182F6", "#F04452", "#15803D", "#FF9800", "#8B5CF6", "#6B7684"]
+    palette: ["#A87342", "#F04452", "#15803D", "#FF9800", "#8B5CF6", "#6B7684"]
 ---
 
 ## Overview
 
-dotori는 토스(Toss)의 디자인 언어를 따른다 — 차분하고, 신뢰감 있고, **숫자가 주인공**인 한국형 핀테크 미감. 바탕은 부드러운 연회색 floor(`{colors.canvas}` — #F2F4F6)이고 그 위에 **둥근 흰색 카드**(`{component.card}`)가 떠 있다. 브랜드 색은 **토스 블루**(`{colors.primary}` — #3182F6) 하나로, 주요 CTA·활성 상태·핵심 강조에만 아껴 쓴다.
+dotori는 토스(Toss)의 디자인 언어를 따른다 — 차분하고, 신뢰감 있고, **숫자가 주인공**인 한국형 핀테크 미감. 바탕은 부드러운 연크림 floor(`{colors.canvas}` — #FCFBF8)이고 그 위에 **둥근 흰색 카드**(`{component.card}`)가 떠 있다. 브랜드 색은 **갈색(도토리색)**(`{colors.primary}` — #A87342) 하나로, 주요 CTA·활성 상태·핵심 강조에만 아껴 쓴다.
 
 타이포는 **Pretendard**(토스 Product Sans의 오픈 대체 폰트)로 통일하고, **큰 굵은 숫자**가 화면을 지배한다. 본문은 weight 400으로 차분하게 유지하고, 금액·수익률만 weight 700으로 키운다.
 
@@ -302,7 +302,7 @@ dotori는 토스(Toss)의 디자인 언어를 따른다 — 차분하고, 신뢰
 
 **핵심 특징**
 - 단일 브랜드 색: `{colors.primary}`를 CTA·활성 상태·강조에만 아껴 사용
-- 연회색 캔버스 + 흰색 카드 + 부드러운 그림자의 토스 시그니처 레이어링
+- 연크림 캔버스 + 흰색 카드 + 부드러운 그림자의 토스 시그니처 레이어링
 - 숫자 우선: 자산·수익률은 `{typography.number-hero}` / `{typography.number-lg}`로 크고 굵게, tabular-nums
 - 넉넉한 radius: 카드 `{rounded.xl}`(20px)~`{rounded.xxl}`(28px), 버튼 `{rounded.md}`(12px)
 - 증시 색: 상승=빨강 / 하락=파랑, 텍스트 색 + 연한 surface 배지로만 표현
@@ -311,13 +311,13 @@ dotori는 토스(Toss)의 디자인 언어를 따른다 — 차분하고, 신뢰
 ## Colors
 
 ### Brand & Accent
-- **Toss Blue** (`{colors.primary}` — #3182F6): 단일 브랜드 색. 주요 CTA, 활성 상태, 선택 칩, 핵심 링크.
-- **Blue Active / Pressed** (`{colors.primary-active}` #1B64DA / `{colors.primary-pressed}` #1957C2): hover·press 상태.
-- **Blue Surface** (`{colors.primary-surface}` — #E8F3FF): 보조 버튼·선택 칩의 연한 파랑 배경.
-- **Blue Disabled** (`{colors.primary-disabled}` — #C9DDFF): 비활성 CTA.
+- **Acorn Brown** (`{colors.primary}` — #A87342): 단일 브랜드 색. 주요 CTA, 활성 상태, 선택 칩, 핵심 링크.
+- **Brown Active / Pressed** (`{colors.primary-active}` #8E5E34 / `{colors.primary-pressed}` #774C28): hover·press 상태.
+- **Brown Surface** (`{colors.primary-surface}` — #F3E9DD): 보조 버튼·선택 칩의 연한 갈색 배경.
+- **Brown Disabled** (`{colors.primary-disabled}` — #E4D3BF): 비활성 CTA.
 
 ### Surface
-- **Canvas** (`{colors.canvas}` — #F2F4F6): 기본 페이지 바닥(연회색).
+- **Canvas** (`{colors.canvas}` — #FCFBF8): 기본 페이지 바닥(연크림).
 - **Surface Card** (`{colors.surface-card}` — #FFFFFF): 카드·리스트·내비 등 콘텐츠 표면.
 - **Surface Soft** (`{colors.surface-soft}` — #F9FAFB): 입력 필드 기본 배경.
 - **Surface Strong** (`{colors.surface-strong}` — #E5E8EB): 약한 버튼·칩 배경.
@@ -389,8 +389,8 @@ dotori는 토스(Toss)의 디자인 언어를 따른다 — 차분하고, 신뢰
 - **보유 종목 리스트** (`{component.list-row}`): 종목명(`{component.holding-row-name}`) + 시장·증권사 서브(`{component.holding-row-sub}`), 우측에 평가금(`{component.amount-cell}`) + 수익률(`{component.return-up-cell}` / `{component.return-down-cell}`).
 - **수익률 배지** (`{component.return-badge-up}` / `down`): 연한 surface 배경 + 부호(+/-) + 색.
 - **도넛 차트** (`{component.donut-chart}`): 섹터/종목 비율. palette 순서대로 배정, track은 hairline.
-- **버튼**: primary(토스 블루) / secondary(blue-surface) / weak(grey) / text. radius `{rounded.md}`, height 52px.
-- **입력 필드** (`{component.text-input}`): 연한 배경, focus 시 토스 블루 1.5px 테두리.
+- **버튼**: primary(갈색) / secondary(brown-surface) / weak(grey) / text. radius `{rounded.md}`, height 52px.
+- **입력 필드** (`{component.text-input}`): 연한 배경, focus 시 갈색 1.5px 테두리.
 - **다이얼로그** (`{component.dialog}`): radius `{rounded.xxl}`, 왼쪽 버튼은 항상 "닫기"(아래 UX Writing).
 
 ## UX Writing (토스 라이팅 규칙)
