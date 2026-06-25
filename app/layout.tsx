@@ -6,6 +6,9 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "dotori",
   description: "토스 스타일 로컬-퍼스트 주식 포트폴리오 앱",
+  appleWebApp: {
+    title: "Dotori",
+  },
 };
 
 export default function RootLayout({
