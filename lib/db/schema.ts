@@ -3,7 +3,7 @@ import type {
   Member, Connection, TokenCache, Holding, PriceCache, FxRate, DailySnapshot, Settings,
 } from "@/lib/types";
 
-export class FinoteDB extends Dexie {
+export class DotoriDB extends Dexie {
   members!: Table<Member, string>;
   connections!: Table<Connection, string>;
   tokenCache!: Table<TokenCache, string>;
@@ -15,7 +15,7 @@ export class FinoteDB extends Dexie {
   sectorOverrides!: Table<{ symbol: string; sector: string }, string>; // key: symbol
 
   constructor() {
-    super("finote");
+    super("dotori");
     this.version(1).stores({
       members: "id",
       connections: "id, memberId, type",
@@ -29,5 +29,5 @@ export class FinoteDB extends Dexie {
     });
   }
 }
-export const db = new FinoteDB();
+export const db = new DotoriDB();
 export const priceKey = (symbol: string, currency: string) => `${symbol}|${currency}`;
