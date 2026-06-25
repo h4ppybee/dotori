@@ -34,7 +34,7 @@ interface RefreshFailure {
 
 const dayOf = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 
-async function proxyPost(path: string, body: unknown): Promise<any> {
+async function proxyPost<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(path, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -43,19 +43,19 @@ async function proxyPost(path: string, body: unknown): Promise<any> {
   if (!res.ok) {
     throw new Error(`${path} 실패: ${res.status}`);
   }
-  return res.json();
+  return res.json() as Promise<T>;
 }
 
 /**
  * 401 발생 시 tokenCache를 무효화하고 토큰을 재발급받아 한 번 재시도한다.
  * 재시도 후에도 실패하면 에러를 그대로 던진다.
  */
-async function proxyPostWithTokenRetry(
+async function proxyPostWithTokenRetry<T>(
   path: string,
   buildBody: (token: string) => unknown,
   conn: { id: string; clientId: string; clientSecretEnc: string },
   key: CryptoKey,
-): Promise<any> {
+): Promise<T> {
   const clientSecret = await decrypt(key, conn.clientSecretEnc);
   let token = await getValidToken({
     connectionId: conn.id,
@@ -74,7 +74,7 @@ async function proxyPostWithTokenRetry(
     if (!res.ok) {
       throw new Error(`${path} 실패: ${res.status}`);
     }
-    return res.json();
+    return res.json() as Promise<T>;
   }
 
   // 401 → 캐시 무효화 후 토큰 재발급 → 1회 재시도
@@ -95,7 +95,7 @@ async function proxyPostWithTokenRetry(
   if (!retry.ok) {
     throw new Error(`${path} 실패: ${retry.status}`);
   }
-  return retry.json();
+  return retry.json() as Promise<T>;
 }
 
 /**
@@ -128,13 +128,13 @@ export async function refreshAll(opts: {
         clientSecret,
         key: opts.key,
       });
-      const accountsRes = await proxyPost("/api/toss/accounts", { token });
+      const accountsRes = await proxyPost<{ accounts: string[] }>("/api/toss/accounts", { token });
       const accounts: string[] = accountsRes.accounts;
       await upsertConnection({ ...conn, accountSeqs: accounts });
 
       const seenSymbols: string[] = [];
       for (const accountSeq of accounts) {
-        const holdingsRes = await proxyPostWithTokenRetry(
+        const holdingsRes = await proxyPostWithTokenRetry<{ holdings: NormalizedHolding[] }>(
           "/api/toss/holdings",
           (t) => ({ token: t, accountSeq }),
           { id: conn.id, clientId: conn.clientId!, clientSecretEnc: conn.clientSecretEnc! },
@@ -191,7 +191,10 @@ export async function refreshAll(opts: {
       }
 
       if (symbols.length > 0) {
-        const pricesRes = await proxyPost("/api/toss/prices", { token: priceToken, symbols });
+        const pricesRes = await proxyPost<{ prices: { symbol: string; currency: "KRW" | "USD"; lastPrice: number }[] }>(
+          "/api/toss/prices",
+          { token: priceToken, symbols },
+        );
         const prices: { symbol: string; currency: "KRW" | "USD"; lastPrice: number }[] =
           pricesRes.prices;
         for (const p of prices) {
@@ -218,7 +221,7 @@ export async function refreshAll(opts: {
 
     // 환율: 실패해도 기존 환율 유지(치명적 실패로 보지 않음).
     try {
-      const fxRes = await proxyPost("/api/toss/exchange-rate", { token: priceToken });
+      const fxRes = await proxyPost<{ rate: number }>("/api/toss/exchange-rate", { token: priceToken });
       await putFx({ pair: "USDKRW", rate: fxRes.rate, asOf: now });
     } catch {
       // 기존 fxRate 유지

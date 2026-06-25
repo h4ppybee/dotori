@@ -55,7 +55,9 @@ export function ConnectionForm() {
   }, []);
 
   useEffect(() => {
-    void reload();
+    // 마운트 시 초기 데이터 로드 — setState는 reload() 내 비동기 resolve 후 호출됨
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    reload().catch(() => undefined);
   }, [reload]);
 
   function openAdd() {

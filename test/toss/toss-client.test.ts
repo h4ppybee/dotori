@@ -180,7 +180,7 @@ describe("fetchPrices batch boundary", () => {
     }));
 
     let fetchCallCount = 0;
-    vi.stubGlobal("fetch", vi.fn(async (_url: string, _init?: RequestInit) => {
+    vi.stubGlobal("fetch", vi.fn(async (_url: string) => {
       fetchCallCount += 1;
       const url = String(_url);
       const symbolsParam = new URL(url).searchParams.get("symbols") ?? "";

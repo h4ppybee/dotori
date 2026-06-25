@@ -87,7 +87,7 @@ async function networkFirstNavigate(request) {
       cache.put(request, networkResponse.clone());
     }
     return networkResponse;
-  } catch (_err) {
+  } catch {
     // 오프라인 — 캐시된 "/" 폴백
     const cached = await caches.match("/");
     if (cached) {

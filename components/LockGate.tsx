@@ -26,7 +26,6 @@ interface LockGateProps {
  */
 export function LockGate({ children }: LockGateProps) {
   const locked = useAppStore((s) => s.locked);
-  const unlock = useAppStore((s) => s.unlock);
 
   const [mode, setMode] = useState<Mode>("loading");
 

@@ -138,11 +138,14 @@ export default function HoldingsPage() {
   }, []);
 
   useEffect(() => {
-    void loadData();
+    // 마운트 시 초기 데이터 로드 — setState는 loadData() 내 비동기 resolve 후 호출됨
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadData().catch(() => undefined);
   }, [loadData]);
 
   // ── 저장 후 처리 ──────────────────────────────────────────────
-  function handleSaved(_h: Holding) {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  function handleSaved(_holding: Holding) {
     setFormOpen(false);
     setEditTarget(undefined);
     void loadData();

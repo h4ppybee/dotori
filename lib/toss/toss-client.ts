@@ -38,12 +38,24 @@ export interface NormalizedPrice {
   lastPrice: number;
 }
 
+// 토스 API 응답 원시 타입 (신뢰 경계: unknown → 구조 좁히기용)
+type RawRow = Record<string, unknown>;
+interface RawList {
+  result?: unknown[];
+}
+
+function toRawList(raw: unknown): unknown[] {
+  const r = raw as RawList;
+  return Array.isArray(r?.result) ? r.result : [];
+}
+
 export const normalizeAccounts = (raw: unknown): string[] =>
-  ((raw as any)?.result ?? []).map((a: any) => a.accountSeq);
+  toRawList(raw).map((a) => String((a as RawRow).accountSeq ?? "")).filter(Boolean);
 
 export const normalizeHoldings = (raw: unknown): NormalizedHolding[] => {
   const rows: NormalizedHolding[] = [];
-  for (const h of ((raw as any)?.result ?? [])) {
+  for (const item of toRawList(raw)) {
+    const h = item as RawRow;
     const currency = h.currency;
     if (currency !== "KRW" && currency !== "USD") {
       continue;
@@ -59,9 +71,9 @@ export const normalizeHoldings = (raw: unknown): NormalizedHolding[] => {
     const dailyPnl =
       h.dailyProfitLoss != null ? toNum(h.dailyProfitLoss) ?? undefined : undefined;
     rows.push({
-      symbol: h.symbol,
-      name: h.name,
-      market: h.market,
+      symbol: String(h.symbol ?? ""),
+      name: String(h.name ?? ""),
+      market: String(h.market ?? ""),
       currency,
       quantity,
       avgBuyPrice,
@@ -73,7 +85,8 @@ export const normalizeHoldings = (raw: unknown): NormalizedHolding[] => {
 
 export const normalizePrices = (raw: unknown): NormalizedPrice[] => {
   const rows: NormalizedPrice[] = [];
-  for (const p of ((raw as any)?.result ?? [])) {
+  for (const item of toRawList(raw)) {
+    const p = item as RawRow;
     const currency = p.currency;
     if (currency !== "KRW" && currency !== "USD") {
       continue;
@@ -82,7 +95,7 @@ export const normalizePrices = (raw: unknown): NormalizedPrice[] => {
     if (lastPrice === null) {
       continue;
     }
-    rows.push({ symbol: p.symbol, currency, lastPrice });
+    rows.push({ symbol: String(p.symbol ?? ""), currency, lastPrice });
   }
   return rows;
 };
@@ -154,14 +167,14 @@ export async function exchangeToken(
     if (!retry.ok) {
       throw new TossError(retry.status, await retry.text());
     }
-    const j: any = await retry.json();
-    return { accessToken: j.access_token, expiresIn: j.expires_in };
+    const j = (await retry.json()) as Record<string, unknown>;
+    return { accessToken: String(j.access_token ?? ""), expiresIn: Number(j.expires_in) };
   }
   if (!res.ok) {
     throw new TossError(res.status, await res.text());
   }
-  const j: any = await res.json();
-  return { accessToken: j.access_token, expiresIn: j.expires_in };
+  const j = (await res.json()) as Record<string, unknown>;
+  return { accessToken: String(j.access_token ?? ""), expiresIn: Number(j.expires_in) };
 }
 
 export async function fetchAccounts(token: string): Promise<string[]> {
@@ -215,6 +228,7 @@ export async function fetchExchangeRate(token: string): Promise<{ rate: number }
   if (!res.ok) {
     throw new TossError(res.status, await res.text());
   }
-  const j: any = await res.json();
-  return { rate: Number(j.result?.rate ?? j.rate) };
+  const j = (await res.json()) as Record<string, unknown>;
+  const resultObj = j.result != null ? (j.result as Record<string, unknown>) : null;
+  return { rate: Number(resultObj?.rate ?? j.rate) };
 }

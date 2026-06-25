@@ -18,7 +18,6 @@ import { useAppStore } from "@/stores/app-store";
 // ─── 패스프레이즈 변경 섹션 ──────────────────────────────────────────────────
 
 function PassphraseSection() {
-  const sessionKey = useAppStore((s) => s.sessionKey)!;
   const unlock = useAppStore((s) => s.unlock);
 
   const [current, setCurrent] = useState("");

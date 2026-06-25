@@ -287,7 +287,7 @@ describe("refreshAll 401 retry", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const { vm, failures } = await refreshAll({ key, now: TODAY_MS });
+    const { failures } = await refreshAll({ key, now: TODAY_MS });
 
     // 실패 없이 완료됐어야 함
     expect(failures).toHaveLength(0);
