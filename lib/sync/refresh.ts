@@ -1,0 +1,178 @@
+import { decrypt } from "@/lib/crypto/crypto";
+import { getValidToken } from "@/lib/toss/toss-token";
+import {
+  listConnections,
+  upsertConnection,
+  upsertAutoHolding,
+  listHoldings,
+  getPrice,
+  putPrice,
+  listPrices,
+  putFx,
+  getFx,
+  getSectorOverrides,
+} from "@/lib/db/local-store";
+import { buildPortfolio, type PortfolioVM } from "@/lib/portfolio/portfolio-service";
+
+interface NormalizedHolding {
+  symbol: string;
+  name: string;
+  market: string;
+  currency: "KRW" | "USD";
+  quantity: number;
+  avgBuyPrice: number;
+  dailyPnl?: number;
+}
+
+interface RefreshFailure {
+  connectionId: string;
+  label: string;
+  message: string;
+}
+
+const dayOf = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+
+async function proxyPost(path: string, body: unknown): Promise<any> {
+  const res = await fetch(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    throw new Error(`${path} 실패: ${res.status}`);
+  }
+  return res.json();
+}
+
+/**
+ * spec §4-1 갱신 오케스트레이션 (전부 클라이언트 주도, 토스 호출은 프록시 경유).
+ * 토큰 → 계좌 → 보유 upsert → 시세(prevClose 이월) → 환율 → 뷰모델.
+ * connection 단위 try/catch로 부분 실패를 격리한다 (spec §6).
+ */
+export async function refreshAll(opts: {
+  key: CryptoKey;
+  now?: number;
+}): Promise<{ vm: PortfolioVM; failures: RefreshFailure[] }> {
+  const now = opts.now ?? Date.now();
+  const today = dayOf(now);
+
+  const connections = await listConnections();
+  const failures: RefreshFailure[] = [];
+
+  // 시세/환율 조회에 재사용할, 인증에 성공한 첫 토스 토큰.
+  let priceToken: string | null = null;
+
+  for (const conn of connections) {
+    if (conn.type !== "TOSS_API") {
+      continue;
+    }
+    try {
+      const clientSecret = await decrypt(opts.key, conn.clientSecretEnc!);
+      const token = await getValidToken({
+        connectionId: conn.id,
+        clientId: conn.clientId!,
+        clientSecret,
+        key: opts.key,
+      });
+      if (priceToken === null) {
+        priceToken = token;
+      }
+
+      const accountsRes = await proxyPost("/api/toss/accounts", { token });
+      const accounts: string[] = accountsRes.accounts;
+      await upsertConnection({ ...conn, accountSeqs: accounts });
+
+      for (const accountSeq of accounts) {
+        const holdingsRes = await proxyPost("/api/toss/holdings", { token, accountSeq });
+        const holdings: NormalizedHolding[] = holdingsRes.holdings;
+        for (const h of holdings) {
+          await upsertAutoHolding({
+            connectionId: conn.id,
+            market: h.market,
+            symbol: h.symbol,
+            name: h.name,
+            sector: "미분류",
+            currency: h.currency,
+            quantity: h.quantity,
+            avgBuyPrice: h.avgBuyPrice,
+            manualPrice: undefined,
+            tossDailyPnl: h.dailyPnl,
+          });
+        }
+      }
+    } catch (e) {
+      failures.push({
+        connectionId: conn.id,
+        label: conn.label,
+        message: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
+
+  // 시세: 보유 종목의 distinct {symbol, currency}.
+  if (priceToken !== null) {
+    try {
+      const heldHoldings = await listHoldings();
+      const seen = new Set<string>();
+      const symbols: { symbol: string; currency: string }[] = [];
+      for (const h of heldHoldings) {
+        const k = `${h.symbol}|${h.currency}`;
+        if (seen.has(k)) {
+          continue;
+        }
+        seen.add(k);
+        symbols.push({ symbol: h.symbol, currency: h.currency });
+      }
+
+      if (symbols.length > 0) {
+        const pricesRes = await proxyPost("/api/toss/prices", { token: priceToken, symbols });
+        const prices: { symbol: string; currency: "KRW" | "USD"; lastPrice: number }[] =
+          pricesRes.prices;
+        for (const p of prices) {
+          const existing = await getPrice(p.symbol, p.currency);
+          const existingDay = existing ? dayOf(existing.asOf) : null;
+          const prevClose =
+            existing && existingDay !== today ? existing.lastPrice : existing?.prevClose;
+          await putPrice({
+            symbol: p.symbol,
+            currency: p.currency,
+            lastPrice: p.lastPrice,
+            prevClose,
+            asOf: now,
+          });
+        }
+      }
+    } catch (e) {
+      failures.push({
+        connectionId: "prices",
+        label: "시세",
+        message: e instanceof Error ? e.message : String(e),
+      });
+    }
+
+    // 환율: 실패해도 기존 환율 유지(치명적 실패로 보지 않음).
+    try {
+      const fxRes = await proxyPost("/api/toss/exchange-rate", { token: priceToken });
+      await putFx({ pair: "USDKRW", rate: fxRes.rate, asOf: now });
+    } catch {
+      // 기존 fxRate 유지
+    }
+  }
+
+  const [holdings, prices, fx, sectorOverrides] = await Promise.all([
+    listHoldings(),
+    listPrices(),
+    getFx(),
+    getSectorOverrides(),
+  ]);
+
+  return {
+    vm: buildPortfolio({
+      holdings,
+      prices,
+      fx: fx ? { rate: fx.rate } : undefined,
+      sectorOverrides,
+    }),
+    failures,
+  };
+}
