@@ -4,6 +4,7 @@ import {
   listConnections,
   upsertConnection,
   upsertAutoHolding,
+  pruneAutoHoldings,
   listHoldings,
   getPrice,
   putPrice,
@@ -74,18 +75,16 @@ export async function refreshAll(opts: {
         clientSecret,
         key: opts.key,
       });
-      if (priceToken === null) {
-        priceToken = token;
-      }
-
       const accountsRes = await proxyPost("/api/toss/accounts", { token });
       const accounts: string[] = accountsRes.accounts;
       await upsertConnection({ ...conn, accountSeqs: accounts });
 
+      const seenSymbols: string[] = [];
       for (const accountSeq of accounts) {
         const holdingsRes = await proxyPost("/api/toss/holdings", { token, accountSeq });
         const holdings: NormalizedHolding[] = holdingsRes.holdings;
         for (const h of holdings) {
+          seenSymbols.push(h.symbol);
           await upsertAutoHolding({
             connectionId: conn.id,
             market: h.market,
@@ -99,6 +98,15 @@ export async function refreshAll(opts: {
             tossDailyPnl: h.dailyPnl,
           });
         }
+      }
+      // 매도되어 이번 응답에 없는 AUTO 행 정리. 성공 경로에서만 수행해
+      // 전송 실패 시 데이터가 날아가지 않도록 한다.
+      await pruneAutoHoldings(conn.id, seenSymbols);
+
+      // 시세/환율 조회 토큰은 accounts·holdings까지 모두 성공한
+      // connection의 토큰만 채택한다.
+      if (priceToken === null) {
+        priceToken = token;
       }
     } catch (e) {
       failures.push({

@@ -35,6 +35,14 @@ export async function upsertManualHolding(h: Partial<Holding> & { id?: string })
   await db.holdings.put(rec);
   return rec;
 }
+export async function pruneAutoHoldings(connectionId: string, keepSymbols: string[]): Promise<void> {
+  const keep = new Set(keepSymbols);
+  const rows = await db.holdings
+    .where("connectionId").equals(connectionId)
+    .and((x) => x.source === "AUTO" && !keep.has(x.symbol)).toArray();
+  await db.holdings.bulkDelete(rows.map((r) => r.id));
+}
+
 export const listHoldings = () => db.holdings.toArray();
 export const deleteHolding = (id: string) => db.holdings.delete(id);
 

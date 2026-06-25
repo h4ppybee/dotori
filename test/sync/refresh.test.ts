@@ -18,12 +18,26 @@ function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status });
 }
 
+const SAMSUNG = {
+  symbol: "005930",
+  name: "삼성전자",
+  market: "KOSPI",
+  currency: "KRW" as const,
+  quantity: 10,
+  avgBuyPrice: 70000,
+  dailyPnl: 5000,
+};
+
 interface RouteOverrides {
   accountsStatus?: number;
+  holdings?: typeof SAMSUNG[];
+  lastPrice?: number;
 }
 
 function stubFetch(overrides: RouteOverrides = {}) {
-  const fetchMock = vi.fn(async (url: string) => {
+  const lastPrice = overrides.lastPrice ?? 72000;
+  const holdings = overrides.holdings ?? [SAMSUNG];
+  const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
     if (url.includes("/api/toss/token")) {
       return jsonResponse({ accessToken: "T", expiresIn: 3600 });
     }
@@ -34,22 +48,18 @@ function stubFetch(overrides: RouteOverrides = {}) {
       return jsonResponse({ accounts: ["A1"] });
     }
     if (url.includes("/api/toss/holdings")) {
-      return jsonResponse({
-        holdings: [
-          {
-            symbol: "005930",
-            name: "삼성전자",
-            market: "KOSPI",
-            currency: "KRW",
-            quantity: 10,
-            avgBuyPrice: 70000,
-            dailyPnl: 5000,
-          },
-        ],
-      });
+      return jsonResponse({ holdings });
     }
     if (url.includes("/api/toss/prices")) {
-      return jsonResponse({ prices: [{ symbol: "005930", currency: "KRW", lastPrice: 72000 }] });
+      const body = JSON.parse(String(init?.body ?? "{}")) as {
+        symbols: { symbol: string; currency: string }[];
+      };
+      const prices = body.symbols.map((s) => ({
+        symbol: s.symbol,
+        currency: s.currency,
+        lastPrice,
+      }));
+      return jsonResponse({ prices });
     }
     if (url.includes("/api/toss/exchange-rate")) {
       return jsonResponse({ rate: 1350 });
@@ -141,5 +151,94 @@ describe("refreshAll", () => {
     const manualRow = vm.rows.find((r) => r.holding.symbol === "000660");
     expect(manualRow).toBeTruthy();
     expect(manualRow?.valueKrw).toBe(600000); // 5 * 120000
+  });
+
+  it("prunes an AUTO holding that disappears from the toss response", async () => {
+    const key = await deriveKey("pp", makeSalt());
+    const conn = await seedTossConnection(key);
+    // 이전 동기화에서 들어온 AUTO 행(이번 응답엔 없음 → 매도된 것으로 간주).
+    await store.upsertAutoHolding({ connectionId: conn.id, market: "KOSPI", symbol: "000660",
+      name: "SK하이닉스", currency: "KRW", quantity: 5, avgBuyPrice: 100000, sector: "미분류" });
+    stubFetch(); // holdings = [삼성전자]만 반환
+
+    await refreshAll({ key, now: TODAY_MS });
+
+    const holdings = await store.listHoldings();
+    const symbols = holdings.map((h) => h.symbol).sort();
+    expect(symbols).toEqual(["005930"]); // 000660은 정리됨
+  });
+
+  it("does not prune when the connection sync fails (catch path)", async () => {
+    const key = await deriveKey("pp", makeSalt());
+    const conn = await seedTossConnection(key);
+    await store.upsertAutoHolding({ connectionId: conn.id, market: "KOSPI", symbol: "000660",
+      name: "SK하이닉스", currency: "KRW", quantity: 5, avgBuyPrice: 100000, sector: "미분류" });
+    stubFetch({ accountsStatus: 500 });
+
+    await refreshAll({ key, now: TODAY_MS });
+
+    const holdings = await store.listHoldings();
+    expect(holdings.find((h) => h.symbol === "000660")).toBeTruthy(); // 보존됨
+  });
+
+  it("keeps prevClose stable across two refreshes on the same day", async () => {
+    const key = await deriveKey("pp", makeSalt());
+    await seedTossConnection(key);
+    await store.putPrice({ symbol: "005930", currency: "KRW", lastPrice: 71000, asOf: YESTERDAY_MS });
+
+    stubFetch({ lastPrice: 72000 });
+    await refreshAll({ key, now: TODAY_MS });
+    expect((await store.getPrice("005930", "KRW"))?.prevClose).toBe(71000);
+
+    // 같은 날 다른 lastPrice로 다시 갱신해도 prevClose는 71000으로 유지.
+    vi.restoreAllMocks();
+    stubFetch({ lastPrice: 73000 });
+    await refreshAll({ key, now: TODAY_MS + 3_600_000 });
+
+    const price = await store.getPrice("005930", "KRW");
+    expect(price?.lastPrice).toBe(73000);
+    expect(price?.prevClose).toBe(71000);
+  });
+
+  it("skips the prices fetch entirely for a manual-only setup", async () => {
+    const key = await deriveKey("pp", makeSalt());
+    // TOSS connection 없음. MANUAL 종목만 존재.
+    await store.upsertManualHolding({
+      connectionId: "manual1",
+      market: "KOSPI",
+      symbol: "000660",
+      name: "SK하이닉스",
+      sector: "미분류",
+      currency: "KRW",
+      quantity: 5,
+      avgBuyPrice: 100000,
+      manualPrice: 120000,
+    });
+    const fetchMock = stubFetch();
+
+    const { vm, failures } = await refreshAll({ key, now: TODAY_MS });
+
+    const calledUrls = fetchMock.mock.calls.map((c) => String(c[0]));
+    expect(calledUrls.some((u) => u.includes("/api/toss/prices"))).toBe(false);
+    expect(failures).toHaveLength(0);
+
+    const manualRow = vm.rows.find((r) => r.holding.symbol === "000660");
+    expect(manualRow?.valueKrw).toBe(600000); // 5 * 120000
+  });
+
+  it("dedups {symbol,currency} in the prices payload when two connections hold the same symbol", async () => {
+    const key = await deriveKey("pp", makeSalt());
+    await seedTossConnection(key);
+    await seedTossConnection(key); // 두 번째 TOSS connection도 005930 보유
+    const fetchMock = stubFetch();
+
+    await refreshAll({ key, now: TODAY_MS });
+
+    const pricesCall = fetchMock.mock.calls.find((c) => String(c[0]).includes("/api/toss/prices"));
+    expect(pricesCall).toBeTruthy();
+    const body = JSON.parse(String((pricesCall![1] as RequestInit).body)) as {
+      symbols: { symbol: string; currency: string }[];
+    };
+    expect(body.symbols).toEqual([{ symbol: "005930", currency: "KRW" }]);
   });
 });
