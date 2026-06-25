@@ -34,6 +34,50 @@ describe("toss token proxy", () => {
     );
     expect(res.status).toBe(401);
   });
+
+  it("returns invalid_credentials error body when toss responds 401 on token exchange", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("unauthorized", { status: 401 })));
+    const { POST } = await import("@/app/api/toss/token/route");
+    const res = await POST(
+      new Request("http://x", {
+        method: "POST",
+        body: JSON.stringify({ clientId: "bad-id", clientSecret: "bad-sec" }),
+      }),
+    );
+    expect(res.status).toBe(401);
+    const body = await res.json();
+    expect(body.error).toBe("invalid_credentials");
+    expect(res.headers.get("Cache-Control")).toBe("no-store");
+  });
+
+  it("returns invalid_credentials error body when toss responds 400 on token exchange", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("bad request", { status: 400 })));
+    const { POST } = await import("@/app/api/toss/token/route");
+    const res = await POST(
+      new Request("http://x", {
+        method: "POST",
+        body: JSON.stringify({ clientId: "x", clientSecret: "y" }),
+      }),
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toBe("invalid_credentials");
+    expect(res.headers.get("Cache-Control")).toBe("no-store");
+  });
+
+  it("returns token_exchange_failed for other toss errors (e.g. 500)", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("server error", { status: 500 })));
+    const { POST } = await import("@/app/api/toss/token/route");
+    const res = await POST(
+      new Request("http://x", {
+        method: "POST",
+        body: JSON.stringify({ clientId: "x", clientSecret: "y" }),
+      }),
+    );
+    expect(res.status).toBe(500);
+    const body = await res.json();
+    expect(body.error).toBe("token_exchange_failed");
+  });
 });
 
 describe("toss accounts proxy", () => {

@@ -1,5 +1,27 @@
 const TOSS_BASE = process.env.TOSS_API_BASE ?? "https://openapi.tossinvest.com";
 
+// ── injectable sleep (테스트에서 setSleep으로 교체 가능) ──────────────────────
+let _sleep: (ms: number) => Promise<void> = (ms) =>
+  new Promise((resolve) => setTimeout(resolve, ms));
+
+export function setSleep(fn: (ms: number) => Promise<void>): void {
+  _sleep = fn;
+}
+
+const DEFAULT_RETRY_AFTER_MS = 500;
+
+// ── numeric guard helper ──────────────────────────────────────────────────────
+function toNum(v: unknown): number | null {
+  if (v == null) {
+    return null;
+  }
+  const n = Number(v);
+  if (!Number.isFinite(n)) {
+    return null;
+  }
+  return n;
+}
+
 export interface NormalizedHolding {
   symbol: string;
   name: string;
@@ -19,23 +41,51 @@ export interface NormalizedPrice {
 export const normalizeAccounts = (raw: unknown): string[] =>
   ((raw as any)?.result ?? []).map((a: any) => a.accountSeq);
 
-export const normalizeHoldings = (raw: unknown): NormalizedHolding[] =>
-  ((raw as any)?.result ?? []).map((h: any) => ({
-    symbol: h.symbol,
-    name: h.name,
-    market: h.market,
-    currency: h.currency,
-    quantity: Number(h.quantity),
-    avgBuyPrice: Number(h.avgPrice),
-    dailyPnl: h.dailyProfitLoss != null ? Number(h.dailyProfitLoss) : undefined,
-  }));
+export const normalizeHoldings = (raw: unknown): NormalizedHolding[] => {
+  const rows: NormalizedHolding[] = [];
+  for (const h of ((raw as any)?.result ?? [])) {
+    const currency = h.currency;
+    if (currency !== "KRW" && currency !== "USD") {
+      continue;
+    }
+    const quantity = toNum(h.quantity);
+    if (quantity === null) {
+      continue;
+    }
+    const avgBuyPrice = toNum(h.avgPrice);
+    if (avgBuyPrice === null) {
+      continue;
+    }
+    const dailyPnl =
+      h.dailyProfitLoss != null ? toNum(h.dailyProfitLoss) ?? undefined : undefined;
+    rows.push({
+      symbol: h.symbol,
+      name: h.name,
+      market: h.market,
+      currency,
+      quantity,
+      avgBuyPrice,
+      dailyPnl,
+    });
+  }
+  return rows;
+};
 
-export const normalizePrices = (raw: unknown): NormalizedPrice[] =>
-  ((raw as any)?.result ?? []).map((p: any) => ({
-    symbol: p.symbol,
-    currency: p.currency,
-    lastPrice: Number(p.price),
-  }));
+export const normalizePrices = (raw: unknown): NormalizedPrice[] => {
+  const rows: NormalizedPrice[] = [];
+  for (const p of ((raw as any)?.result ?? [])) {
+    const currency = p.currency;
+    if (currency !== "KRW" && currency !== "USD") {
+      continue;
+    }
+    const lastPrice = toNum(p.price);
+    if (lastPrice === null) {
+      continue;
+    }
+    rows.push({ symbol: p.symbol, currency, lastPrice });
+  }
+  return rows;
+};
 
 export class TossError extends Error {
   constructor(
@@ -47,6 +97,13 @@ export class TossError extends Error {
   }
 }
 
+// ── 429 재시도 헬퍼 ────────────────────────────────────────────────────────────
+async function waitForRateLimit(res: Response): Promise<void> {
+  const retryAfter = res.headers.get("Retry-After");
+  const ms = retryAfter ? parseFloat(retryAfter) * 1000 : DEFAULT_RETRY_AFTER_MS;
+  await _sleep(ms);
+}
+
 async function tossGet(token: string, path: string, params?: Record<string, string>): Promise<unknown> {
   const url = new URL(`${TOSS_BASE}${path}`);
   if (params) {
@@ -54,9 +111,21 @@ async function tossGet(token: string, path: string, params?: Record<string, stri
       url.searchParams.set(k, v);
     }
   }
-  const res = await fetch(url.toString(), {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+
+  const doFetch = () =>
+    fetch(url.toString(), {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+  const res = await doFetch();
+  if (res.status === 429) {
+    await waitForRateLimit(res);
+    const retry = await doFetch();
+    if (!retry.ok) {
+      throw new TossError(retry.status, await retry.text());
+    }
+    return retry.json();
+  }
   if (!res.ok) {
     throw new TossError(res.status, await res.text());
   }
@@ -67,15 +136,27 @@ export async function exchangeToken(
   clientId: string,
   clientSecret: string,
 ): Promise<{ accessToken: string; expiresIn: number }> {
-  const res = await fetch(`${TOSS_BASE}/api/v2/oauth/token`, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "client_credentials",
-      client_id: clientId,
-      client_secret: clientSecret,
-    }),
-  });
+  const doFetch = () =>
+    fetch(`${TOSS_BASE}/api/v2/oauth/token`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "client_credentials",
+        client_id: clientId,
+        client_secret: clientSecret,
+      }),
+    });
+
+  const res = await doFetch();
+  if (res.status === 429) {
+    await waitForRateLimit(res);
+    const retry = await doFetch();
+    if (!retry.ok) {
+      throw new TossError(retry.status, await retry.text());
+    }
+    const j: any = await retry.json();
+    return { accessToken: j.access_token, expiresIn: j.expires_in };
+  }
   if (!res.ok) {
     throw new TossError(res.status, await res.text());
   }

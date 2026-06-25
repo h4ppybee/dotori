@@ -242,3 +242,98 @@ describe("refreshAll", () => {
     expect(body.symbols).toEqual([{ symbol: "005930", currency: "KRW" }]);
   });
 });
+
+// ─── Item 3: 401 → token re-issue + single retry ──────────────────────────────
+
+describe("refreshAll 401 retry", () => {
+  it("re-issues token and retries holdings when holdings proxy returns 401 on first call", async () => {
+    const key = await deriveKey("pp", makeSalt());
+    const conn = await seedTossConnection(key);
+
+    let holdingsCallCount = 0;
+    let tokenCallCount = 0;
+
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.includes("/api/toss/token")) {
+        tokenCallCount += 1;
+        return jsonResponse({ accessToken: `T${tokenCallCount}`, expiresIn: 3600 });
+      }
+      if (url.includes("/api/toss/accounts")) {
+        return jsonResponse({ accounts: ["A1"] });
+      }
+      if (url.includes("/api/toss/holdings")) {
+        holdingsCallCount += 1;
+        if (holdingsCallCount === 1) {
+          // 첫 번째 holdings 호출 → 401 (토큰 서버측 무효화 시뮬레이션)
+          return new Response("unauthorized", { status: 401 });
+        }
+        return jsonResponse({ holdings: [SAMSUNG] });
+      }
+      if (url.includes("/api/toss/prices")) {
+        const body = JSON.parse(String(init?.body ?? "{}")) as {
+          symbols: { symbol: string; currency: string }[];
+        };
+        const prices = body.symbols.map((s) => ({
+          symbol: s.symbol,
+          currency: s.currency,
+          lastPrice: 72000,
+        }));
+        return jsonResponse({ prices });
+      }
+      if (url.includes("/api/toss/exchange-rate")) {
+        return jsonResponse({ rate: 1350 });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { vm, failures } = await refreshAll({ key, now: TODAY_MS });
+
+    // 실패 없이 완료됐어야 함
+    expect(failures).toHaveLength(0);
+
+    // holdings가 실제 upsert됐어야 함
+    const holdings = await store.listHoldings();
+    const auto = holdings.find((h) => h.symbol === "005930" && h.source === "AUTO");
+    expect(auto).toBeTruthy();
+
+    // 토큰 재발급이 최소 2회 일어났어야 함 (초기 발급 + 401 후 재발급)
+    expect(tokenCallCount).toBeGreaterThanOrEqual(2);
+
+    // tokenCache가 무효화된 후 새 값으로 교체됐어야 함
+    const cached = await db.tokenCache.get(conn.id);
+    expect(cached).toBeTruthy();
+  });
+
+  it("records connection failure when holdings returns 401 on both first and retry", async () => {
+    const key = await deriveKey("pp", makeSalt());
+    const conn = await seedTossConnection(key);
+
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.includes("/api/toss/token")) {
+        return jsonResponse({ accessToken: "T1", expiresIn: 3600 });
+      }
+      if (url.includes("/api/toss/accounts")) {
+        return jsonResponse({ accounts: ["A1"] });
+      }
+      if (url.includes("/api/toss/holdings")) {
+        // 항상 401 반환
+        return new Response("unauthorized", { status: 401 });
+      }
+      if (url.includes("/api/toss/prices")) {
+        return jsonResponse({ prices: [] });
+      }
+      if (url.includes("/api/toss/exchange-rate")) {
+        return jsonResponse({ rate: 1350 });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { failures } = await refreshAll({ key, now: TODAY_MS });
+
+    // 재시도 후에도 실패 → connection 실패로 기록됐어야 함
+    expect(failures).toHaveLength(1);
+    expect(failures[0].connectionId).toBe(conn.id);
+  });
+});

@@ -1,5 +1,6 @@
 import { decrypt } from "@/lib/crypto/crypto";
 import { getValidToken } from "@/lib/toss/toss-token";
+import { db } from "@/lib/db/schema";
 import {
   listConnections,
   upsertConnection,
@@ -46,6 +47,58 @@ async function proxyPost(path: string, body: unknown): Promise<any> {
 }
 
 /**
+ * 401 발생 시 tokenCache를 무효화하고 토큰을 재발급받아 한 번 재시도한다.
+ * 재시도 후에도 실패하면 에러를 그대로 던진다.
+ */
+async function proxyPostWithTokenRetry(
+  path: string,
+  buildBody: (token: string) => unknown,
+  conn: { id: string; clientId: string; clientSecretEnc: string },
+  key: CryptoKey,
+): Promise<any> {
+  const clientSecret = await decrypt(key, conn.clientSecretEnc);
+  let token = await getValidToken({
+    connectionId: conn.id,
+    clientId: conn.clientId,
+    clientSecret,
+    key,
+  });
+
+  const res = await fetch(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(buildBody(token)),
+  });
+
+  if (res.status !== 401) {
+    if (!res.ok) {
+      throw new Error(`${path} 실패: ${res.status}`);
+    }
+    return res.json();
+  }
+
+  // 401 → 캐시 무효화 후 토큰 재발급 → 1회 재시도
+  await db.tokenCache.delete(conn.id);
+  token = await getValidToken({
+    connectionId: conn.id,
+    clientId: conn.clientId,
+    clientSecret,
+    key,
+  });
+
+  const retry = await fetch(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(buildBody(token)),
+  });
+
+  if (!retry.ok) {
+    throw new Error(`${path} 실패: ${retry.status}`);
+  }
+  return retry.json();
+}
+
+/**
  * spec §4-1 갱신 오케스트레이션 (전부 클라이언트 주도, 토스 호출은 프록시 경유).
  * 토큰 → 계좌 → 보유 upsert → 시세(prevClose 이월) → 환율 → 뷰모델.
  * connection 단위 try/catch로 부분 실패를 격리한다 (spec §6).
@@ -81,7 +134,12 @@ export async function refreshAll(opts: {
 
       const seenSymbols: string[] = [];
       for (const accountSeq of accounts) {
-        const holdingsRes = await proxyPost("/api/toss/holdings", { token, accountSeq });
+        const holdingsRes = await proxyPostWithTokenRetry(
+          "/api/toss/holdings",
+          (t) => ({ token: t, accountSeq }),
+          { id: conn.id, clientId: conn.clientId!, clientSecretEnc: conn.clientSecretEnc! },
+          opts.key,
+        );
         const holdings: NormalizedHolding[] = holdingsRes.holdings;
         for (const h of holdings) {
           seenSymbols.push(h.symbol);

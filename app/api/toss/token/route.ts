@@ -14,6 +14,12 @@ export async function POST(req: Request): Promise<Response> {
     );
   } catch (e) {
     if (e instanceof TossError) {
+      if (e.status === 400 || e.status === 401) {
+        return NextResponse.json(
+          { error: "invalid_credentials" },
+          { status: e.status, headers: { "Cache-Control": "no-store" } },
+        );
+      }
       return NextResponse.json(
         { error: "token_exchange_failed" },
         { status: e.status, headers: { "Cache-Control": "no-store" } },
