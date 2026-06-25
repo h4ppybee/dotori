@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { QueryProvider } from "@/lib/query/client";
 import { LockGate } from "@/components/LockGate";
+import { ServiceWorkerRegister } from "@/components/ServiceWorkerRegister";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -22,6 +23,7 @@ export default function RootLayout({
         <QueryProvider>
           <LockGate>{children}</LockGate>
         </QueryProvider>
+        <ServiceWorkerRegister />
       </body>
     </html>
   );
