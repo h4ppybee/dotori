@@ -36,6 +36,7 @@ export interface Holding {
   updatedAt: number;
   manualPrice?: number;       // MANUAL fallback current price
   manualPriceAsOf?: number;
+  tossDailyPnl?: number;      // AUTO 일간 손익 (보유 종목 자체 통화), refresh 플로우가 toss dailyProfitLoss로 채움
 }
 
 export interface PriceCache {
