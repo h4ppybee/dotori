@@ -25,4 +25,16 @@ describe("crypto", () => {
     const ct = await encrypt(await deriveKey("a", salt), "secret");
     await expect(decrypt(await deriveKey("b", salt), ct)).rejects.toThrow();
   });
+
+  it("rejects malformed payload", async () => {
+    const key = await deriveKey("hunter2", makeSalt());
+    await expect(decrypt(key, "no-separator")).rejects.toThrow();
+  });
+
+  it("uses a random IV per encryption", async () => {
+    const key = await deriveKey("hunter2", makeSalt());
+    const a = await encrypt(key, "same-plaintext");
+    const b = await encrypt(key, "same-plaintext");
+    expect(a).not.toBe(b);
+  });
 });

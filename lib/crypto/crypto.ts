@@ -29,6 +29,9 @@ export async function encrypt(key: CryptoKey, plaintext: string): Promise<string
 
 export async function decrypt(key: CryptoKey, payload: string): Promise<string> {
   const [ivB64, ctB64] = payload.split(".");
+  if (!ivB64 || !ctB64) {
+    throw new Error("Invalid ciphertext payload");
+  }
   const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: fromB64(ivB64) }, key, fromB64(ctB64));
   return dec.decode(pt);
 }
