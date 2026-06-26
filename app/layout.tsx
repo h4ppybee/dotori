@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Analytics } from "@vercel/analytics/next";
 import { QueryProvider } from "@/lib/query/client";
 import { LockGate } from "@/components/LockGate";
 import { ServiceWorkerRegister } from "@/components/ServiceWorkerRegister";
@@ -24,6 +25,7 @@ export default function RootLayout({
           <LockGate>{children}</LockGate>
         </QueryProvider>
         <ServiceWorkerRegister />
+        <Analytics />
       </body>
     </html>
   );
