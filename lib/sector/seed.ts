@@ -1,5 +1,6 @@
 /**
  * 섹터 시드 맵 — 잘 알려진 KRX 종목의 초기 매핑.
+ * 분류 기준은 테마형 기본 섹터(KNOWN_SECTORS)를 따른다.
  * 이 맵은 시작점(seed)이며, 실제 분류는 IndexedDB의 sectorOverrides로 확장·재정의한다.
  */
 export const SECTOR_SEED: Record<string, string> = {

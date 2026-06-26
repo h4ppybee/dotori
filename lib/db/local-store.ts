@@ -64,6 +64,9 @@ export const listMembers = () => db.members.toArray();
 export async function putSectorOverride(symbol: string, sector: string): Promise<void> {
   await db.sectorOverrides.put({ symbol, sector });
 }
+export async function deleteSectorOverride(symbol: string): Promise<void> {
+  await db.sectorOverrides.delete(symbol);
+}
 export async function getSectorOverrides(): Promise<Record<string, string>> {
   const rows = await db.sectorOverrides.toArray();
   return Object.fromEntries(rows.map((r) => [r.symbol, r.sector]));

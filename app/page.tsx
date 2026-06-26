@@ -2,9 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/Card";
 import { SummaryHero } from "@/components/portfolio/SummaryHero";
 import { SectorDonut } from "@/components/portfolio/SectorDonut";
+import { HoldingWeightBars } from "@/components/portfolio/HoldingWeightBars";
 import { HoldingsTable } from "@/components/portfolio/HoldingsTable";
 import { RefreshBar } from "@/components/portfolio/RefreshBar";
 import { usePortfolio, useRefresh } from "@/lib/query/use-portfolio";
@@ -49,7 +51,7 @@ function EmptyState() {
           토스 연동하기
         </Link>
         <Link
-          href="/holdings"
+          href="/holdings/new"
           className="inline-flex h-[52px] w-full items-center justify-center rounded-[12px] bg-primary-surface px-5 text-[17px] font-semibold leading-[1.2] tracking-[-0.2px] text-primary transition-colors hover:bg-[#ecddc9] active:bg-[#e4d3bf]"
         >
           직접 추가하기
@@ -62,6 +64,7 @@ function EmptyState() {
 export default function PortfolioPage() {
   const { data: vm, isLoading } = usePortfolio();
   const refresh = useRefresh();
+  const router = useRouter();
   const lastRefreshAt = useAppStore((s) => s.lastRefreshAt);
 
   const [connectionLabels, setConnectionLabels] = useState<Record<string, string>>({});
@@ -127,6 +130,7 @@ export default function PortfolioPage() {
           onRefresh={() => refresh.mutate()}
           pending={refresh.isPending}
           lastRefreshAt={lastRefreshAt}
+          usdKrwRate={usdKrwRate}
           failures={refresh.data?.failures}
         />
 
@@ -136,10 +140,12 @@ export default function PortfolioPage() {
           <>
             <SummaryHero vm={vm} />
             <SectorDonut vm={vm} />
+            <HoldingWeightBars vm={vm} />
             <HoldingsTable
               rows={vm.rows}
               connectionLabels={connectionLabels}
               usdKrwRate={usdKrwRate}
+              onSelectHolding={(row) => router.push(`/holdings/${row.holding.id}`)}
             />
           </>
         )}

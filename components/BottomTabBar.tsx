@@ -31,28 +31,6 @@ function PortfolioIcon(active: boolean) {
   );
 }
 
-function HoldingsIcon(active: boolean) {
-  return (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <rect
-        x="4"
-        y="5"
-        width="16"
-        height="14"
-        rx="2.5"
-        stroke="currentColor"
-        strokeWidth={active ? 2.4 : 2}
-      />
-      <path
-        d="M8 10h8M8 14h5"
-        stroke="currentColor"
-        strokeWidth={active ? 2.4 : 2}
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
 function SettingsIcon(active: boolean) {
   return (
     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -69,7 +47,6 @@ function SettingsIcon(active: boolean) {
 
 const TABS: Tab[] = [
   { href: "/", label: "포트폴리오", icon: PortfolioIcon },
-  { href: "/holdings", label: "보유", icon: HoldingsIcon },
   { href: "/settings", label: "설정", icon: SettingsIcon },
 ];
 

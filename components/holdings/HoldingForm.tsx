@@ -4,13 +4,17 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/Button";
 import { TextInput } from "@/components/ui/TextInput";
 import { Chip } from "@/components/ui/Chip";
+import { SectorField } from "@/components/ui/SectorField";
 import {
   listConnections,
   listMembers,
   upsertConnection,
   upsertManualHolding,
+  getSectorOverrides,
+  putSectorOverride,
+  deleteSectorOverride,
 } from "@/lib/db/local-store";
-import { resolveSector } from "@/lib/sector/sector-map";
+import { KNOWN_SECTORS, UNCLASSIFIED } from "@/lib/sector/sector-map";
 import type { Holding, Connection, Member, Currency } from "@/lib/types";
 
 interface HoldingFormProps {
@@ -18,6 +22,9 @@ interface HoldingFormProps {
   onSave: (h: Holding) => void;
   onCancel: () => void;
 }
+
+// 직접 추가 시 선택 가능한 시장 목록
+const MARKET_OPTIONS = ["KRX", "NASDAQ", "NYSEARCA", "NYSE", "KOSDAQ"] as const;
 
 interface FormErrors {
   connection?: string;
@@ -43,6 +50,8 @@ export function HoldingForm({ initial, onSave, onCancel }: HoldingFormProps) {
   const [market, setMarket] = useState(initial?.market ?? "");
   const [name, setName] = useState(initial?.name ?? "");
   const [symbol, setSymbol] = useState(initial?.symbol ?? "");
+  const [sector, setSector] = useState(initial?.sector ?? UNCLASSIFIED);
+  const [sectorOptions, setSectorOptions] = useState<string[]>(KNOWN_SECTORS);
   const [currency, setCurrency] = useState<Currency>(initial?.currency ?? "KRW");
   const [quantity, setQuantity] = useState(initial?.quantity?.toString() ?? "");
   const [avgBuyPrice, setAvgBuyPrice] = useState(initial?.avgBuyPrice?.toString() ?? "");
@@ -56,9 +65,10 @@ export function HoldingForm({ initial, onSave, onCancel }: HoldingFormProps) {
     let cancelled = false;
 
     async function load() {
-      const [connections, memberList] = await Promise.all([
+      const [connections, memberList, overrides] = await Promise.all([
         listConnections(),
         listMembers(),
+        getSectorOverrides(),
       ]);
 
       if (cancelled) {
@@ -72,6 +82,19 @@ export function HoldingForm({ initial, onSave, onCancel }: HoldingFormProps) {
       setMembers(memberList);
       setHasTossApi(tossExists);
       setLoadingConnections(false);
+
+      // 섹터 후보 = 시드 ∪ 사용자가 만든 섹터(미분류 제외).
+      const optionSet = new Set<string>([
+        ...KNOWN_SECTORS,
+        ...Object.values(overrides),
+      ]);
+      optionSet.delete(UNCLASSIFIED);
+      setSectorOptions(Array.from(optionSet));
+
+      // 편집 시 재정의가 있으면 현재 섹터로 반영.
+      if (initial?.symbol && overrides[initial.symbol]) {
+        setSector(overrides[initial.symbol]);
+      }
 
       // 기본 멤버 선택
       if (memberList.length > 0 && !selectedMemberId) {
@@ -146,14 +169,22 @@ export function HoldingForm({ initial, onSave, onCancel }: HoldingFormProps) {
         resolvedConnectionId = conn.id;
       }
 
-      const sector = resolveSector(symbol.trim(), {});
+      // 섹터: 미선택/미분류는 재정의 해제(시드·미분류로 복귀), 그 외는 재정의 기록.
+      const trimmedSymbol = symbol.trim();
+      const chosenSector = sector.trim() === "" ? UNCLASSIFIED : sector.trim();
+      if (chosenSector === UNCLASSIFIED) {
+        await deleteSectorOverride(trimmedSymbol);
+      } else {
+        await putSectorOverride(trimmedSymbol, chosenSector);
+      }
+
       const holding = await upsertManualHolding({
         id: initial?.id,
         connectionId: resolvedConnectionId,
         market: market.trim(),
         name: name.trim(),
-        symbol: symbol.trim(),
-        sector,
+        symbol: trimmedSymbol,
+        sector: chosenSector,
         currency,
         quantity: Number(quantity),
         avgBuyPrice: Number(avgBuyPrice),
@@ -271,16 +302,42 @@ export function HoldingForm({ initial, onSave, onCancel }: HoldingFormProps) {
 
       {/* 시장 */}
       <div className="flex flex-col gap-[6px]">
-        <TextInput
-          inputId="holding-market"
-          label="시장"
+        <label
+          htmlFor="holding-market"
+          className="text-[13px] font-semibold leading-[1.45] text-body-soft"
+        >
+          시장
+        </label>
+        <select
+          id="holding-market"
           value={market}
-          onChange={(v) => {
-            setMarket(v);
+          onChange={(e) => {
+            setMarket(e.target.value);
             setErrors((prev) => ({ ...prev, market: undefined }));
           }}
-          placeholder="예: KOSPI, NASDAQ"
-        />
+          className="
+            h-[56px] px-4 rounded-[12px]
+            bg-surface-soft text-ink
+            text-[17px] font-normal leading-[1.5] tracking-[-0.2px]
+            border border-hairline
+            outline-none
+            focus:bg-surface-card focus:border-[1.5px] focus:border-primary
+            transition-colors duration-150
+            appearance-none cursor-pointer
+          "
+        >
+          <option value="">시장을 선택해 주세요</option>
+          {MARKET_OPTIONS.map((m) => (
+            <option key={m} value={m}>
+              {m}
+            </option>
+          ))}
+          {/* 편집 시 목록에 없는 기존 시장 값 보존 */}
+          {market !== "" &&
+            !MARKET_OPTIONS.includes(market as (typeof MARKET_OPTIONS)[number]) && (
+              <option value={market}>{market}</option>
+            )}
+        </select>
         {errors.market != null && (
           <span className="text-[13px] text-up -mt-1">{errors.market}</span>
         )}
@@ -319,6 +376,14 @@ export function HoldingForm({ initial, onSave, onCancel }: HoldingFormProps) {
           <span className="text-[13px] text-up -mt-1">{errors.symbol}</span>
         )}
       </div>
+
+      {/* 섹터 */}
+      <SectorField
+        inputId="holding-sector"
+        value={sector}
+        onChange={setSector}
+        options={sectorOptions}
+      />
 
       {/* 통화 */}
       <div className="flex flex-col gap-[6px]">
