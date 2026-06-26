@@ -29,7 +29,7 @@ function signedKrw(n: number): string {
 
 /**
  * 요약 히어로 카드. 화면 최상단 시선 집중점.
- * 총평가금(number-hero) + 총수익률 배지 + 총손익 + 일간손익.
+ * 총평가금(number-hero) + 총수익률 배지 + 총손익.
  * 한국 증시 색: 상승/수익=빨강, 하락/손실=파랑.
  */
 export function SummaryHero({ vm }: SummaryHeroProps) {
@@ -55,19 +55,6 @@ export function SummaryHero({ vm }: SummaryHeroProps) {
           총수익
         </span>
       </div>
-
-      {vm.totalDailyPnlKrw !== undefined && (
-        <div className="flex items-center gap-2 border-t border-hairline pt-3">
-          <span className="text-[13px] font-normal leading-[1.45] text-muted">
-            오늘
-          </span>
-          <span
-            className={`text-[15px] font-semibold leading-[1.4] tabular-nums ${signTextClass(vm.totalDailyPnlKrw)}`}
-          >
-            {signedKrw(vm.totalDailyPnlKrw)}
-          </span>
-        </div>
-      )}
     </Card>
   );
 }

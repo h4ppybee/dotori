@@ -17,6 +17,10 @@ const RADIUS = (SIZE - STROKE) / 2;
 const CIRCUM = 2 * Math.PI * RADIUS;
 const CENTER = SIZE / 2;
 
+// 세그먼트 사이 갭(px)과 작은 세그먼트가 사라지지 않도록 보장하는 최소 호 길이(px).
+const SEGMENT_GAP = 2;
+const MIN_ARC = 1;
+
 /** 비율(0~100)을 부호 없이 소수점 1자리로 — 점유율이므로 +/- 를 붙이지 않는다. */
 function formatShare(pct: number): string {
   return `${pct.toFixed(1)}%`;
@@ -48,14 +52,17 @@ export function SectorDonut({ vm }: SectorDonutProps) {
 
   const arcs = sectors.map((s, i) => {
     const fraction = s.pct / 100;
-    const dash = fraction * CIRCUM;
+    const full = fraction * CIRCUM;
+    // 세그먼트 사이 미세 갭으로 경계를 깔끔하게 분리한다.
+    // 갭만큼 호를 줄이고 절반만큼 안쪽으로 밀어 가운데 정렬한다.
+    const dash = Math.max(full - SEGMENT_GAP, MIN_ARC);
     const startFraction = i === 0 ? 0 : prefix[i - 1];
     return {
       key: s.sector,
       color: colorFor(i),
       dash,
       gap: CIRCUM - dash,
-      offset: -(startFraction * CIRCUM),
+      offset: -(startFraction * CIRCUM) - SEGMENT_GAP / 2,
     };
   });
 
@@ -113,22 +120,24 @@ export function SectorDonut({ vm }: SectorDonutProps) {
         </div>
 
         {/* 범례 */}
-        <ul className="flex-1 min-w-[160px] flex flex-col gap-2">
+        <ul className="flex-1 min-w-[180px] flex flex-col gap-3">
           {sectors.map((s, i) => (
-            <li key={s.sector} className="flex items-center gap-2">
+            <li key={s.sector} className="flex items-center gap-2.5">
               <span
                 className="size-[10px] rounded-full shrink-0"
                 style={{ backgroundColor: colorFor(i) }}
                 aria-hidden="true"
               />
-              <span className="flex-1 text-[15px] font-normal leading-[1.4] text-body truncate">
+              <span className="flex-1 min-w-0 text-[15px] font-normal leading-[1.4] text-body truncate">
                 {s.sector}
               </span>
-              <span className="text-[15px] font-semibold leading-[1.4] tabular-nums text-ink">
-                {formatShare(s.pct)}
-              </span>
-              <span className="text-[13px] font-normal leading-[1.45] tabular-nums text-muted w-[88px] text-right">
-                {formatKrw(s.valueKrw)}
+              <span className="flex flex-col items-end shrink-0">
+                <span className="text-[15px] font-semibold leading-[1.3] tabular-nums text-ink">
+                  {formatShare(s.pct)}
+                </span>
+                <span className="text-[12px] font-normal leading-[1.3] tabular-nums text-muted">
+                  {formatKrw(s.valueKrw)}
+                </span>
               </span>
             </li>
           ))}

@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { SummaryHero } from "@/components/portfolio/SummaryHero";
 import { SectorDonut } from "@/components/portfolio/SectorDonut";
+import { HoldingWeightBars } from "@/components/portfolio/HoldingWeightBars";
 import { HoldingsTable } from "@/components/portfolio/HoldingsTable";
 import { RefreshBar } from "@/components/portfolio/RefreshBar";
 import type { PortfolioVM, PortfolioRow } from "@/lib/portfolio/portfolio-service";
@@ -68,13 +69,10 @@ describe("SummaryHero", () => {
     expect(pnl).toHaveClass("text-down");
   });
 
-  it("일간손익이 있으면 오늘 손익을 보여주고, 없으면 숨긴다", () => {
-    const { rerender } = render(<SummaryHero vm={makeVm({ totalDailyPnlKrw: 12000 })} />);
-    expect(screen.getByText("오늘")).toBeInTheDocument();
-    expect(screen.getByText("+₩12,000")).toHaveClass("text-up");
-
-    rerender(<SummaryHero vm={makeVm({ totalDailyPnlKrw: undefined })} />);
+  it("일간손익 값이 있어도 오늘 손익은 노출하지 않는다", () => {
+    render(<SummaryHero vm={makeVm({ totalDailyPnlKrw: 12000 })} />);
     expect(screen.queryByText("오늘")).not.toBeInTheDocument();
+    expect(screen.queryByText("+₩12,000")).not.toBeInTheDocument();
   });
 });
 
@@ -95,6 +93,29 @@ describe("SectorDonut", () => {
 
   it("섹터가 없으면 아무것도 렌더링하지 않는다", () => {
     const { container } = render(<SectorDonut vm={makeVm({ bySector: [] })} />);
+    expect(container).toBeEmptyDOMElement();
+  });
+});
+
+describe("HoldingWeightBars", () => {
+  it("종목명과 비중(부호 없이), 평가금을 보여준다", () => {
+    const vm = makeVm({
+      byHolding: [
+        { symbol: "005930", name: "삼성전자", valueKrw: 625000, pct: 62.5 },
+        { symbol: "000660", name: "SK하이닉스", valueKrw: 375000, pct: 37.5 },
+      ],
+    });
+    render(<HoldingWeightBars vm={vm} />);
+    expect(screen.getByText("삼성전자")).toBeInTheDocument();
+    expect(screen.getByText("SK하이닉스")).toBeInTheDocument();
+    expect(screen.getByText("62.5%")).toBeInTheDocument();
+    expect(screen.getByText("37.5%")).toBeInTheDocument();
+  });
+
+  it("종목이 없으면 아무것도 렌더링하지 않는다", () => {
+    const { container } = render(
+      <HoldingWeightBars vm={makeVm({ byHolding: [] })} />,
+    );
     expect(container).toBeEmptyDOMElement();
   });
 });
