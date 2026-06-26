@@ -168,8 +168,18 @@ tossEndpoint(path): { url, headers }
 6. Oracle VM 인프라 셋업(런북) — 사용자와 함께 단계별 진행
 7. 토스 IP 등록 + Vercel env 설정 + 프로덕션 검증
 
-## 10. 미해결/확인 필요
+## 10. 확정값 / 확인 필요
 
-- Vercel 프로덕션 도메인(정확한 Origin 문자열) — CORS allowlist에 넣을 값.
-- Oracle 리전/VM shape 선택(Free Tier 한도 내).
+### CORS allowlist (확정)
+- 프로덕션: `https://dotori-h4ppy-bee.vercel.app`
+- 프리뷰(와일드카드): `https://dotori-*-h4ppy-bee.vercel.app` → 정규식으로 매칭
+  (`/^https:\/\/dotori-[a-z0-9-]+-h4ppy-bee\.vercel\.app$/`)
+- dev: `http://localhost:3000` (+ 필요 시 `http://<PC-LAN-IP>:3000`)
+- Vercel 스코프명은 `h4ppy-bee`로 확정.
+
+### dev 검증용 IP
+- 이 PC의 공인 IP는 이미 토스 화이트리스트에 등록됨 → 로컬 릴레이가 토스를 호출하는 dev 검증 가능. (유동 IP면 변경 시 재등록 필요)
+
+### 여전히 확인 필요
+- Oracle 리전/VM shape 선택(Free Tier 한도 내) — VM 생성하면서 함께 결정.
 - 릴레이 배포 방식: 빌드된 JS를 git pull로 가져올지, 산출물만 전송할지(런북에서 확정).
