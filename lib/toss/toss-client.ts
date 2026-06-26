@@ -49,12 +49,18 @@ function toRawList(raw: unknown): unknown[] {
   return Array.isArray(r?.result) ? r.result : [];
 }
 
+// holdings 응답은 { result: { items: [...] } } 형태 (다른 리스트와 달리 한 단계 더 중첩)
+function toHoldingsList(raw: unknown): unknown[] {
+  const r = raw as { result?: { items?: unknown[] } };
+  return Array.isArray(r?.result?.items) ? r.result!.items! : [];
+}
+
 export const normalizeAccounts = (raw: unknown): string[] =>
   toRawList(raw).map((a) => String((a as RawRow).accountSeq ?? "")).filter(Boolean);
 
 export const normalizeHoldings = (raw: unknown): NormalizedHolding[] => {
   const rows: NormalizedHolding[] = [];
-  for (const item of toRawList(raw)) {
+  for (const item of toHoldingsList(raw)) {
     const h = item as RawRow;
     const currency = h.currency;
     if (currency !== "KRW" && currency !== "USD") {
@@ -64,16 +70,17 @@ export const normalizeHoldings = (raw: unknown): NormalizedHolding[] => {
     if (quantity === null) {
       continue;
     }
-    const avgBuyPrice = toNum(h.avgPrice);
+    const avgBuyPrice = toNum(h.averagePurchasePrice);
     if (avgBuyPrice === null) {
       continue;
     }
-    const dailyPnl =
-      h.dailyProfitLoss != null ? toNum(h.dailyProfitLoss) ?? undefined : undefined;
+    // dailyProfitLoss는 { amount, rate } 객체 → amount 사용
+    const dpl = h.dailyProfitLoss as RawRow | undefined;
+    const dailyPnl = dpl?.amount != null ? toNum(dpl.amount) ?? undefined : undefined;
     rows.push({
       symbol: String(h.symbol ?? ""),
       name: String(h.name ?? ""),
-      market: String(h.market ?? ""),
+      market: String(h.marketCountry ?? ""),
       currency,
       quantity,
       avgBuyPrice,
@@ -91,7 +98,7 @@ export const normalizePrices = (raw: unknown): NormalizedPrice[] => {
     if (currency !== "KRW" && currency !== "USD") {
       continue;
     }
-    const lastPrice = toNum(p.price);
+    const lastPrice = toNum(p.lastPrice);
     if (lastPrice === null) {
       continue;
     }
@@ -150,7 +157,7 @@ export async function exchangeToken(
   clientSecret: string,
 ): Promise<{ accessToken: string; expiresIn: number }> {
   const doFetch = () =>
-    fetch(`${TOSS_BASE}/api/v2/oauth/token`, {
+    fetch(`${TOSS_BASE}/oauth2/token`, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
@@ -222,6 +229,8 @@ export async function fetchPrices(
 
 export async function fetchExchangeRate(token: string): Promise<{ rate: number }> {
   const url = new URL(`${TOSS_BASE}/api/v1/exchange-rate`);
+  url.searchParams.set("baseCurrency", "USD");
+  url.searchParams.set("quoteCurrency", "KRW");
   const res = await fetch(url.toString(), {
     headers: { Authorization: `Bearer ${token}` },
   });

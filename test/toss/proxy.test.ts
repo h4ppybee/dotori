@@ -122,17 +122,19 @@ describe("toss holdings proxy", () => {
       vi.fn(async () =>
         new Response(
           JSON.stringify({
-            result: [
-              {
-                symbol: "005930",
-                name: "삼성전자",
-                market: "KOSPI",
-                currency: "KRW",
-                quantity: 5,
-                avgPrice: 60000,
-                dailyProfitLoss: 500,
-              },
-            ],
+            result: {
+              items: [
+                {
+                  symbol: "005930",
+                  name: "삼성전자",
+                  marketCountry: "KR",
+                  currency: "KRW",
+                  quantity: 5,
+                  averagePurchasePrice: 60000,
+                  dailyProfitLoss: { amount: 500, rate: 0.8 },
+                },
+              ],
+            },
           }),
           { status: 200 },
         ),
@@ -158,7 +160,7 @@ describe("toss prices proxy", () => {
       "fetch",
       vi.fn(async () =>
         new Response(
-          JSON.stringify({ result: [{ symbol: "005930", currency: "KRW", price: 72000 }] }),
+          JSON.stringify({ result: [{ symbol: "005930", currency: "KRW", lastPrice: 72000 }] }),
           { status: 200 },
         ),
       ),

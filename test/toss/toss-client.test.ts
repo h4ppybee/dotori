@@ -11,15 +11,15 @@ describe("toss-client normalizers", () => {
     expect(normalizeAccounts(raw)).toEqual(["A1", "A2"]);
   });
   it("normalizes holdings into domain shape", () => {
-    const raw = { result: [{
-      symbol: "005930", name: "삼성전자", market: "KOSPI", currency: "KRW",
-      quantity: 10, avgPrice: 70000, dailyProfitLoss: 1500,
-    }] };
+    const raw = { result: { items: [{
+      symbol: "005930", name: "삼성전자", marketCountry: "KR", currency: "KRW",
+      quantity: 10, averagePurchasePrice: 70000, dailyProfitLoss: { amount: 1500, rate: 1.2 },
+    }] } };
     const out = normalizeHoldings(raw);
     expect(out[0]).toMatchObject({ symbol: "005930", quantity: 10, avgBuyPrice: 70000, dailyPnl: 1500 });
   });
   it("normalizes prices keyed by symbol", () => {
-    const raw = { result: [{ symbol: "005930", currency: "KRW", price: 72000 }] };
+    const raw = { result: [{ symbol: "005930", currency: "KRW", lastPrice: 72000 }] };
     expect(normalizePrices(raw)).toEqual([{ symbol: "005930", currency: "KRW", lastPrice: 72000 }]);
   });
 });
@@ -29,14 +29,14 @@ describe("toss-client normalizers", () => {
 describe("normalizeHoldings NaN guard", () => {
   it("excludes a holding row with missing quantity (NaN)", () => {
     const raw = {
-      result: [
+      result: { items: [
         // 정상 행
-        { symbol: "005930", name: "삼성전자", market: "KOSPI", currency: "KRW",
-          quantity: 10, avgPrice: 70000 },
+        { symbol: "005930", name: "삼성전자", marketCountry: "KR", currency: "KRW",
+          quantity: 10, averagePurchasePrice: 70000 },
         // 비정상 행 — quantity 없음
-        { symbol: "000660", name: "SK하이닉스", market: "KOSPI", currency: "KRW",
-          quantity: null, avgPrice: 100000 },
-      ],
+        { symbol: "000660", name: "SK하이닉스", marketCountry: "KR", currency: "KRW",
+          quantity: null, averagePurchasePrice: 100000 },
+      ] },
     };
     const out = normalizeHoldings(raw);
     expect(out).toHaveLength(1);
@@ -45,12 +45,12 @@ describe("normalizeHoldings NaN guard", () => {
 
   it("excludes a holding row with missing avgPrice (NaN)", () => {
     const raw = {
-      result: [
-        { symbol: "005930", name: "삼성전자", market: "KOSPI", currency: "KRW",
-          quantity: 10, avgPrice: 70000 },
-        { symbol: "000660", name: "SK하이닉스", market: "KOSPI", currency: "KRW",
-          quantity: 5, avgPrice: undefined },
-      ],
+      result: { items: [
+        { symbol: "005930", name: "삼성전자", marketCountry: "KR", currency: "KRW",
+          quantity: 10, averagePurchasePrice: 70000 },
+        { symbol: "000660", name: "SK하이닉스", marketCountry: "KR", currency: "KRW",
+          quantity: 5, averagePurchasePrice: undefined },
+      ] },
     };
     const out = normalizeHoldings(raw);
     expect(out).toHaveLength(1);
@@ -59,12 +59,12 @@ describe("normalizeHoldings NaN guard", () => {
 
   it("excludes a holding row with unknown currency", () => {
     const raw = {
-      result: [
-        { symbol: "005930", name: "삼성전자", market: "KOSPI", currency: "KRW",
-          quantity: 10, avgPrice: 70000 },
-        { symbol: "TSLA", name: "Tesla", market: "NASDAQ", currency: "EUR",
-          quantity: 2, avgPrice: 250 },
-      ],
+      result: { items: [
+        { symbol: "005930", name: "삼성전자", marketCountry: "KR", currency: "KRW",
+          quantity: 10, averagePurchasePrice: 70000 },
+        { symbol: "TSLA", name: "Tesla", marketCountry: "US", currency: "EUR",
+          quantity: 2, averagePurchasePrice: 250 },
+      ] },
     };
     const out = normalizeHoldings(raw);
     expect(out).toHaveLength(1);
@@ -76,8 +76,8 @@ describe("normalizePrices NaN guard", () => {
   it("excludes a price row with NaN price", () => {
     const raw = {
       result: [
-        { symbol: "005930", currency: "KRW", price: 72000 },
-        { symbol: "000660", currency: "KRW", price: null },
+        { symbol: "005930", currency: "KRW", lastPrice: 72000 },
+        { symbol: "000660", currency: "KRW", lastPrice: null },
       ],
     };
     const out = normalizePrices(raw);
@@ -88,8 +88,8 @@ describe("normalizePrices NaN guard", () => {
   it("excludes a price row with unknown currency", () => {
     const raw = {
       result: [
-        { symbol: "005930", currency: "KRW", price: 72000 },
-        { symbol: "TSLA", currency: "JPY", price: 300 },
+        { symbol: "005930", currency: "KRW", lastPrice: 72000 },
+        { symbol: "TSLA", currency: "JPY", lastPrice: 300 },
       ],
     };
     const out = normalizePrices(raw);
@@ -103,7 +103,7 @@ describe("normalizePrices NaN guard", () => {
 describe("tossGet 429 backoff retry", () => {
   it("retries once after 429 and resolves with 200 body, calling fetch twice", async () => {
     // exchangeToken을 통해 429 → 재시도 동작을 검증
-    // exchangeToken은 /api/v2/oauth/token POST
+    // exchangeToken은 /oauth2/token POST
     const { exchangeToken, setSleep } = await import("@/lib/toss/toss-client");
     // 테스트에서 sleep을 즉시 반환하도록 주입
     setSleep(() => Promise.resolve());
@@ -185,7 +185,7 @@ describe("fetchPrices batch boundary", () => {
       const url = String(_url);
       const symbolsParam = new URL(url).searchParams.get("symbols") ?? "";
       const syms = symbolsParam.split(",").filter(Boolean);
-      const result = syms.map((s) => ({ symbol: s, currency: "KRW", price: 10000 }));
+      const result = syms.map((s) => ({ symbol: s, currency: "KRW", lastPrice: 10000 }));
       return new Response(JSON.stringify({ result }), { status: 200 });
     }));
 
