@@ -26,12 +26,20 @@ export function byHolding(
   rows: { symbol: string; name: string; valueKrw: number }[],
 ): { symbol: string; name: string; valueKrw: number; pct: number }[] {
   const total = rows.reduce((s, r) => s + r.valueKrw, 0);
-  return rows
-    .map((r) => ({
-      symbol: r.symbol,
-      name: r.name,
-      valueKrw: r.valueKrw,
-      pct: pctOf(r.valueKrw, total),
+  const grouped = new Map<string, { name: string; valueKrw: number }>();
+  for (const r of rows) {
+    const prev = grouped.get(r.symbol);
+    grouped.set(r.symbol, {
+      name: prev?.name ?? r.name,
+      valueKrw: (prev?.valueKrw ?? 0) + r.valueKrw,
+    });
+  }
+  return [...grouped.entries()]
+    .map(([symbol, { name, valueKrw }]) => ({
+      symbol,
+      name,
+      valueKrw,
+      pct: pctOf(valueKrw, total),
     }))
     .sort((a, b) => b.valueKrw - a.valueKrw);
 }

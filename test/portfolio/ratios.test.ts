@@ -51,6 +51,18 @@ describe("byHolding", () => {
     expect(out.reduce((s, r) => s + r.pct, 0)).toBeCloseTo(100, 6);
   });
 
+  it("같은 symbol은 한 행으로 합산한다", () => {
+    const out = byHolding([
+      { symbol: "000660", name: "SK하이닉스", valueKrw: 300000 },
+      { symbol: "005930", name: "삼성전자", valueKrw: 400000 },
+      { symbol: "000660", name: "SK하이닉스", valueKrw: 100000 },
+    ]);
+    expect(out).toHaveLength(2);
+    const skh = out.find((r) => r.symbol === "000660");
+    expect(skh?.valueKrw).toBe(400000);
+    expect(skh?.pct).toBeCloseTo(50, 6);
+  });
+
   it("returns [] for empty input", () => {
     expect(byHolding([])).toEqual([]);
   });
