@@ -4,9 +4,9 @@
 This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
 <!-- END:nextjs-agent-rules -->
 
-# finote (dotori) 프로젝트 가이드
+# dotori 프로젝트 가이드
 
-토스 스타일 **로컬 퍼스트 PWA 주식 포트폴리오 앱**. 토스인베스트 Open API로 보유 종목·시세·환율을 가져와 직접 추가 종목과 합쳐 보여준다. 모든 데이터는 브라우저 IndexedDB에 저장되고, 민감정보는 패스프레이즈 파생 키로 암호화한다. **서버 DB 없음.** (패키지명 `dotori`, 통칭 finote)
+토스 스타일 **로컬 퍼스트 PWA 주식 포트폴리오 앱**. 토스인베스트 Open API로 보유 종목·시세·환율을 가져와 직접 추가 종목과 합쳐 보여준다. 모든 데이터는 브라우저 IndexedDB에 저장되고, 민감정보는 패스프레이즈 파생 키로 암호화한다. **서버 DB 없음.** (패키지명 `dotori`)
 
 전체 구조·데이터 흐름·보안 모델은 **[docs/architecture.md](docs/architecture.md)** 를 먼저 읽는다.
 
@@ -27,7 +27,21 @@ npm run typecheck  # tsc --noEmit
 npm test           # vitest run
 ```
 
-코드 변경 후 `npm run typecheck && npm run lint && npm test` 통과를 기본으로 한다.
+코드 변경 후 `npm run typecheck && npm run lint && npm test` 통과를 기본으로 한다. 로컬 Node 버전은 **22**로 고정한다(`.nvmrc`, `package.json` `engines`).
+
+## 배포 / CI·CD
+
+GitHub `h4ppybee/dotori` ↔ Vercel 프로젝트가 **Git 연동**되어 있다.
+
+- `main` push → **프로덕션 자동배포**
+- 그 외 브랜치 push / PR → **프리뷰 자동배포** (PR에 Preview URL 코멘트)
+- 모든 push에서 GitHub Actions(`.github/workflows/ci.yml`)가 `typecheck · lint · test`를 Node 22로 검증
+
+**배포 흐름은 `dtr-deploy` 스킬을 따른다.** 요약:
+
+- **큰 작업**: `superpowers:using-git-worktrees`로 worktree에서 작업 → 검증 통과 → 커밋(`dtr-git-commit-convention`) → 브랜치 push → `gh pr create`로 PR → Vercel 프리뷰로 검토 → 머지 시 프로덕션 배포.
+- **즉시 배포(사용자가 명시적으로 원할 때만)**: 검증 통과 후 `main`에 직접 커밋·push → 프로덕션 자동배포.
+- 통합 방식(PR 프리뷰 vs 즉시 배포)은 작업 전에 사용자에게 확인한다. 기본은 PR 프리뷰.
 
 ## 디렉토리 요약
 
