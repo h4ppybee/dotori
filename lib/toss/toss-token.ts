@@ -1,5 +1,6 @@
 import { db } from "@/lib/db/schema";
 import { encrypt, decrypt } from "@/lib/crypto/crypto";
+import { tossEndpoint } from "@/lib/toss/relay-endpoint";
 
 const SKEW_MS = 30_000; // 만료 30초 전 갱신
 
@@ -13,9 +14,10 @@ export async function getValidToken(p: {
   if (cached && cached.expiresAt - SKEW_MS > Date.now()) {
     return decrypt(p.key, cached.accessTokenEnc);
   }
-  const res = await fetch("/api/toss/token", {
+  const { url, headers } = tossEndpoint("/token");
+  const res = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify({ clientId: p.clientId, clientSecret: p.clientSecret }),
   });
   if (!res.ok) {
