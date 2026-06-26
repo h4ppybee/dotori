@@ -1197,6 +1197,16 @@ await expect(importAll("not json", { mode: "merge" })).rejects.toThrow();
 **Files:** Modify 해당 모듈 — 401 재발급 1회 재시도, 429 백오프, 부분 실패 배너, API 다운 시 마지막 캐시 표시 + 경고 배너, 환율 실패 시 직전 fxRate, 자격증명/패스프레이즈/JSON 오류 메시지(§4-4 긍정형).
 
 - [ ] **Step 1:** 각 에러 경로 테스트 추가(목킹) — 401→재시도, 429→백오프, 부분 실패 격리, 환율 폴백.
+
+> **Phase 3 리뷰 후속(deferred) — 여기서 반영:**
+> - toss-proxy 429 `Retry-After` 1회 백오프 재시도 구현(현재는 상태만 전파).
+> - `toss-client` 정규화 경계의 `Number(...)` NaN 가드(필수 수치 필드 누락 시 명확한 에러), `currency` 유니온 검증.
+> - `token` 라우트의 자격증명 오류 상세화(§6: "잘못된 client_id/secret" 구분 가능하게).
+> - `fetchPrices` 200건 배치 경계 테스트(201개 → 2회 호출·병합 검증) 추가.
+>
+> **Phase 9 리뷰 후속(deferred):**
+> - 프록시 응답 형식 런타임 검증(`proxyPost`가 `any` 반환 → 좁은 가드 또는 zod)으로 정규화 경계 하드닝.
+> - `holding.tossDailyPnl`에 `asOf` 부재 → 동기화 실패 시 stale 일간손익 표시 가능. 모델/표시 정책 보완 검토.
 - [ ] **Step 2:** 통과 확인.
 - [ ] **Step 3: Commit** → `git commit -m "feat: consistent error handling per spec §6"`
 
