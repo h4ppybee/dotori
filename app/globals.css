@@ -1,0 +1,72 @@
+@import "tailwindcss";
+
+@theme {
+  /* === Brand & Primary (갈색 계열) === */
+  --color-primary: #A87342;
+  --color-primary-active: #8E5E34;
+  --color-primary-pressed: #774C28;
+  --color-primary-disabled: #E4D3BF;
+  --color-primary-surface: #F3E9DD;
+
+  /* === Text (Warm Greyscale) === */
+  --color-ink: #2B2B2B;
+  --color-body: #4B4742;
+  --color-body-soft: #6F6A63;
+  --color-muted: #8C8C8C;
+  --color-muted-soft: #B5AEA4;
+
+  /* === Hairline === */
+  --color-hairline: #F1ECE4;
+  --color-hairline-soft: #F7F3EC;
+
+  /* === Surface === */
+  --color-canvas: #FCFBF8;
+  --color-surface-card: #FFFFFF;
+  --color-surface-soft: #FAF7F1;
+  --color-surface-strong: #EDE7DD;
+
+  /* === On-color === */
+  --color-on-primary: #FFFFFF;
+  --color-on-ink: #FFFFFF;
+
+  /* === Semantic: Korean stock market (상승=빨강, 하락=파랑) === */
+  --color-up: #F04452;
+  --color-up-surface: #FDECEE;
+  --color-down: #3182F6;
+  --color-down-surface: #E8F3FF;
+  --color-flat: #8C8C8C;
+  --color-warning: #FF9800;
+  --color-success: #15803D;
+
+  /* === Border Radius === */
+  --radius-none: 0px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-xxl: 28px;
+  --radius-pill: 100px;
+  --radius-full: 9999px;
+
+  /* === Spacing === */
+  --spacing-xxs: 4px;
+  --spacing-xs: 8px;
+  --spacing-sm: 12px;
+  --spacing-base: 16px;
+  --spacing-md: 20px;
+  --spacing-lg: 24px;
+  --spacing-xl: 32px;
+  --spacing-xxl: 48px;
+  --spacing-section: 64px;
+
+  /* === Shadows === */
+  --shadow-card: 0 1px 4px rgba(60,45,30,.05), 0 2px 12px rgba(60,45,30,.05);
+  --shadow-card-hover: 0 4px 16px rgba(60,45,30,.09);
+  --shadow-floating: 0 8px 24px rgba(60,45,30,.13);
+}
+
+body {
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: Pretendard, -apple-system, BlinkMacSystemFont, system-ui, "Apple SD Gothic Neo", Roboto, sans-serif;
+}
