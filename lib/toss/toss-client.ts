@@ -1,5 +1,15 @@
 const TOSS_BASE = process.env.TOSS_API_BASE ?? "https://openapi.tossinvest.com";
 
+// FETCH_TIMEOUT_MS가 설정돼 있으면 모든 토스 호출에 AbortSignal 타임아웃을 건다.
+// 미설정이면 signal 없이 호출 — 기존 동작과 동일(릴레이에서만 설정).
+function tossFetch(input: string, init?: RequestInit): Promise<Response> {
+  const ms = Number(process.env.FETCH_TIMEOUT_MS);
+  if (Number.isFinite(ms) && ms > 0) {
+    return fetch(input, { ...init, signal: AbortSignal.timeout(ms) });
+  }
+  return fetch(input, init);
+}
+
 // ── injectable sleep (테스트에서 setSleep으로 교체 가능) ──────────────────────
 let _sleep: (ms: number) => Promise<void> = (ms) =>
   new Promise((resolve) => setTimeout(resolve, ms));
@@ -133,7 +143,7 @@ async function tossGet(token: string, path: string, params?: Record<string, stri
   }
 
   const doFetch = () =>
-    fetch(url.toString(), {
+    tossFetch(url.toString(), {
       headers: { Authorization: `Bearer ${token}` },
     });
 
@@ -157,7 +167,7 @@ export async function exchangeToken(
   clientSecret: string,
 ): Promise<{ accessToken: string; expiresIn: number }> {
   const doFetch = () =>
-    fetch(`${TOSS_BASE}/oauth2/token`, {
+    tossFetch(`${TOSS_BASE}/oauth2/token`, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
@@ -194,7 +204,7 @@ export async function fetchHoldings(
   accountSeq: string,
 ): Promise<NormalizedHolding[]> {
   const url = new URL(`${TOSS_BASE}/api/v1/holdings`);
-  const res = await fetch(url.toString(), {
+  const res = await tossFetch(url.toString(), {
     headers: {
       Authorization: `Bearer ${token}`,
       "X-Tossinvest-Account": accountSeq,
@@ -231,7 +241,7 @@ export async function fetchExchangeRate(token: string): Promise<{ rate: number }
   const url = new URL(`${TOSS_BASE}/api/v1/exchange-rate`);
   url.searchParams.set("baseCurrency", "USD");
   url.searchParams.set("quoteCurrency", "KRW");
-  const res = await fetch(url.toString(), {
+  const res = await tossFetch(url.toString(), {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) {

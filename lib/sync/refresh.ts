@@ -1,5 +1,6 @@
 import { decrypt } from "@/lib/crypto/crypto";
 import { getValidToken } from "@/lib/toss/toss-token";
+import { tossEndpoint } from "@/lib/toss/relay-endpoint";
 import { db } from "@/lib/db/schema";
 import {
   listConnections,
@@ -35,9 +36,10 @@ interface RefreshFailure {
 const dayOf = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 
 async function proxyPost<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(path, {
+  const { url, headers } = tossEndpoint(path);
+  const res = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify(body),
   });
   if (!res.ok) {
@@ -56,6 +58,7 @@ async function proxyPostWithTokenRetry<T>(
   conn: { id: string; clientId: string; clientSecretEnc: string },
   key: CryptoKey,
 ): Promise<T> {
+  const { url, headers } = tossEndpoint(path);
   const clientSecret = await decrypt(key, conn.clientSecretEnc);
   let token = await getValidToken({
     connectionId: conn.id,
@@ -64,9 +67,9 @@ async function proxyPostWithTokenRetry<T>(
     key,
   });
 
-  const res = await fetch(path, {
+  const res = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify(buildBody(token)),
   });
 
@@ -86,9 +89,9 @@ async function proxyPostWithTokenRetry<T>(
     key,
   });
 
-  const retry = await fetch(path, {
+  const retry = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify(buildBody(token)),
   });
 
@@ -128,14 +131,14 @@ export async function refreshAll(opts: {
         clientSecret,
         key: opts.key,
       });
-      const accountsRes = await proxyPost<{ accounts: string[] }>("/api/toss/accounts", { token });
+      const accountsRes = await proxyPost<{ accounts: string[] }>("/accounts", { token });
       const accounts: string[] = accountsRes.accounts;
       await upsertConnection({ ...conn, accountSeqs: accounts });
 
       const seenSymbols: string[] = [];
       for (const accountSeq of accounts) {
         const holdingsRes = await proxyPostWithTokenRetry<{ holdings: NormalizedHolding[] }>(
-          "/api/toss/holdings",
+          "/holdings",
           (t) => ({ token: t, accountSeq }),
           { id: conn.id, clientId: conn.clientId!, clientSecretEnc: conn.clientSecretEnc! },
           opts.key,
@@ -192,7 +195,7 @@ export async function refreshAll(opts: {
 
       if (symbols.length > 0) {
         const pricesRes = await proxyPost<{ prices: { symbol: string; currency: "KRW" | "USD"; lastPrice: number }[] }>(
-          "/api/toss/prices",
+          "/prices",
           { token: priceToken, symbols },
         );
         const prices: { symbol: string; currency: "KRW" | "USD"; lastPrice: number }[] =
@@ -221,7 +224,7 @@ export async function refreshAll(opts: {
 
     // 환율: 실패해도 기존 환율 유지(치명적 실패로 보지 않음).
     try {
-      const fxRes = await proxyPost<{ rate: number }>("/api/toss/exchange-rate", { token: priceToken });
+      const fxRes = await proxyPost<{ rate: number }>("/exchange-rate", { token: priceToken });
       await putFx({ pair: "USDKRW", rate: fxRes.rate, asOf: now });
     } catch {
       // 기존 fxRate 유지

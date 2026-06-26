@@ -1,0 +1,36 @@
+# dotori 토스 릴레이 systemd 유닛
+# 설치: /etc/systemd/system/dotori-relay.service 로 복사 후
+#   sudo systemctl daemon-reload && sudo systemctl enable --now dotori-relay
+#
+# 전용 저권한 유저(relay)로 실행하고, 침해 시 피해를 줄이도록 샌드박싱 옵션을 건다.
+
+[Unit]
+Description=dotori toss relay (Fastify)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=relay
+Group=relay
+WorkingDirectory=/opt/dotori/relay
+# 토큰/시크릿/도메인 등은 이 파일에 둔다 (root:relay, chmod 640 권장)
+EnvironmentFile=/etc/dotori-relay.env
+# 로컬 설치된 tsx로 TS를 직접 실행 (빌드 스텝 없음)
+ExecStart=/opt/dotori/relay/node_modules/.bin/tsx src/server.ts
+Restart=on-failure
+RestartSec=3
+
+# ── 보안 하드닝 ─────────────────────────────────────────────
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+# WorkingDirectory 외에는 쓰기 금지
+ReadWritePaths=/opt/dotori/relay
+
+[Install]
+WantedBy=multi-user.target
