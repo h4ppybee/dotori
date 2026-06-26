@@ -50,9 +50,9 @@ describe("SettingsPage — 섹션 제목 렌더링", () => {
     expect(screen.getByRole("heading", { level: 2, name: "데이터 백업" })).toBeInTheDocument();
   });
 
-  it("패스프레이즈 변경 섹션이 렌더링된다", async () => {
+  it("비밀번호 변경 섹션이 렌더링된다", async () => {
     await renderSettings();
-    expect(screen.getByRole("heading", { level: 2, name: "패스프레이즈 변경" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 2, name: "비밀번호 변경" })).toBeInTheDocument();
   });
 
   it("로컬 데이터 전체 삭제 섹션이 렌더링된다", async () => {

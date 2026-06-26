@@ -1,6 +1,6 @@
 # dotori — 아키텍처 / 개발 가이드
 
-토스 스타일의 **로컬 퍼스트(local-first) PWA 주식 포트폴리오 앱**. 토스인베스트 Open API로 보유 종목·시세·환율을 가져오고, 직접 추가한 종목과 합쳐 포트폴리오를 보여준다. 모든 데이터는 브라우저 IndexedDB에 저장되며, 민감정보는 패스프레이즈 파생 키로 암호화한다. **서버 DB가 없다.**
+토스 스타일의 **로컬 퍼스트(local-first) PWA 주식 포트폴리오 앱**. 토스인베스트 Open API로 보유 종목·시세·환율을 가져오고, 직접 추가한 종목과 합쳐 포트폴리오를 보여준다. 모든 데이터는 브라우저 IndexedDB에 저장되며, 민감정보는 비밀번호 파생 키로 암호화한다. **서버 DB가 없다.**
 
 > 패키지명은 `dotori`.
 
@@ -40,7 +40,7 @@ app/                       App Router 라우트 (모두 "use client")
   page.tsx                 포트폴리오 대시보드 (홈)
   holdings/new/page.tsx    종목 직접 추가 (MANUAL 생성)
   holdings/[id]/page.tsx   종목 상세 — 섹터 편집, MANUAL 종목 수정·삭제
-  settings/page.tsx        토스 연동 / 백업 / 패스프레이즈 변경
+  settings/page.tsx        토스 연동 / 백업 / 비밀번호 변경
   api/toss/*/route.ts      토스 API 서버 프록시 (token·holdings·prices·exchange-rate·accounts)
   globals.css, manifest.json
 
@@ -59,13 +59,13 @@ lib/
   db/                      schema(Dexie 정의), local-store(CRUD 헬퍼)
   portfolio/               순수 계산 함수: portfolio-service(buildPortfolio), pnl, fx, merge, ratios
   sector/                  seed(종목→섹터 시드), sector-map(resolveSector + KNOWN_SECTORS)
-  crypto/                  crypto(PBKDF2/AES-GCM), rekey(패스프레이즈 변경 재암호화)
+  crypto/                  crypto(PBKDF2/AES-GCM), rekey(비밀번호 변경 재암호화)
   snapshot/                일별 스냅샷 저장
   backup/                  전체 export/import (JSON)
   query/                   client(QueryProvider), use-portfolio(usePortfolio/useRefresh)
   format.ts, types.ts
 
-stores/app-store.ts        zustand — locked, sessionKey(CryptoKey, 메모리 한정), lastRefreshAt
+stores/app-store.ts        zustand — locked, sessionKey(CryptoKey, 비추출·세션 볼트 동기화), lastRefreshAt
 test/                      모듈 구조를 미러링한 단위/UI 테스트
 docs/                      본 문서 + superpowers/(스펙·플랜)
 ```
@@ -75,7 +75,7 @@ docs/                      본 문서 + superpowers/(스펙·플랜)
 ## 레이어 & 데이터 흐름
 
 ```
-[LockGate] 패스프레이즈 잠금 해제 → sessionKey(CryptoKey) 메모리 보관
+[LockGate] 비밀번호 잠금 해제 → sessionKey(CryptoKey) 메모리 + 세션 볼트(10분) 보관
      │
 [useRefresh → refreshAll] 토스 동기화
      │   connection별 getValidToken → /api/toss/* 프록시 → toss-client 정규화
@@ -97,10 +97,11 @@ docs/                      본 문서 + superpowers/(스펙·플랜)
 
 ## 보안 모델
 
-- 패스프레이즈는 **저장하지 않는다.** PBKDF2(310k, SHA-256)로 AES-GCM 256 키를 파생하고, `salt` + `verifier`만 `settings`에 저장한다 ([crypto.ts](../lib/crypto/crypto.ts), [LockGate](../components/LockGate.tsx)).
-- **세션 키(CryptoKey)는 메모리(zustand)에만** 존재한다. 새로고침/잠금 시 사라진다.
+- 비밀번호는 **저장하지 않는다.** PBKDF2(310k, SHA-256)로 AES-GCM 256 키를 파생하고, `salt` + `verifier`만 `settings`에 저장한다 ([crypto.ts](../lib/crypto/crypto.ts), [LockGate](../components/LockGate.tsx)). 파생 키는 `extractable: false`(비추출)라 원본 키 바이트를 JS·디스크 어디로도 꺼낼 수 없다.
+- **세션 키(CryptoKey)는 평상시 메모리(zustand)에** 둔다. 자동 잠금(10분 유휴 슬라이딩)을 위해 비추출 핸들 + 만료시각을 세션 볼트(IndexedDB)에 동기화한다 ([session-vault.ts](../lib/db/session-vault.ts), [use-session-guard.ts](../lib/auth/use-session-guard.ts)). 만료 또는 잠금 시 폐기된다. 새로고침해도 만료 전이면 비밀번호 없이 자동 잠금 해제되지만, 원본 키 바이트는 평문으로 남지 않는다.
+  - 트레이드오프: 만료 전(최대 10분)에는 **같은 기기·브라우저**에서 비밀번호 없이 복호화가 가능하다. 디스크/백업 유출이나 다른 origin·기기로부터는 여전히 보호된다(비추출 키 + same-origin).
 - 암호화 대상: `connections.clientSecretEnc`, `tokenCache.accessTokenEnc`. 형식은 `iv.ciphertext`(base64).
-- 패스프레이즈 변경 시 [rekey.ts](../lib/crypto/rekey.ts)의 `rekeyVault`로 모든 암호값을 재암호화한다.
+- 비밀번호 변경 시 [rekey.ts](../lib/crypto/rekey.ts)의 `rekeyVault`로 모든 암호값을 재암호화한다.
 - 토스 시크릿/토큰은 브라우저에서 토스로 직접 보내지 않고 **`app/api/toss/*` 프록시**를 경유한다(`runtime = "nodejs"`, `force-dynamic`, `Cache-Control: no-store`).
 
 ---

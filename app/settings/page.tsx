@@ -15,7 +15,7 @@ import { rekeyVault } from "@/lib/crypto/rekey";
 import { db } from "@/lib/db/schema";
 import { useAppStore } from "@/stores/app-store";
 
-// ─── 패스프레이즈 변경 섹션 ──────────────────────────────────────────────────
+// ─── 비밀번호 변경 섹션 ──────────────────────────────────────────────────
 
 function PassphraseSection() {
   const unlock = useAppStore((s) => s.unlock);
@@ -38,19 +38,19 @@ function PassphraseSection() {
     setSuccess(false);
 
     if (!current.trim()) {
-      setError("현재 패스프레이즈를 입력해 주세요.");
+      setError("현재 비밀번호를 입력해 주세요.");
       return;
     }
     if (!next.trim()) {
-      setError("새 패스프레이즈를 입력해 주세요.");
+      setError("새 비밀번호를 입력해 주세요.");
       return;
     }
     if (next !== confirm) {
-      setError("새 패스프레이즈와 확인이 일치하지 않아요.");
+      setError("새 비밀번호와 확인이 일치하지 않아요.");
       return;
     }
     if (next.length < 8) {
-      setError("패스프레이즈는 8자 이상으로 설정해 주세요.");
+      setError("비밀번호는 8자 이상으로 설정해 주세요.");
       return;
     }
 
@@ -65,7 +65,7 @@ function PassphraseSection() {
       const oldKey = await deriveKey(current, settings.kdfSalt);
       const valid = await checkVerifier(oldKey, settings.verifier);
       if (!valid) {
-        setError("현재 패스프레이즈가 일치하지 않아요.");
+        setError("현재 비밀번호가 일치하지 않아요.");
         return;
       }
 
@@ -83,7 +83,7 @@ function PassphraseSection() {
       clearFields();
       setSuccess(true);
     } catch {
-      setError("패스프레이즈 변경 중 문제가 생겼어요. 다시 시도해 주세요.");
+      setError("비밀번호 변경 중 문제가 생겼어요. 다시 시도해 주세요.");
     } finally {
       setLoading(false);
     }
@@ -92,11 +92,11 @@ function PassphraseSection() {
   return (
     <Card>
       <h2 className="text-[19px] font-bold leading-[1.4] tracking-[-0.2px] text-ink mb-4">
-        패스프레이즈 변경
+        비밀번호 변경
       </h2>
 
       {success && (
-        <Banner message="패스프레이즈를 바꿨어요." className="mb-4" />
+        <Banner message="비밀번호를 바꿨어요." className="mb-4" />
       )}
       {error != null && (
         <div
@@ -111,15 +111,15 @@ function PassphraseSection() {
       <div className="flex flex-col gap-4">
         <TextInput
           inputId="pp-current"
-          label="현재 패스프레이즈"
+          label="현재 비밀번호"
           value={current}
           onChange={setCurrent}
           masked
-          placeholder="현재 패스프레이즈"
+          placeholder="현재 비밀번호"
         />
         <TextInput
           inputId="pp-next"
-          label="새 패스프레이즈"
+          label="새 비밀번호"
           value={next}
           onChange={setNext}
           masked
@@ -127,11 +127,11 @@ function PassphraseSection() {
         />
         <TextInput
           inputId="pp-confirm"
-          label="새 패스프레이즈 확인"
+          label="새 비밀번호 확인"
           value={confirm}
           onChange={setConfirm}
           masked
-          placeholder="새 패스프레이즈를 다시 입력"
+          placeholder="새 비밀번호를 다시 입력"
         />
         <Button
           variant="primary"

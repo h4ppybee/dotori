@@ -32,23 +32,23 @@ describe("LockGate — 최초 실행 (설정 없음)", () => {
       expect(screen.getByText("dotori에 오신 걸 환영해요")).toBeInTheDocument();
     });
 
-    expect(screen.getByLabelText("패스프레이즈")).toBeInTheDocument();
-    expect(screen.getByLabelText("패스프레이즈 확인")).toBeInTheDocument();
+    expect(screen.getByLabelText("비밀번호")).toBeInTheDocument();
+    expect(screen.getByLabelText("비밀번호 확인")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "시작하기" })).toBeInTheDocument();
     expect(screen.queryByText("앱 콘텐츠")).not.toBeInTheDocument();
   });
 
-  it("패스프레이즈가 일치하면 설정이 저장되고, 기본 구성원이 생성되고, 잠금이 해제된다", async () => {
+  it("비밀번호가 일치하면 설정이 저장되고, 기본 구성원이 생성되고, 잠금이 해제된다", async () => {
     const user = userEvent.setup();
 
     render(<LockGate><div>앱 콘텐츠</div></LockGate>);
 
     await waitFor(() => {
-      expect(screen.getByLabelText("패스프레이즈")).toBeInTheDocument();
+      expect(screen.getByLabelText("비밀번호")).toBeInTheDocument();
     });
 
-    await user.type(screen.getByLabelText("패스프레이즈"), "비밀번호1234");
-    await user.type(screen.getByLabelText("패스프레이즈 확인"), "비밀번호1234");
+    await user.type(screen.getByLabelText("비밀번호"), "비밀번호1234");
+    await user.type(screen.getByLabelText("비밀번호 확인"), "비밀번호1234");
     await user.click(screen.getByRole("button", { name: "시작하기" }));
 
     // 잠금 해제 후 children가 보여야 한다
@@ -73,17 +73,17 @@ describe("LockGate — 최초 실행 (설정 없음)", () => {
     expect(useAppStore.getState().sessionKey).not.toBeNull();
   });
 
-  it("패스프레이즈가 일치하지 않으면 긍정형 에러 메시지를 보여준다", async () => {
+  it("비밀번호가 일치하지 않으면 긍정형 에러 메시지를 보여준다", async () => {
     const user = userEvent.setup();
 
     render(<LockGate><div>앱 콘텐츠</div></LockGate>);
 
     await waitFor(() => {
-      expect(screen.getByLabelText("패스프레이즈")).toBeInTheDocument();
+      expect(screen.getByLabelText("비밀번호")).toBeInTheDocument();
     });
 
-    await user.type(screen.getByLabelText("패스프레이즈"), "비밀번호1234");
-    await user.type(screen.getByLabelText("패스프레이즈 확인"), "다른비밀번호");
+    await user.type(screen.getByLabelText("비밀번호"), "비밀번호1234");
+    await user.type(screen.getByLabelText("비밀번호 확인"), "다른비밀번호");
     await user.click(screen.getByRole("button", { name: "시작하기" }));
 
     await waitFor(() => {
@@ -95,7 +95,7 @@ describe("LockGate — 최초 실행 (설정 없음)", () => {
     expect(useAppStore.getState().locked).toBe(true);
   });
 
-  it("패스프레이즈가 비어있으면 에러 메시지를 보여준다", async () => {
+  it("비밀번호가 비어있으면 에러 메시지를 보여준다", async () => {
     const user = userEvent.setup();
 
     render(<LockGate><div>앱 콘텐츠</div></LockGate>);
@@ -115,7 +115,7 @@ describe("LockGate — 최초 실행 (설정 없음)", () => {
 });
 
 describe("LockGate — 재진입 (설정 있음)", () => {
-  const PASSPHRASE = "올바른패스프레이즈";
+  const PASSPHRASE = "올바른비밀번호";
 
   async function seedSettings() {
     const salt = makeSalt();
@@ -134,23 +134,23 @@ describe("LockGate — 재진입 (설정 있음)", () => {
       expect(screen.getByText("dotori")).toBeInTheDocument();
     });
 
-    expect(screen.getByLabelText("패스프레이즈")).toBeInTheDocument();
-    expect(screen.queryByLabelText("패스프레이즈 확인")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("비밀번호")).toBeInTheDocument();
+    expect(screen.queryByLabelText("비밀번호 확인")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "잠금 해제하기" })).toBeInTheDocument();
     expect(screen.queryByText("앱 콘텐츠")).not.toBeInTheDocument();
   });
 
-  it("올바른 패스프레이즈를 입력하면 잠금이 해제된다", async () => {
+  it("올바른 비밀번호를 입력하면 잠금이 해제된다", async () => {
     await seedSettings();
     const user = userEvent.setup();
 
     render(<LockGate><div>앱 콘텐츠</div></LockGate>);
 
     await waitFor(() => {
-      expect(screen.getByLabelText("패스프레이즈")).toBeInTheDocument();
+      expect(screen.getByLabelText("비밀번호")).toBeInTheDocument();
     });
 
-    await user.type(screen.getByLabelText("패스프레이즈"), PASSPHRASE);
+    await user.type(screen.getByLabelText("비밀번호"), PASSPHRASE);
     await user.click(screen.getByRole("button", { name: "잠금 해제하기" }));
 
     await waitFor(() => {
@@ -161,17 +161,17 @@ describe("LockGate — 재진입 (설정 있음)", () => {
     expect(useAppStore.getState().sessionKey).not.toBeNull();
   });
 
-  it("틀린 패스프레이즈를 입력하면 에러 메시지가 나타나고 잠금 상태가 유지된다", async () => {
+  it("틀린 비밀번호를 입력하면 에러 메시지가 나타나고 잠금 상태가 유지된다", async () => {
     await seedSettings();
     const user = userEvent.setup();
 
     render(<LockGate><div>앱 콘텐츠</div></LockGate>);
 
     await waitFor(() => {
-      expect(screen.getByLabelText("패스프레이즈")).toBeInTheDocument();
+      expect(screen.getByLabelText("비밀번호")).toBeInTheDocument();
     });
 
-    await user.type(screen.getByLabelText("패스프레이즈"), "틀린패스프레이즈");
+    await user.type(screen.getByLabelText("비밀번호"), "틀린비밀번호");
     await user.click(screen.getByRole("button", { name: "잠금 해제하기" }));
 
     await waitFor(() => {
@@ -193,10 +193,10 @@ describe("LockGate — 재진입 (설정 있음)", () => {
     render(<LockGate><div>앱 콘텐츠</div></LockGate>);
 
     await waitFor(() => {
-      expect(screen.getByLabelText("패스프레이즈")).toBeInTheDocument();
+      expect(screen.getByLabelText("비밀번호")).toBeInTheDocument();
     });
 
-    await user.type(screen.getByLabelText("패스프레이즈"), PASSPHRASE);
+    await user.type(screen.getByLabelText("비밀번호"), PASSPHRASE);
     await user.click(screen.getByRole("button", { name: "잠금 해제하기" }));
 
     await waitFor(() => {

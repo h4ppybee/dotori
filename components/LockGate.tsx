@@ -6,7 +6,9 @@ import { Button } from "@/components/ui/Button";
 import { TextInput } from "@/components/ui/TextInput";
 import { makeSalt, deriveKey, makeVerifier, checkVerifier } from "@/lib/crypto/crypto";
 import { getSettings, putSettings, listMembers, upsertMember } from "@/lib/db/local-store";
+import { loadSession } from "@/lib/db/session-vault";
 import { useAppStore } from "@/stores/app-store";
+import { useSessionGuard } from "@/lib/auth/use-session-guard";
 import { BottomTabBar } from "@/components/BottomTabBar";
 
 type Mode = "loading" | "setup" | "unlock";
@@ -16,20 +18,24 @@ interface LockGateProps {
 }
 
 /**
- * 앱 전체를 감싸는 패스프레이즈 잠금 게이트.
- * - 최초 실행(설정 없음): 패스프레이즈 설정 화면 (setup 모드)
- * - 재진입(설정 있음): 패스프레이즈 입력 화면 (unlock 모드)
+ * 앱 전체를 감싸는 비밀번호 잠금 게이트.
+ * - 최초 실행(설정 없음): 비밀번호 설정 화면 (setup 모드)
+ * - 재진입(설정 있음): 비밀번호 입력 화면 (unlock 모드)
  * - 잠금 해제 시: children을 렌더링
  *
- * 보안 원칙: 패스프레이즈 자체는 절대 저장하지 않는다.
- * salt + verifier만 DB에 저장하고, CryptoKey는 메모리(useAppStore)에만 존재한다.
+ * 보안 원칙: 비밀번호 자체는 절대 저장하지 않는다. salt + verifier만 DB에 저장한다.
+ * 잠금 해제 후에는 자동 잠금(10분 유휴)을 위해 비추출 세션 키를 세션 볼트에 두고,
+ * 마지막 활동 후 10분이 지나면 잠근다. (lib/db/session-vault.ts, useSessionGuard)
  */
 export function LockGate({ children }: LockGateProps) {
   const locked = useAppStore((s) => s.locked);
 
   const [mode, setMode] = useState<Mode>("loading");
 
-  // 패스프레이즈 입력값
+  // 잠금 해제 상태에서 활동 기반 슬라이딩 자동 잠금을 감시한다.
+  useSessionGuard();
+
+  // 비밀번호 입력값
   const [passphrase, setPassphrase] = useState("");
   const [confirm, setConfirm] = useState("");
 
@@ -42,12 +48,22 @@ export function LockGate({ children }: LockGateProps) {
   useEffect(() => {
     let cancelled = false;
 
-    getSettings().then((settings) => {
+    (async () => {
+      // 유효한 세션이 남아 있으면(10분 이내) 비밀번호 없이 자동 잠금 해제한다.
+      const session = await loadSession(Date.now());
+      if (cancelled) {
+        return;
+      }
+      if (session != null) {
+        useAppStore.getState().unlock(session.key);
+        return;
+      }
+      const settings = await getSettings();
       if (cancelled) {
         return;
       }
       setMode(settings == null ? "setup" : "unlock");
-    });
+    })();
 
     return () => {
       cancelled = true;
@@ -80,12 +96,12 @@ export function LockGate({ children }: LockGateProps) {
     setError(null);
 
     if (passphrase.trim() === "") {
-      setError("패스프레이즈를 입력해 주세요.");
+      setError("비밀번호를 입력해 주세요.");
       return;
     }
 
     if (passphrase !== confirm) {
-      setError("패스프레이즈가 일치하지 않아요. 두 칸을 동일하게 입력해 주세요.");
+      setError("비밀번호가 일치하지 않아요. 두 칸을 동일하게 입력해 주세요.");
       return;
     }
 
@@ -115,7 +131,7 @@ export function LockGate({ children }: LockGateProps) {
     setError(null);
 
     if (passphrase.trim() === "") {
-      setError("패스프레이즈를 입력해 주세요.");
+      setError("비밀번호를 입력해 주세요.");
       return;
     }
 
@@ -134,7 +150,7 @@ export function LockGate({ children }: LockGateProps) {
       if (valid) {
         useAppStore.getState().unlock(key);
       } else {
-        setError("패스프레이즈가 일치하지 않아요. 다시 입력해 주세요.");
+        setError("비밀번호가 일치하지 않아요. 다시 입력해 주세요.");
       }
     } catch {
       setError("잠금 해제 중 문제가 생겼어요. 다시 시도해 주세요.");
@@ -156,8 +172,8 @@ export function LockGate({ children }: LockGateProps) {
             </h1>
             <p className="text-[15px] font-normal leading-[1.5] text-body">
               {isSetup
-                ? "데이터를 안전하게 보호할 패스프레이즈를 설정해요."
-                : "패스프레이즈를 입력하면 포트폴리오를 볼 수 있어요."}
+                ? "데이터를 안전하게 보호할 비밀번호를 설정해요."
+                : "비밀번호를 입력하면 포트폴리오를 볼 수 있어요."}
             </p>
           </div>
 
@@ -169,14 +185,14 @@ export function LockGate({ children }: LockGateProps) {
           >
             <TextInput
               inputId="lock-passphrase"
-              label="패스프레이즈"
+              label="비밀번호"
               value={passphrase}
               onChange={(v) => {
                 setPassphrase(v);
                 setError(null);
               }}
               masked
-              placeholder="패스프레이즈를 입력해요"
+              placeholder="비밀번호를 입력해요"
               autoFocus
               autoComplete={isSetup ? "new-password" : "current-password"}
             />
@@ -184,7 +200,7 @@ export function LockGate({ children }: LockGateProps) {
             {isSetup && (
               <TextInput
                 inputId="lock-passphrase-confirm"
-                label="패스프레이즈 확인"
+                label="비밀번호 확인"
                 value={confirm}
                 onChange={(v) => {
                   setConfirm(v);

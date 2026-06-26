@@ -6,7 +6,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 # dotori 프로젝트 가이드
 
-토스 스타일 **로컬 퍼스트 PWA 주식 포트폴리오 앱**. 토스인베스트 Open API로 보유 종목·시세·환율을 가져와 직접 추가 종목과 합쳐 보여준다. 모든 데이터는 브라우저 IndexedDB에 저장되고, 민감정보는 패스프레이즈 파생 키로 암호화한다. **서버 DB 없음.** (패키지명 `dotori`)
+토스 스타일 **로컬 퍼스트 PWA 주식 포트폴리오 앱**. 토스인베스트 Open API로 보유 종목·시세·환율을 가져와 직접 추가 종목과 합쳐 보여준다. 모든 데이터는 브라우저 IndexedDB에 저장되고, 민감정보는 비밀번호 파생 키로 암호화한다. **서버 DB 없음.** (패키지명 `dotori`)
 
 전체 구조·데이터 흐름·보안 모델은 **[docs/architecture.md](docs/architecture.md)** 를 먼저 읽는다.
 
@@ -58,7 +58,7 @@ GitHub `h4ppybee/dotori` ↔ Vercel 프로젝트가 **Git 연동**되어 있다.
   - 임의의 색·폰트·간격·radius를 새로 만들지 말고 DESIGN.md에 정의된 토큰과 Tailwind 클래스(`text-up`, `bg-surface-soft` 등)를 사용한다.
   - 기존 `components/ui/` 프리미티브를 우선 재사용한다.
   - **새 디자인 토큰/규칙을 추가하거나 기존 규칙을 바꿀 때는 [DESIGN.md](DESIGN.md)도 함께 수정**해 코드와 문서를 항상 일치시킨다. 새 색·간격·컴포넌트 규격·UX 카피 규칙이 생기면 먼저(또는 함께) DESIGN.md에 반영한다.
-- **보안**: 패스프레이즈/세션 키(CryptoKey)는 절대 영속화하지 않는다(메모리 한정). 토스 시크릿·토큰은 `app/api/toss/*` 프록시 경유. 암호화는 `lib/crypto`.
+- **보안**: 비밀번호는 절대 저장하지 않는다(`salt` + `verifier`만 저장). 세션 키(CryptoKey)는 비추출 키로 파생하고, 자동 잠금(10분 유휴 슬라이딩)을 위해서만 비추출 핸들 + 만료시각을 세션 볼트(`lib/db/session-vault`, IndexedDB)에 둔다 — 만료/잠금 시 폐기되며 원본 키 바이트는 영속화되지 않는다. 토스 시크릿·토큰은 `app/api/toss/*` 프록시 경유. 암호화는 `lib/crypto`.
 - **순수 계산**: `lib/portfolio/`의 함수는 DB·비동기·`Date` 없이 입력만으로 결과를 낸다. 계산 로직은 여기에 두고 테스트한다.
 - **섹터**: 화면 표시는 항상 `resolveSector(symbol, sectorOverrides)` 기반(우선순위 overrides > seed > "미분류"). `sectorOverrides`는 symbol을 키로 저장해 AUTO·MANUAL 모두에 적용된다. 기본 목록은 `KNOWN_SECTORS`(테마형).
 - **Next 16**: 동적 라우트 `params`는 Promise → 클라이언트에서 `use(params)`. 네비게이션은 `next/navigation`. IndexedDB는 서버/SSR에서 접근 금지.
