@@ -1,0 +1,4 @@
+node_modules
+.env
+# 루트 .gitignore의 .env* 패턴에 가려지는 예시 파일은 추적한다
+!.env.example
