@@ -4,7 +4,13 @@ import { registerRoutes } from "./routes.js";
 import { registerSecurity } from "./security.js";
 
 export async function buildApp(config: RelayConfig): Promise<FastifyInstance> {
-  const app = Fastify({ bodyLimit: config.bodyLimit, logger: true });
+  const app = Fastify({
+    bodyLimit: config.bodyLimit,
+    // 토큰·시크릿이 로그에 남지 않도록 마스킹
+    logger: {
+      redact: ["req.headers.x-relay-secret", "req.body.clientSecret", "req.body.token"],
+    },
+  });
   await registerSecurity(app, config);
   app.get("/healthz", async () => ({ ok: true }));
   await registerRoutes(app);
