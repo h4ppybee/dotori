@@ -1,9 +1,11 @@
 import Fastify, { type FastifyInstance } from "fastify";
 import { loadConfig, type RelayConfig } from "./config.js";
 import { registerRoutes } from "./routes.js";
+import { registerSecurity } from "./security.js";
 
 export async function buildApp(config: RelayConfig): Promise<FastifyInstance> {
   const app = Fastify({ bodyLimit: config.bodyLimit, logger: true });
+  await registerSecurity(app, config);
   app.get("/healthz", async () => ({ ok: true }));
   await registerRoutes(app);
   return app;
