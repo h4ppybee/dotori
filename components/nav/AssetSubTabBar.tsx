@@ -51,11 +51,12 @@ export function AssetSubTabBar({ visible }: { visible: boolean }) {
                   href={tab.href}
                   tabIndex={visible ? 0 : -1}
                   aria-current={active ? "page" : undefined}
-                  className={`flex h-11 items-center justify-center rounded-full transition-colors ${
+                  className={`flex h-[52px] flex-col items-center justify-center gap-[2px] rounded-full transition-colors ${
                     active ? "font-bold text-ink" : "font-semibold text-muted"
                   }`}
                 >
-                  <span className="text-[12px] leading-none whitespace-nowrap">{tab.label}</span>
+                  {tab.icon?.(active)}
+                  <span className="text-[11px] leading-none whitespace-nowrap">{tab.label}</span>
                 </Link>
               </li>
             );

@@ -21,7 +21,7 @@ beforeEach(() => {
 describe("AssetSubTabBar", () => {
   it("자산 서브탭들을 렌더한다", () => {
     render(<AssetSubTabBar visible />);
-    ["자산", "주식", "저축/현금성", "연금", "코인"].forEach((t) =>
+    ["자산", "주식", "저축", "연금", "코인"].forEach((t) =>
       expect(screen.getByText(t)).toBeInTheDocument()
     );
   });

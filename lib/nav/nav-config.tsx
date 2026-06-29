@@ -64,6 +64,38 @@ function SettingsIcon(active: boolean): ReactNode {
     </svg>
   );
 }
+// 저축/현금성 — 동전 더미(원통형 코인 스택)
+function SavingsIcon(active: boolean): ReactNode {
+  const w = active ? 2.4 : 2;
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <ellipse cx="12" cy="7" rx="6" ry="2.6" stroke="currentColor" strokeWidth={w} />
+      <path d="M6 7v5c0 1.4 2.7 2.6 6 2.6s6-1.2 6-2.6V7" stroke="currentColor" strokeWidth={w} strokeLinecap="round" />
+      <path d="M6 12v5c0 1.4 2.7 2.6 6 2.6s6-1.2 6-2.6v-5" stroke="currentColor" strokeWidth={w} strokeLinecap="round" />
+    </svg>
+  );
+}
+// 연금 — 우산(노후 보장)
+function PensionIcon(active: boolean): ReactNode {
+  const w = active ? 2.4 : 2;
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M12 3v2" stroke="currentColor" strokeWidth={w} strokeLinecap="round" />
+      <path d="M3.5 12a8.5 8.5 0 0 1 17 0z" stroke="currentColor" strokeWidth={w} strokeLinejoin="round" />
+      <path d="M12 12v6a2.4 2.4 0 0 0 4 0" stroke="currentColor" strokeWidth={w} strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+// 코인 — 원형 코인 + B 글리프
+function CryptoIcon(active: boolean): ReactNode {
+  const w = active ? 2.4 : 2;
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth={w} />
+      <path d="M10 8.2v7.6M10 8.2h3a1.8 1.8 0 0 1 0 3.6H10m0 0h3.3a1.8 1.8 0 0 1 0 3.6H10" stroke="currentColor" strokeWidth={w} strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
 
 // ── 탭 정의 (key는 lib/nav/active.ts 반환값과 일치) ────────────────────
 export const mainTabs: TabDef[] = [
@@ -74,12 +106,12 @@ export const mainTabs: TabDef[] = [
   { key: "settings", href: "/settings", label: "설정", icon: SettingsIcon },
 ];
 
-// 서브탭은 라벨 우선, 아이콘은 선택(일부만 아이콘을 둔다).
+// 서브탭은 플로팅 바에서 아이콘 + 라벨로 표시한다.
 export const assetSubTabs: TabDef[] = [
-  { key: "overview", href: "/assets", label: "자산" },
+  { key: "overview", href: "/assets", label: "자산", icon: AssetsIcon },
   { key: "stocks", href: "/assets/stocks", label: "주식", icon: StocksIcon },
-  { key: "savings", href: "/assets/savings", label: "저축/현금성" },
-  { key: "pension", href: "/assets/pension", label: "연금" },
-  { key: "crypto", href: "/assets/crypto", label: "코인" },
-  // 향후 확장: { key: "insurance", href: "/assets/insurance", label: "보험" } ...
+  { key: "savings", href: "/assets/savings", label: "저축", icon: SavingsIcon },
+  { key: "pension", href: "/assets/pension", label: "연금", icon: PensionIcon },
+  { key: "crypto", href: "/assets/crypto", label: "코인", icon: CryptoIcon },
+  // 향후 확장: { key: "insurance", href: "/assets/insurance", label: "보험", icon: ... } ...
 ];
