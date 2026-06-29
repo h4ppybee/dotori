@@ -21,5 +21,6 @@ export async function buildApp(config: RelayConfig): Promise<FastifyInstance> {
 if (process.argv[1] && process.argv[1].endsWith("server.ts")) {
   const config = loadConfig();
   const app = await buildApp(config);
-  await app.listen({ port: config.port, host: "0.0.0.0" });
+  // Caddy가 localhost로 리버스 프록시하므로 외부 인터페이스에 바인딩하지 않는다(심층방어).
+  await app.listen({ port: config.port, host: "127.0.0.1" });
 }
