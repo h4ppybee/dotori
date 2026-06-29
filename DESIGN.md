@@ -390,6 +390,11 @@ dotori는 토스(Toss)의 디자인 언어를 따른다 — 차분하고, 신뢰
 - **수익률 배지** (`{component.return-badge-up}` / `down`): 연한 surface 배경 + 부호(+/-) + 색.
 - **도넛 차트** (`{component.donut-chart}`): 섹터/종목 비율. palette 순서대로 배정, track은 hairline.
 - **버튼**: primary(갈색) / secondary(brown-surface) / weak(grey) / text. radius `{rounded.md}`, height 52px.
+- **스위치(Switch)**: on/off 환경설정 토글.
+  - 크기: 트랙 48×28, 노브 22, radius `{rounded.full}`.
+  - 색: ON `{colors.primary}`(#A87342), OFF `{colors.surface-strong}`(#EDE7DD). 노브는 `{colors.surface-card}`(흰색) + soft shadow.
+  - 접근성: `role="switch"` + `aria-checked`, disabled 시 opacity 40%.
+  - 용도: 설정 화면의 on/off 환경설정 토글.
 - **입력 필드** (`{component.text-input}`): 연한 배경, focus 시 갈색 1.5px 테두리.
 - **다이얼로그** (`{component.dialog}`): radius `{rounded.xxl}`, 왼쪽 버튼은 항상 "닫기"(아래 UX Writing).
 
