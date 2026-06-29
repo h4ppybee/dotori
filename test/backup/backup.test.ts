@@ -70,4 +70,31 @@ describe("exportAll / importAll", () => {
     const h3 = await db.holdings.get("h3");
     expect(h3?.name).toBe("NAVER"); // 추가됨
   });
+
+  it("내보내기 결과에 tokenCache는 포함하지 않는다 (휘발성 토큰은 백업 대상이 아님)", async () => {
+    await db.tokenCache.put({ connectionId: "c1", accessTokenEnc: "enc", expiresAt: Date.now() + 3_600_000 });
+
+    const json = await exportAll();
+    const parsed = JSON.parse(json) as { data: { tokenCache?: unknown[] } };
+
+    expect(parsed.data.tokenCache).toBeUndefined();
+  });
+
+  it("tokenCache가 들어있는 (구버전) 백업을 불러와도 tokenCache는 복원하지 않는다", async () => {
+    const payload = JSON.stringify({
+      schemaVersion: 1,
+      exportedAt: Date.now(),
+      data: {
+        tokenCache: [
+          { connectionId: "c1", accessTokenEnc: "stale", expiresAt: Date.now() + 3_600_000 },
+        ],
+      },
+    });
+
+    await importAll(payload, { mode: "overwrite" });
+    expect(await db.tokenCache.count()).toBe(0);
+
+    await importAll(payload, { mode: "merge" });
+    expect(await db.tokenCache.count()).toBe(0);
+  });
 });

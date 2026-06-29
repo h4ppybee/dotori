@@ -5,7 +5,6 @@ export const SCHEMA_VERSION = 1;
 interface BackupData {
   members: unknown[];
   connections: unknown[];
-  tokenCache: unknown[];
   holdings: unknown[];
   priceCache: unknown[];
   fxRates: unknown[];
@@ -21,10 +20,11 @@ interface BackupPayload {
 }
 
 export async function exportAll(): Promise<string> {
+  // tokenCache는 휘발성(clientSecret으로 언제든 재발급) + 비밀번호 파생 키로 암호화돼
+  // 있어 백업/복원 대상에서 제외한다. 복원 시 죽은 토큰이 주입되어 401을 유발하던 문제 방지.
   const [
     members,
     connections,
-    tokenCache,
     holdings,
     priceCache,
     fxRates,
@@ -34,7 +34,6 @@ export async function exportAll(): Promise<string> {
   ] = await Promise.all([
     db.members.toArray(),
     db.connections.toArray(),
-    db.tokenCache.toArray(),
     db.holdings.toArray(),
     db.priceCache.toArray(),
     db.fxRates.toArray(),
@@ -49,7 +48,6 @@ export async function exportAll(): Promise<string> {
     data: {
       members,
       connections,
-      tokenCache,
       holdings,
       priceCache,
       fxRates,
@@ -78,7 +76,6 @@ export async function importAll(json: string, opts: { mode: "merge" | "overwrite
 
   const members = (data.members ?? []) as Parameters<typeof db.members.bulkPut>[0];
   const connections = (data.connections ?? []) as Parameters<typeof db.connections.bulkPut>[0];
-  const tokenCache = (data.tokenCache ?? []) as Parameters<typeof db.tokenCache.bulkPut>[0];
   const holdings = (data.holdings ?? []) as Parameters<typeof db.holdings.bulkPut>[0];
   const priceCache = (data.priceCache ?? []) as Parameters<typeof db.priceCache.bulkPut>[0];
   const fxRates = (data.fxRates ?? []) as Parameters<typeof db.fxRates.bulkPut>[0];
@@ -92,7 +89,6 @@ export async function importAll(json: string, opts: { mode: "merge" | "overwrite
     }
     await db.members.bulkPut(members);
     await db.connections.bulkPut(connections);
-    await db.tokenCache.bulkPut(tokenCache);
     await db.holdings.bulkPut(holdings);
     await db.priceCache.bulkPut(priceCache);
     await db.fxRates.bulkPut(fxRates);

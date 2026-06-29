@@ -305,6 +305,60 @@ describe("refreshAll 401 retry", () => {
     expect(cached).toBeTruthy();
   });
 
+  it("re-issues token and retries accounts when accounts proxy returns 401 on first call", async () => {
+    const key = await deriveKey("pp", makeSalt());
+    const conn = await seedTossConnection(key);
+
+    let accountsCallCount = 0;
+    let tokenCallCount = 0;
+
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.includes("/api/toss/token")) {
+        tokenCallCount += 1;
+        return jsonResponse({ accessToken: `T${tokenCallCount}`, expiresIn: 3600 });
+      }
+      if (url.includes("/api/toss/accounts")) {
+        accountsCallCount += 1;
+        if (accountsCallCount === 1) {
+          // 첫 번째 accounts 호출 → 401 (복원된 죽은 토큰 시뮬레이션)
+          return new Response("unauthorized", { status: 401 });
+        }
+        return jsonResponse({ accounts: ["A1"] });
+      }
+      if (url.includes("/api/toss/holdings")) {
+        return jsonResponse({ holdings: [SAMSUNG] });
+      }
+      if (url.includes("/api/toss/prices")) {
+        const body = JSON.parse(String(init?.body ?? "{}")) as {
+          symbols: { symbol: string; currency: string }[];
+        };
+        const prices = body.symbols.map((s) => ({ symbol: s.symbol, currency: s.currency, lastPrice: 72000 }));
+        return jsonResponse({ prices });
+      }
+      if (url.includes("/api/toss/exchange-rate")) {
+        return jsonResponse({ rate: 1350 });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { failures } = await refreshAll({ key, now: TODAY_MS });
+
+    // 실패 없이 완료됐어야 함 (401 후 토큰 재발급 + 재시도 성공)
+    expect(failures).toHaveLength(0);
+
+    // holdings가 실제 upsert됐어야 함 → accounts가 결국 성공했다는 증거
+    const holdings = await store.listHoldings();
+    expect(holdings.find((h) => h.symbol === "005930" && h.source === "AUTO")).toBeTruthy();
+
+    // 토큰 재발급이 최소 2회 (초기 발급 + 401 후 재발급)
+    expect(tokenCallCount).toBeGreaterThanOrEqual(2);
+    expect(accountsCallCount).toBe(2);
+
+    const reloaded = (await store.listConnections()).find((c) => c.id === conn.id);
+    expect(reloaded?.accountSeqs).toEqual(["A1"]);
+  });
+
   it("records connection failure when holdings returns 401 on both first and retry", async () => {
     const key = await deriveKey("pp", makeSalt());
     const conn = await seedTossConnection(key);

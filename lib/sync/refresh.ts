@@ -125,13 +125,12 @@ export async function refreshAll(opts: {
     }
     try {
       const clientSecret = await decrypt(opts.key, conn.clientSecretEnc!);
-      const token = await getValidToken({
-        connectionId: conn.id,
-        clientId: conn.clientId!,
-        clientSecret,
-        key: opts.key,
-      });
-      const accountsRes = await proxyPost<{ accounts: string[] }>("/accounts", { token });
+      const accountsRes = await proxyPostWithTokenRetry<{ accounts: string[] }>(
+        "/accounts",
+        (t) => ({ token: t }),
+        { id: conn.id, clientId: conn.clientId!, clientSecretEnc: conn.clientSecretEnc! },
+        opts.key,
+      );
       const accounts: string[] = accountsRes.accounts;
       await upsertConnection({ ...conn, accountSeqs: accounts });
 
@@ -165,9 +164,15 @@ export async function refreshAll(opts: {
       await pruneAutoHoldings(conn.id, seenSymbols);
 
       // 시세/환율 조회 토큰은 accounts·holdings까지 모두 성공한
-      // connection의 토큰만 채택한다.
+      // connection의 토큰만 채택한다. 위 호출들이 401로 재발급했을 수 있어
+      // 캐시에서 유효 토큰을 다시 읽는다(캐시 유효 시 재발급 없이 복호화만).
       if (priceToken === null) {
-        priceToken = token;
+        priceToken = await getValidToken({
+          connectionId: conn.id,
+          clientId: conn.clientId!,
+          clientSecret,
+          key: opts.key,
+        });
       }
     } catch (e) {
       failures.push({
