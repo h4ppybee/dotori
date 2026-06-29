@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Dialog } from "@/components/ui/Dialog";
 import { TextInput } from "@/components/ui/TextInput";
 import { Chip } from "@/components/ui/Chip";
-import { formatKrw } from "@/lib/format";
+import { formatKrw, formatKoreanUnit } from "@/lib/format";
 import { SAVINGS_CATEGORIES } from "@/lib/savings/savings-service";
 import type { SavingsAccount, SavingsCategory, Currency } from "@/lib/types";
 
@@ -96,9 +96,15 @@ export function SavingsAccountDialog({
     });
   }
 
+  const amountNum = parseNum(amount);
   const usdPreview =
-    currency === "USD" && usdKrwRate != null && parseNum(amount) != null
-      ? `≈ ${formatKrw((parseNum(amount) as number) * usdKrwRate)}`
+    currency === "USD" && usdKrwRate != null && amountNum != null
+      ? `≈ ${formatKrw(amountNum * usdKrwRate)}`
+      : null;
+  // KRW 금액은 "70만원" 같이 읽기 쉬운 단위를 보조 표기한다.
+  const krwHint =
+    currency === "KRW" && amountNum != null && amountNum > 0
+      ? formatKoreanUnit(amountNum)
       : null;
 
   return (
@@ -144,6 +150,9 @@ export function SavingsAccountDialog({
           />
           {usdPreview && (
             <span className="text-[12px] font-normal text-muted tabular-nums pl-1">{usdPreview}</span>
+          )}
+          {krwHint && (
+            <span className="text-[12px] font-semibold text-primary pl-1">{krwHint}</span>
           )}
         </div>
 

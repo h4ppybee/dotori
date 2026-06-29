@@ -1,5 +1,24 @@
 import { describe, it, expect } from "vitest";
-import { formatKrw, formatUsd, formatPct, signClass } from "@/lib/format";
+import { formatKrw, formatUsd, formatPct, signClass, formatKoreanUnit } from "@/lib/format";
+
+describe("formatKoreanUnit", () => {
+  it("만 단위로 읽기 쉽게 표기한다", () => {
+    expect(formatKoreanUnit(700000)).toBe("70만원");
+    expect(formatKoreanUnit(8900000)).toBe("890만원");
+    expect(formatKoreanUnit(15400000)).toBe("1,540만원");
+  });
+
+  it("만 미만 잔액과 억 단위를 함께 표기한다", () => {
+    expect(formatKoreanUnit(177930)).toBe("17만 7,930원");
+    expect(formatKoreanUnit(265000000)).toBe("2억 6,500만원");
+    expect(formatKoreanUnit(368749202)).toBe("3억 6,874만 9,202원");
+  });
+
+  it("만 미만은 원만 표기하고, 0은 0원이다", () => {
+    expect(formatKoreanUnit(9202)).toBe("9,202원");
+    expect(formatKoreanUnit(0)).toBe("0원");
+  });
+});
 
 describe("formatKrw", () => {
   it("천 단위 콤마와 ₩ 기호를 붙인다", () => {
