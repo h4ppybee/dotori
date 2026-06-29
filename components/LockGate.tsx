@@ -9,7 +9,7 @@ import { getSettings, putSettings, listMembers, upsertMember } from "@/lib/db/lo
 import { loadSession } from "@/lib/db/session-vault";
 import { useAppStore } from "@/stores/app-store";
 import { useSessionGuard } from "@/lib/auth/use-session-guard";
-import { BottomTabBar } from "@/components/BottomTabBar";
+import { AppNav } from "@/components/nav/AppNav";
 
 type Mode = "loading" | "setup" | "unlock";
 
@@ -70,17 +70,10 @@ export function LockGate({ children }: LockGateProps) {
     };
   }, []);
 
-  // 이미 잠금 해제된 경우 children + 하단 탭바 렌더링.
-  // 콘텐츠가 탭바(56px) + safe-area 뒤로 가리지 않도록 하단 패딩을 둔다.
+  // 이미 잠금 해제된 경우 AppNav가 children과 하단 네비게이션을 조립한다.
+  // (동적 하단 패딩·상세화면 네비 숨김은 모두 AppNav가 책임진다.)
   if (!locked) {
-    return (
-      <>
-        <div style={{ paddingBottom: "calc(56px + env(safe-area-inset-bottom))" }}>
-          {children}
-        </div>
-        <BottomTabBar />
-      </>
-    );
+    return <AppNav>{children}</AppNav>;
   }
 
   if (mode === "loading") {

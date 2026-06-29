@@ -2,9 +2,11 @@ import { describe, it, expect, afterEach, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-// 잠금 해제 시 LockGate가 BottomTabBar를 렌더링하므로 usePathname을 모킹한다.
+// 잠금 해제 시 LockGate가 AppNav(하위에 MainTabBar/AssetSubTabBar)를 렌더링하므로
+// usePathname과 useRouter를 모킹한다.
 vi.mock("next/navigation", () => ({
   usePathname: () => "/",
+  useRouter: () => ({ push: () => {} }),
 }));
 
 import { LockGate } from "@/components/LockGate";
@@ -12,6 +14,7 @@ import { db } from "@/lib/db/schema";
 import { getSettings, putSettings, listMembers } from "@/lib/db/local-store";
 import { makeSalt, deriveKey, makeVerifier } from "@/lib/crypto/crypto";
 import { useAppStore } from "@/stores/app-store";
+import { useNavStore } from "@/stores/nav-store";
 
 afterEach(async () => {
   // DB 초기화
@@ -19,6 +22,7 @@ afterEach(async () => {
   await db.open();
   // 스토어 초기화
   useAppStore.setState({ locked: true, sessionKey: null, lastRefreshAt: null });
+  useNavStore.setState({ lastMainTabPath: "/" });
 });
 
 // 테스트 전체에서 실제 Web Crypto를 사용한다 (no mocks).
