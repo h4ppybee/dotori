@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // relay는 독립 패키지(자체 tsconfig/lint) — 루트 검사에서 제외
+    "relay/**",
   ]),
 ]);
 
