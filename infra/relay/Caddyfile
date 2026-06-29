@@ -1,0 +1,15 @@
+# dotori 토스 릴레이용 Caddy 설정
+#
+# Caddy는 아래 도메인에 대해 Let's Encrypt 인증서를 자동 발급/갱신하고(HTTPS 종단),
+# 평문 HTTP(8787)로 떠 있는 Fastify 릴레이로 요청을 전달한다.
+#
+# {$RELAY_DOMAIN} 은 systemd/환경변수로 주입한다. 도메인이 없으므로 nip.io를 쓴다:
+#   VM 공인 IP가 203.0.113.5 라면 → RELAY_DOMAIN=203.0.113.5.nip.io
+#   (nip.io는 <ip>.nip.io 를 그대로 그 IP로 resolve해 주는 무료 wildcard DNS)
+#
+# Let's Encrypt HTTP-01 챌린지를 위해 80/443 포트가 외부에 열려 있어야 한다.
+
+{$RELAY_DOMAIN} {
+	encode gzip
+	reverse_proxy localhost:8787
+}
