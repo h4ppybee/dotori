@@ -319,21 +319,21 @@ dotori는 토스(Toss)의 디자인 언어를 따른다 — 차분하고, 신뢰
 ### Surface
 - **Canvas** (`{colors.canvas}` — #FCFBF8): 기본 페이지 바닥(연크림).
 - **Surface Card** (`{colors.surface-card}` — #FFFFFF): 카드·리스트·내비 등 콘텐츠 표면.
-- **Surface Soft** (`{colors.surface-soft}` — #F9FAFB): 입력 필드 기본 배경.
-- **Surface Strong** (`{colors.surface-strong}` — #E5E8EB): 약한 버튼·칩 배경.
+- **Surface Soft** (`{colors.surface-soft}` — #FAF7F1): 입력 필드 기본 배경.
+- **Surface Strong** (`{colors.surface-strong}` — #EDE7DD): 약한 버튼·칩 배경.
 
-### Text (그레이스케일)
-- **Ink** (`{colors.ink}` — #191F28): 제목·금액·강조 본문.
-- **Body** (`{colors.body}` — #4E5968): 기본 본문.
-- **Body Soft** (`{colors.body-soft}` — #6B7684): 보조 본문.
-- **Muted** (`{colors.muted}` — #8B95A1): 캡션·서브텍스트·플레이스홀더.
-- **Muted Soft** (`{colors.muted-soft}` — #B0B8C1): 비활성 텍스트.
-- **Hairline** (`{colors.hairline}` — #E5E8EB): 1px 구분선.
+### Text (따뜻한 그레이스케일)
+- **Ink** (`{colors.ink}` — #2B2B2B): 제목·금액·강조 본문.
+- **Body** (`{colors.body}` — #4B4742): 기본 본문.
+- **Body Soft** (`{colors.body-soft}` — #6F6A63): 보조 본문.
+- **Muted** (`{colors.muted}` — #8C8C8C): 캡션·서브텍스트·플레이스홀더.
+- **Muted Soft** (`{colors.muted-soft}` — #B5AEA4): 비활성 텍스트.
+- **Hairline** (`{colors.hairline}` — #F1ECE4): 1px 구분선.
 
 ### 증시 시맨틱 (한국 관례)
 - **Up / 수익** (`{colors.semantic-up}` — #F04452): 상승·플러스 수익률. 텍스트 색 + `{colors.semantic-up-surface}`(#FDECEE) 배지.
 - **Down / 손실** (`{colors.semantic-down}` — #3182F6): 하락·마이너스 수익률. 텍스트 색 + `{colors.semantic-down-surface}`(#E8F3FF) 배지.
-- **Flat** (`{colors.semantic-flat}` — #8B95A1): 보합(0%).
+- **Flat** (`{colors.semantic-flat}` — #8C8C8C): 보합(0%).
 
 ## Typography
 
@@ -391,7 +391,7 @@ dotori는 토스(Toss)의 디자인 언어를 따른다 — 차분하고, 신뢰
 - **요약 히어로 카드** (`{component.summary-hero-card}`): 총평가금(`{typography.number-hero}`) + 총수익률 배지 + 일간손익. 화면 최상단 시선 집중점.
 - **보유 종목 리스트** (`{component.list-row}`): 종목명(`{component.holding-row-name}`) + 시장·증권사 서브(`{component.holding-row-sub}`), 우측에 평가금(`{component.amount-cell}`) + 수익률(`{component.return-up-cell}` / `{component.return-down-cell}`).
 - **수익률 배지** (`{component.return-badge-up}` / `down`): 연한 surface 배경 + 부호(+/-) + 색.
-- **도넛 차트** (`{component.donut-chart}`): 섹터/종목 비율. palette 순서대로 배정, track은 hairline.
+- **도넛 차트** (`{component.donut-chart}`): 섹터/종목/저축 카테고리 비율. palette 순서대로 배정, track은 hairline. 공용 표현형 프리미티브 `components/ui/DonutChart`로 구현하고(도넛+범례+가운데 라벨/값), 카드·헤딩은 소비자(`SectorDonut`/`SavingsDonut` 등)가 감싼다. 여러 자산 탭에서 재사용한다.
 - **버튼**: primary(갈색) / secondary(brown-surface) / weak(grey) / text. radius `{rounded.md}`, height 52px.
 - **스위치(Switch)**: on/off 환경설정 토글.
   - 크기: 트랙 48×28, 노브 22, radius `{rounded.full}`.
@@ -409,6 +409,7 @@ dotori는 토스(Toss)의 디자인 언어를 따른다 — 차분하고, 신뢰
 - **메인 탭 바** (`{component.main-tab-bar}`): 화면 하단 고정 5탭(홈·자산·계획·가계부·설정). 높이 56px, 배경 `{colors.surface-card}`, 상단 `border-hairline`. 활성 탭은 `text-ink`, 비활성은 `text-muted`. 하단은 `env(safe-area-inset-bottom)` 패딩으로 PWA 세이프에어리어를 확보한다. 활성 탭은 `aria-current="page"`. **자산(`/assets/*`) 진입 시에는 아래로 슬라이드되어 사라지고**(그 자리에 플로팅 중첩 바가 뜬다), 이탈하면 다시 올라온다. z-order `z-40`.
 - **자산 플로팅 중첩 바** (`{component.asset-sub-tab-bar}`): 자산(`/assets/*`) 진입 시 메인 바를 **대체하여** 떠오르는 둥근 플로팅 바(pill). 토스 증권의 nested 플로팅 UX와 동일하다. 구성은 ← + 자산 카테고리 서브탭(자산·주식·저축·연금·코인). 각 서브탭은 **아이콘(24px, 단순 stroke) + 라벨(`text-[11px]`)을 세로로 쌓아** 표시한다(라벨은 2글자로 통일 — "저축/현금성"은 "저축"으로 축약). 화면 좌우 16px 여백(`px-4`, `max-w-[480px]` 중앙)을 두고, 화면 하단에서 `bottom: calc(env(safe-area-inset-bottom) + 12px)`만큼 띄운다. 높이 56px, `{rounded.pill}`(100px), 배경 `{colors.surface-card}`, **테두리 없이 `{shadows.floating}`로 띄운다**(엣지투엣지 바가 아니라 떠 있는 알약 형태). ←는 좌측 원형 버튼(`{rounded.full}`, 탭 시 `surface-soft`). z-order는 메인 바 위(`z-50`)라 교차 슬라이드 시 위에 뜬다. 등장/사라짐 모션은 `{motion.nested-bar-slide}`. 활성 서브탭은 `font-bold text-ink`/`aria-current="page"`, 비활성은 `font-semibold text-muted`. ← 또는 카테고리 이탈로만 빠져나오며, 자산 안에서는 다른 메인 탭으로 직접 이동하지 않는다(메인 바가 숨겨져 있으므로).
 - **더미 페이지** (`{component.dummy-page}`): 아직 구현되지 않은 화면. 제목 `text-[22px] font-bold text-ink` + 보조문구 `text-muted`를 중앙 정렬로 표시한다.
+- **저축/현금성 화면**: 손익 개념이 없으므로 금액은 모두 `text-ink`로만 표기하고 증시 색(up/down)을 쓰지 않는다. 카테고리(예적금·입출금·채권·기타) 요약 카드는 `bg-primary-surface` 타일에 `text-primary` 단순 stroke 아이콘(`SavingsCategoryIcon`, 24px)을 얹는다. 관리 화면은 카테고리 필터 칩 + 접이식 섹션 + 행으로 구성하며, **편집 모드**에선 금액을 인라인 입력(`bg-surface-soft`, radius 10px, 우측 정렬 `tabular-nums`)으로 일괄 수정하고 X로 삭제한다(저장 시 일괄 반영). 통화는 모든 카테고리에서 KRW/USD 선택 가능(기본 KRW), USD는 금액 아래 `≈ ₩…` 환산을 `text-muted`로 보조 표기한다.
 
 ## UX Writing (토스 라이팅 규칙)
 

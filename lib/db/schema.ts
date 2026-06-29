@@ -1,6 +1,6 @@
 import Dexie, { type Table } from "dexie";
 import type {
-  Member, Connection, TokenCache, Holding, PriceCache, FxRate, DailySnapshot, Settings,
+  Member, Connection, TokenCache, Holding, PriceCache, FxRate, DailySnapshot, Settings, SavingsAccount,
 } from "@/lib/types";
 
 /**
@@ -24,6 +24,7 @@ export class DotoriDB extends Dexie {
   settings!: Table<Settings, string>;         // key: id
   sectorOverrides!: Table<{ symbol: string; sector: string }, string>; // key: symbol
   session!: Table<SessionRecord, string>;     // key: id ("current")
+  savings!: Table<SavingsAccount, string>;    // key: id (수동 저축/현금성 계좌)
 
   constructor() {
     super("dotori");
@@ -41,6 +42,10 @@ export class DotoriDB extends Dexie {
     // v2: 자동 잠금용 세션 볼트 테이블 추가 (lib/db/session-vault.ts)
     this.version(2).stores({
       session: "id",
+    });
+    // v3: 수동 저축/현금성 계좌 테이블 추가
+    this.version(3).stores({
+      savings: "id, category, sortOrder",
     });
   }
 }

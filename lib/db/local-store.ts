@@ -1,5 +1,7 @@
 import { db, priceKey } from "@/lib/db/schema";
-import type { Connection, Holding, PriceCache, FxRate, Settings, Member } from "@/lib/types";
+import type {
+  Connection, Holding, PriceCache, FxRate, Settings, Member, SavingsAccount, SavingsCategory,
+} from "@/lib/types";
 
 const now = () => Date.now();
 const uid = () => crypto.randomUUID();
@@ -70,4 +72,41 @@ export async function deleteSectorOverride(symbol: string): Promise<void> {
 export async function getSectorOverrides(): Promise<Record<string, string>> {
   const rows = await db.sectorOverrides.toArray();
   return Object.fromEntries(rows.map((r) => [r.symbol, r.sector]));
+}
+
+// ── 저축/현금성 계좌 (수동) ──────────────────────────────────────────────
+export const listSavings = () => db.savings.toArray();
+
+/** 새 계좌의 sortOrder는 해당 카테고리 최대값 + 1. */
+async function nextSavingsSortOrder(category: SavingsCategory): Promise<number> {
+  const rows = await db.savings.where("category").equals(category).toArray();
+  const max = rows.reduce((m, r) => Math.max(m, r.sortOrder), -1);
+  return max + 1;
+}
+
+export async function upsertSavings(
+  s: Partial<SavingsAccount> & { id?: string },
+): Promise<SavingsAccount> {
+  const existing = s.id ? await db.savings.get(s.id) : undefined;
+  const category = (s.category ?? existing?.category ?? "ETC") as SavingsCategory;
+  const sortOrder =
+    s.sortOrder ?? existing?.sortOrder ?? (await nextSavingsSortOrder(category));
+  const rec = {
+    ...existing,
+    ...s,
+    id: s.id ?? uid(),
+    category,
+    sortOrder,
+    updatedAt: now(),
+  } as SavingsAccount;
+  await db.savings.put(rec);
+  return rec;
+}
+
+export const deleteSavings = (id: string) => db.savings.delete(id);
+
+/** 편집 모드 일괄 저장. updatedAt를 갱신해 bulkPut. */
+export async function bulkUpdateSavings(rows: SavingsAccount[]): Promise<void> {
+  const stamped = rows.map((r) => ({ ...r, updatedAt: now() }));
+  await db.savings.bulkPut(stamped);
 }
