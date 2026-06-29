@@ -19,6 +19,7 @@ export function AssetSubTabBar({ visible }: { visible: boolean }) {
   return (
     <div
       aria-hidden={visible ? undefined : true}
+      inert={!visible ? true : undefined}
       className={`fixed inset-x-0 z-40 bg-surface-card border-t border-hairline transition-[transform,opacity] duration-[250ms] ease-out ${
         visible ? "translate-y-0 opacity-100" : "translate-y-full opacity-0 pointer-events-none"
       }`}

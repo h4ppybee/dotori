@@ -17,7 +17,7 @@ export function MainTabBar() {
 
   return (
     <nav
-      className="fixed bottom-0 inset-x-0 z-40 bg-surface-card border-t border-hairline"
+      className="fixed bottom-0 inset-x-0 z-[41] bg-surface-card border-t border-hairline"
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       aria-label="주요 화면"
     >

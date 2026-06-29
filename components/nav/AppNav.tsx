@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { MainTabBar } from "@/components/nav/MainTabBar";
 import { AssetSubTabBar } from "@/components/nav/AssetSubTabBar";
@@ -12,7 +13,7 @@ import { isAssetsRoute, isDetailRoute } from "@/lib/nav/active";
  * - 그 외: 메인 바만, 하단 패딩 56
  * AssetSubTabBar를 MainTabBar보다 먼저 렌더해 슬라이드다운 시 메인 바에 가려지게 한다.
  */
-export function AppNav({ children }: { children: React.ReactNode }) {
+export function AppNav({ children }: { children: ReactNode }) {
   const pathname = usePathname();
 
   if (isDetailRoute(pathname)) {
