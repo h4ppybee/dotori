@@ -51,6 +51,7 @@ function StocksIcon(active: boolean): ReactNode {
     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <path d="M4 13.5 9 9l3.5 3 6-6" stroke="currentColor" strokeWidth={w} strokeLinecap="round" strokeLinejoin="round" />
       <path d="M14.5 6h4v4" stroke="currentColor" strokeWidth={w} strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M4 19h16" stroke="currentColor" strokeWidth={w} strokeLinecap="round" />
     </svg>
   );
 }
@@ -73,6 +74,7 @@ export const mainTabs: TabDef[] = [
   { key: "settings", href: "/settings", label: "설정", icon: SettingsIcon },
 ];
 
+// 서브탭은 라벨 우선, 아이콘은 선택(일부만 아이콘을 둔다).
 export const assetSubTabs: TabDef[] = [
   { key: "overview", href: "/assets", label: "자산" },
   { key: "stocks", href: "/assets/stocks", label: "주식", icon: StocksIcon },

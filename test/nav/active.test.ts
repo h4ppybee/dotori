@@ -33,6 +33,9 @@ describe("resolveActiveSub — 가장 긴 prefix 우선", () => {
     expect(resolveActiveSub("/assets/pension")).toBe("pension");
     expect(resolveActiveSub("/assets/crypto")).toBe("crypto");
   });
+  it("하위 경로(/assets/stocks/AAPL)도 stocks로 잡힌다", () => {
+    expect(resolveActiveSub("/assets/stocks/AAPL")).toBe("stocks");
+  });
   it("자산 경로가 아니면 null", () => {
     expect(resolveActiveSub("/settings")).toBeNull();
   });
@@ -45,8 +48,12 @@ describe("경로 분류", () => {
     expect(isAssetsRoute("/plan")).toBe(false);
   });
   it("isDetailRoute(holdings)", () => {
+    expect(isDetailRoute("/holdings")).toBe(true);
     expect(isDetailRoute("/holdings/new")).toBe(true);
     expect(isDetailRoute("/holdings/abc")).toBe(true);
     expect(isDetailRoute("/assets/stocks")).toBe(false);
+  });
+  it("isDetailRoute는 세그먼트 경계를 지킨다(/holdingsX는 false)", () => {
+    expect(isDetailRoute("/holdingsX")).toBe(false);
   });
 });

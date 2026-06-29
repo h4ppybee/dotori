@@ -5,7 +5,7 @@ export function isAssetsRoute(pathname: string): boolean {
 }
 
 export function isDetailRoute(pathname: string): boolean {
-  return pathname.startsWith("/holdings");
+  return pathname === "/holdings" || pathname.startsWith("/holdings/");
 }
 
 /** 활성 메인 탭 key. 홈은 정확히 "/", 자산은 /assets 이하 전체, 나머지는 정확 매칭. */
@@ -33,16 +33,16 @@ export function resolveActiveSub(pathname: string): string | null {
   if (!isAssetsRoute(pathname)) {
     return null;
   }
-  if (pathname.startsWith("/assets/stocks")) {
+  if (pathname === "/assets/stocks" || pathname.startsWith("/assets/stocks/")) {
     return "stocks";
   }
-  if (pathname.startsWith("/assets/savings")) {
+  if (pathname === "/assets/savings" || pathname.startsWith("/assets/savings/")) {
     return "savings";
   }
-  if (pathname.startsWith("/assets/pension")) {
+  if (pathname === "/assets/pension" || pathname.startsWith("/assets/pension/")) {
     return "pension";
   }
-  if (pathname.startsWith("/assets/crypto")) {
+  if (pathname === "/assets/crypto" || pathname.startsWith("/assets/crypto/")) {
     return "crypto";
   }
   return "overview";
