@@ -16,7 +16,7 @@ import type { Holding } from "@/lib/types";
 afterEach(async () => {
   await db.delete();
   await db.open();
-  useAppStore.setState({ locked: true, sessionKey: null, lastRefreshAt: null });
+  useAppStore.setState({ locked: true, sessionKey: null, lastRefreshAt: null, amountsRevealed: false });
 });
 
 function makeHolding(over: Partial<Holding> = {}): Holding {

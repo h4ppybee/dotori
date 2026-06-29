@@ -24,6 +24,32 @@ export function formatUsd(n: number): string {
   return `$${formatted}.${decPart}`;
 }
 
+/**
+ * 금액을 한글 단위(억·만·원)로 읽기 쉽게 포맷한다. 입력 보조 표기용.
+ * 예) 700000 → "70만원", 177930 → "17만 7,930원", 265000000 → "2억 6,500만원"
+ */
+export function formatKoreanUnit(n: number): string {
+  const sign = n < 0 ? "-" : "";
+  const abs = Math.floor(Math.abs(n));
+  if (abs === 0) {
+    return "0원";
+  }
+  const eok = Math.floor(abs / 100_000_000);
+  const man = Math.floor((abs % 100_000_000) / 10_000);
+  const rest = abs % 10_000;
+  const parts: string[] = [];
+  if (eok > 0) {
+    parts.push(`${eok.toLocaleString("ko-KR")}억`);
+  }
+  if (man > 0) {
+    parts.push(`${man.toLocaleString("ko-KR")}만`);
+  }
+  if (rest > 0) {
+    parts.push(`${rest.toLocaleString("ko-KR")}`);
+  }
+  return `${sign}${parts.join(" ")}원`;
+}
+
 /** 수익률을 +/- 부호 포함 소수점 2자리로 포맷한다. */
 export function formatPct(n: number): string {
   const sign = n < 0 ? "" : "+";

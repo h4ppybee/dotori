@@ -60,6 +60,24 @@ export interface DailySnapshot {
   byHoldingJson: string;
 }
 
+export type SavingsCategory = "DEPOSIT" | "CHECKING" | "BOND" | "ETC";
+// 예적금 / 입출금(파킹) / 채권 / 기타
+
+export interface SavingsAccount {
+  id: string;
+  category: SavingsCategory;
+  name: string;            // 내용(계좌명) — 예: "뚜니 청년도약"
+  bank?: string;           // 은행 — 예: "우리"
+  amount: number;          // 총 금액 (currency 기준 통화)
+  currency?: Currency;     // 통화. undefined === "KRW"(기본). 모든 카테고리에서 KRW/USD 선택 가능
+  interestRate?: number;   // 이율 (%) — DEPOSIT/CHECKING/BOND
+  maturityDate?: string;   // 만기 "YYYY-MM-DD" — DEPOSIT/BOND
+  monthlyDeposit?: number; // 월 불입액 (KRW) — DEPOSIT
+  note?: string;           // 비고
+  sortOrder: number;       // 카테고리 내 표시 순서
+  updatedAt: number;
+}
+
 export interface Settings {
   id: "app";
   kdfSalt: string;

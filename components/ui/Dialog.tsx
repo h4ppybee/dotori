@@ -41,7 +41,13 @@ export function Dialog({
       }
     };
     document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
+    // 열려 있는 동안 배경(body) 스크롤을 잠근다.
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", handler);
+      document.body.style.overflow = prevOverflow;
+    };
   }, [open, onClose]);
 
   if (!open) {
@@ -50,7 +56,7 @@ export function Dialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center px-4"
+      className="fixed inset-0 z-[60] flex items-center justify-center px-4 py-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="dialog-title"
@@ -62,22 +68,22 @@ export function Dialog({
         aria-hidden="true"
       />
 
-      {/* 카드 */}
-      <div className="relative z-10 w-full max-w-[360px] bg-surface-card rounded-[28px] p-6 shadow-floating">
+      {/* 카드 — 화면보다 길면 내부만 스크롤되고 제목·버튼은 고정 */}
+      <div className="relative z-10 flex max-h-[calc(100dvh-32px)] w-full max-w-[360px] flex-col bg-surface-card rounded-[28px] shadow-floating">
         <h2
           id="dialog-title"
-          className="text-[19px] font-bold leading-[1.4] tracking-[-0.2px] text-ink mb-3"
+          className="shrink-0 px-6 pt-6 pb-3 text-[19px] font-bold leading-[1.4] tracking-[-0.2px] text-ink"
         >
           {title}
         </h2>
 
         {children != null && (
-          <div className="text-[15px] font-normal leading-[1.5] text-body mb-6">
+          <div className="min-h-0 flex-1 overflow-y-auto px-6 text-[15px] font-normal leading-[1.5] text-body">
             {children}
           </div>
         )}
 
-        <div className="flex gap-2 mt-6">
+        <div className="flex shrink-0 gap-2 px-6 pb-6 pt-4">
           <Button variant="weak" onClick={onClose} className="flex-1">
             닫기
           </Button>
