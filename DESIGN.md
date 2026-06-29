@@ -395,6 +395,11 @@ dotori는 토스(Toss)의 디자인 언어를 따른다 — 차분하고, 신뢰
   - 색: ON `{colors.primary}`(#A87342), OFF `{colors.surface-strong}`(#EDE7DD). 노브는 `{colors.surface-card}`(흰색) + soft shadow.
   - 접근성: `role="switch"` + `aria-checked`, disabled 시 opacity 40%.
   - 용도: 설정 화면의 on/off 환경설정 토글.
+- **프라이버시 금액 마스킹(PrivacyAmount)**: "금액 숨기기"가 켜진 동안 금액을 가리는 패턴.
+  - 가려진 금액은 `filter: blur(7px)`(`blur-[7px]`) + `select-none` + 포인터 커서로 표시한다.
+  - 탭/클릭하면 선명해진다. 노출 상태는 비영속이라 화면 재진입(리마운트) 시 다시 마스킹된다.
+  - 접근성: 가려진 상태는 `aria-label`을 가진 button으로 감싼다.
+  - 한계: DOM에 실제 값이 그대로 남으므로 "어깨너머 시선 차단" 용도이며 완전한 비밀 보장은 아니다.
 - **입력 필드** (`{component.text-input}`): 연한 배경, focus 시 갈색 1.5px 테두리.
 - **다이얼로그** (`{component.dialog}`): radius `{rounded.xxl}`, 왼쪽 버튼은 항상 "닫기"(아래 UX Writing).
 
