@@ -1,0 +1,223 @@
+# 저축/현금성 페이지 설계
+
+작성일: 2026-06-29
+상태: 승인 대기 (사용자 리뷰 전)
+
+## 목적
+
+dotori 자산 탭의 **저축/현금성** 화면을 구현한다. 현재 `/assets/savings`는 더미 페이지다.
+주식 페이지와 유사한 구성(요약 히어로 + 도넛)을 가지되, 저축은 **금액 수정이 잦으므로**
+한 화면에서 금액을 일괄 인라인 수정하기 좋은 관리 UI를 제공한다. 예적금·파킹·채권에는
+이율·만기·월 불입액 같은 상세 컬럼을 노출한다.
+
+토스인베스트 자산 관리 화면의 3단계 흐름(개요 → 관리 리스트 → 편집)을 참고한다.
+
+## 확정된 결정 (브레인스토밍)
+
+- **데이터 출처/저장**: 완전 수동·로컬. 토스 연동 없음. 보유종목처럼 평문 저장(민감정보 암호화 대상 아님).
+- **카테고리**: 고정 4종 — 예적금 / 입출금 / 채권 / 기타.
+- **편집 범위**: 금액 중심 일괄 인라인 수정 + 항목 추가/삭제. 이율·만기·은행 등 상세는 단건 항목을 탭해 편집.
+- **화면 구조**: 개요 페이지 + 별도 관리 페이지 분리(목업 3단계 흐름).
+- **요약 지표**: 총액 + 카테고리 비율 강조(손익 개념 없음).
+- **상세 컬럼 노출**: 카테고리별 선택 노출(해당 없는 필드는 입력칸 자체를 숨김).
+- **도넛**: 공용 `DonutChart` 프리미티브로 추출해 `SectorDonut`/`SavingsDonut`이 공유. 다른 탭에서도 재사용 예정.
+
+## 데이터 모델
+
+스키마 v3로 `savings` 테이블을 추가한다(`lib/db/schema.ts`).
+
+```ts
+// lib/types.ts
+export type SavingsCategory = "DEPOSIT" | "CHECKING" | "BOND" | "ETC";
+// 예적금 / 입출금(파킹) / 채권 / 기타
+
+export interface SavingsAccount {
+  id: string;
+  category: SavingsCategory;
+  name: string;            // 내용(계좌명) — 예: "뚜니 청년도약"
+  bank?: string;           // 은행 — 예: "우리"
+  amount: number;          // 총 금액 (KRW)
+  interestRate?: number;   // 이율 (%) — DEPOSIT/CHECKING/BOND
+  maturityDate?: string;   // 만기 "YYYY-MM-DD" — DEPOSIT/BOND
+  monthlyDeposit?: number; // 월 불입액 (KRW) — DEPOSIT
+  note?: string;           // 비고
+  sortOrder: number;       // 카테고리 내 표시 순서
+  updatedAt: number;
+}
+```
+
+Dexie 스키마:
+
+```ts
+// version(3)
+savings: "id, category, sortOrder",
+```
+
+### 카테고리별 노출 필드
+
+| 카테고리 | 이율 | 만기 | 월 불입액 |
+|---|---|---|---|
+| 예적금(DEPOSIT) | O | O | O |
+| 입출금(CHECKING) | O | - | - |
+| 채권(BOND) | O | O | - |
+| 기타(ETC) | - | - | - |
+
+해당 없는 필드는 편집 다이얼로그에서 입력칸 자체를 렌더링하지 않는다.
+
+통화는 KRW 고정(시트의 미국 국채/발행어음도 원화 환산 금액). USD 환산 입력은 범위에서 제외(YAGNI).
+
+## 순수 계산 (`lib/savings/savings-service.ts`)
+
+DB·비동기·`Date` 없이 입력만으로 `SavingsVM`을 산출한다(`lib/portfolio/portfolio-service` 패턴 동일, 테스트 대상).
+
+```ts
+export const SAVINGS_CATEGORIES: { key: SavingsCategory; label: string }[] = [
+  { key: "DEPOSIT", label: "예적금" },
+  { key: "CHECKING", label: "입출금" },
+  { key: "BOND", label: "채권" },
+  { key: "ETC", label: "기타" },
+];
+
+export interface SavingsCategorySummary {
+  category: SavingsCategory;
+  label: string;
+  amountKrw: number;
+  pct: number;        // 0~100, 전체 대비 비율
+  count: number;
+}
+
+export interface SavingsGroup {
+  category: SavingsCategory;
+  label: string;
+  amountKrw: number;
+  accounts: SavingsAccount[]; // sortOrder 정렬
+}
+
+export interface SavingsVM {
+  totalKrw: number;
+  monthlyDepositTotal: number;
+  byCategory: SavingsCategorySummary[]; // 금액 0 카테고리 제외(도넛/요약), 정렬은 SAVINGS_CATEGORIES 순
+  groups: SavingsGroup[];               // 관리 화면용, 빈 카테고리 제외
+  count: number;
+}
+
+export function buildSavingsVM(accounts: SavingsAccount[]): SavingsVM;
+```
+
+- 비율은 `totalKrw === 0`일 때 0으로 처리(0 나눗셈 방지).
+- 정렬: 카테고리는 `SAVINGS_CATEGORIES` 고정 순서, 카테고리 내부는 `sortOrder` 오름차순.
+
+## DB CRUD (`lib/db/local-store.ts`)
+
+```ts
+export const listSavings = () => db.savings.toArray();
+export async function upsertSavings(s: Partial<SavingsAccount> & { id?: string }): Promise<SavingsAccount>;
+export const deleteSavings = (id: string) => db.savings.delete(id);
+export async function bulkUpdateSavings(rows: SavingsAccount[]): Promise<void>; // 편집 모드 일괄 저장(bulkPut)
+```
+
+새 계좌의 `sortOrder`는 해당 카테고리 최대값 + 1.
+
+## 쿼리 (`lib/query/use-savings.ts`)
+
+`@tanstack/react-query` 사용(포트폴리오 패턴과 일치).
+
+- `useSavings()` — queryKey `["savings"]`, `buildSavingsVM(await listSavings())` 반환.
+- mutation 헬퍼는 호출부에서 `queryClient.invalidateQueries({ queryKey: ["savings"] })`로 갱신.
+
+## 컴포넌트
+
+### 공용 추출: `components/ui/DonutChart.tsx`
+
+`SectorDonut`의 SVG 기하/팔레트 로직을 표현형 프리미티브로 분리한다.
+
+```ts
+interface DonutSegment { label: string; value: number; pct: number; }
+interface DonutChartProps {
+  segments: DonutSegment[];
+  centerLabel?: string;   // 예: "총평가금" / "총 자산 비중"
+  centerValue?: string;   // 포맷된 금액 문자열
+  size?: number;          // 기본 160
+  ariaLabel: string;
+  renderLegendValue?: (seg, color) => ReactNode; // 범례 우측(금액/비율) 커스터마이즈
+}
+```
+
+- 팔레트·track·세그먼트 갭·MIN_ARC 상수는 DESIGN.md `donut-chart` 토큰을 그대로 사용.
+- `SectorDonut`은 이 프리미티브를 쓰도록 리팩터(주식 페이지 시각·동작 무변경 — 기존 테스트로 회귀 확인).
+- `SavingsDonut`은 `SavingsVM.byCategory`를 세그먼트로 매핑.
+
+### `components/savings/SavingsSummaryHero.tsx`
+
+요약 히어로 카드. "저축/현금성 자산" 라벨 + 총액(`number-hero`) + "총 N개 계좌" 보조.
+손익 없음 → up/down 색 미사용, 금액은 `text-ink`. `PrivacyAmount`로 총액 마스킹.
+
+### `components/savings/SavingsDonut.tsx`
+
+`DonutChart` 래퍼. 카테고리 비중 도넛 + 범례(비율 + 금액). 가운데 총액.
+빈 상태(총액 0)에서는 렌더하지 않음.
+
+### `components/savings/SavingsCategoryCards.tsx`
+
+카테고리 요약 카드 4개(아이콘 + 이름 + 합계). 탭하면 관리 화면을 해당 카테고리 필터로 연다
+(`/assets/savings/manage?cat=DEPOSIT`). 금액 0 카테고리도 표시하되 회색 처리.
+
+### `components/savings/SavingsAccountDialog.tsx`
+
+단건 추가/편집 다이얼로그(`components/ui/Dialog` 사용). 필드: 카테고리(칩 선택) · 이름 · 은행 ·
+금액 · (카테고리별) 이율 · 만기 · 월 불입액 · 비고. 좌측 버튼은 "닫기"(DESIGN.md 규칙),
+우측 "저장하기". 삭제는 편집 다이얼로그 하단의 텍스트 버튼 또는 편집 모드 X로 처리.
+
+### `components/savings/SavingsManageList.tsx`
+
+관리 화면 본문. 카테고리 필터 칩(전체/예적금/입출금/채권/기타) + 카테고리별 접이식 섹션
+(소계 표시) + 계좌 행.
+
+- **보기 모드**: 행 = `이름 / 은행 · 연 X% · 만기 / 금액 >`. 행 탭 → `SavingsAccountDialog`(편집).
+- **편집 모드**: 각 행의 금액이 인라인 입력으로 전환 + 우측 X(삭제). 섹션 하단 "+ 항목 추가"
+  → 새 항목은 `SavingsAccountDialog`로 추가(카테고리 프리셋). 헤더는 취소/저장으로 전환,
+  저장 시 변경분 `bulkUpdateSavings`로 일괄 반영. 취소 시 폐기.
+
+만기 표시는 텍스트만(D-day 리마인더는 범위 외, 후속).
+
+## 라우트
+
+- `app/assets/savings/page.tsx` — 개요(더미 대체). 빈 상태: "아직 저축 계좌가 없어요. 직접 추가해 보세요." + "추가하기" CTA.
+  데이터 있으면 Hero + SavingsDonut + SavingsCategoryCards + 하단 CTA(+ 추가 / 관리).
+- `app/assets/savings/manage/page.tsx` — 관리. 헤더(총액 + 계좌 수 + 편집 토글) + SavingsManageList.
+  카테고리 필터 초기값은 `?cat=` 쿼리에서 읽음(`useSearchParams`).
+
+모두 `"use client"`. IndexedDB는 SSR 접근 금지.
+
+## 디자인 토큰 (DESIGN.md 준수)
+
+- 색·타이포·간격·radius·shadow는 DESIGN.md 토큰만 사용. 임의 값 신설 금지.
+- 도넛 팔레트 = `donut-chart.palette`.
+- 금액은 `number-hero`/`number-lg`/`number-md` + tabular-nums. 손익색(up/down) 미사용.
+- 버튼 primary(갈색)/secondary(brown-surface), 입력은 `text-input`, 칩은 `chip`/`chip-selected`.
+- UX 라이팅: 해요체·능동·긍정. 다이얼로그 좌측 버튼 "닫기". 빈 상태/저장 카피 토스 톤.
+- `PrivacyAmount`로 총액·카테고리·행 금액 마스킹(설정 금액 숨기기 연동).
+
+## 테스트
+
+- `test/savings/savings-service.test.ts` — `buildSavingsVM`: 합계, 카테고리 비율(0 나눗셈 포함),
+  월 불입액 합계, 정렬, 빈 입력, 빈 카테고리 제외.
+- `test/savings/savings-store.test.ts`(또는 통합) — `fake-indexeddb`로 CRUD + 편집 일괄 저장 1 케이스.
+- `DonutChart` 추출 후 기존 `SectorDonut` 관련 테스트 회귀 통과.
+
+## 범위 밖 (YAGNI)
+
+- 토스 API 연동, USD 환산 입력.
+- 만기 D-day 알림/리마인더.
+- 저축 일별 스냅샷/추이(손익 없음).
+- 계좌번호 표시(모델엔 두지 않음 — 필요 시 후속).
+
+## 영향 파일 요약
+
+신규: `lib/savings/savings-service.ts`, `lib/query/use-savings.ts`,
+`components/ui/DonutChart.tsx`, `components/savings/*`(Hero/Donut/CategoryCards/Dialog/ManageList),
+`app/assets/savings/manage/page.tsx`, `test/savings/*`.
+
+수정: `lib/types.ts`, `lib/db/schema.ts`(v3), `lib/db/local-store.ts`,
+`components/portfolio/SectorDonut.tsx`(DonutChart 사용), `app/assets/savings/page.tsx`,
+필요 시 `DESIGN.md`(DonutChart 프리미티브 규격 추가).
