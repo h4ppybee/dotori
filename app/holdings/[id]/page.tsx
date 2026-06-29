@@ -157,7 +157,7 @@ export default function HoldingDetailPage({
     try {
       await deleteHolding(id);
       await queryClient.invalidateQueries({ queryKey: ["portfolio"] });
-      router.push("/");
+      router.push("/assets/stocks");
     } finally {
       setDeleting(false);
     }
@@ -190,7 +190,7 @@ export default function HoldingDetailPage({
               종목을 찾을 수 없어요.
             </p>
             <Link
-              href="/"
+              href="/assets/stocks"
               className="text-[15px] font-semibold text-primary underline underline-offset-2"
             >
               포트폴리오로 돌아가기

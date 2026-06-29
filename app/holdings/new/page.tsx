@@ -18,7 +18,7 @@ export default function NewHoldingPage() {
     } catch {
       // 갱신 실패 무시 — 로컬 데이터는 이미 저장됨
     }
-    router.push("/");
+    router.push("/assets/stocks");
   }
 
   return (
