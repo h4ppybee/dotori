@@ -119,6 +119,11 @@ interface PrivacyAmountProps {
 `SummaryHero`는 props 변경 없이 자체적으로 `usePrivacyAmounts`를 통해 동작하므로
 `app/page.tsx` 호출부는 바꾸지 않는다.
 
+> 참고: `components/ui/AmountText.tsx`에 `size="hero"` 변형이 이미 동일한 타이포
+> (`text-[36px] font-bold leading-[1.2] tracking-[-0.5px]`)를 제공한다. 현재 `SummaryHero`는
+> raw `<span>`을 쓰므로 위 예시는 현 코드와 일관되지만, 구현 시 `PrivacyAmount`가
+> `AmountText`와 조합되도록 하여 타이포 문자열 중복을 피할지 판단한다.
+
 ### 설정 화면: "프라이버시" 섹션 신설
 
 `app/settings/page.tsx`에 새 `PrivacySection` Card를 추가한다. 배치는 섹션 목록 안에 둔다
