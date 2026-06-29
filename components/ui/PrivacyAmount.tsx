@@ -27,7 +27,7 @@ export function PrivacyAmount({ children, revealLabel = "금액 보기" }: Priva
       type="button"
       aria-label={revealLabel}
       onClick={() => setRevealed(true)}
-      className="inline-flex cursor-pointer select-none blur-[7px]"
+      className="inline-flex cursor-pointer select-none blur-[14px]"
     >
       {children}
     </button>

@@ -48,12 +48,16 @@ export function SummaryHero({ vm }: SummaryHeroProps) {
       </div>
 
       <div className="flex items-center gap-2 flex-wrap">
-        <ReturnBadge value={vm.returnPct} />
-        <span
-          className={`text-[15px] font-semibold leading-[1.4] tabular-nums ${signTextClass(vm.totalPnlKrw)}`}
-        >
-          {signedKrw(vm.totalPnlKrw)}
-        </span>
+        <PrivacyAmount revealLabel="총수익 보기">
+          <span className="flex items-center gap-2">
+            <ReturnBadge value={vm.returnPct} />
+            <span
+              className={`text-[15px] font-semibold leading-[1.4] tabular-nums ${signTextClass(vm.totalPnlKrw)}`}
+            >
+              {signedKrw(vm.totalPnlKrw)}
+            </span>
+          </span>
+        </PrivacyAmount>
         <span className="text-[13px] font-normal leading-[1.45] text-muted">
           총수익
         </span>
