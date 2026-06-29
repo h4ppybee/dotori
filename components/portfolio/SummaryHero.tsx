@@ -1,5 +1,6 @@
 import { Card } from "@/components/ui/Card";
 import { ReturnBadge } from "@/components/ui/ReturnBadge";
+import { PrivacyAmount } from "@/components/ui/PrivacyAmount";
 import { formatKrw, signClass } from "@/lib/format";
 import type { PortfolioVM } from "@/lib/portfolio/portfolio-service";
 
@@ -39,9 +40,11 @@ export function SummaryHero({ vm }: SummaryHeroProps) {
         <span className="text-[13px] font-normal leading-[1.45] text-muted">
           총평가금
         </span>
-        <span className="text-[36px] font-bold leading-[1.2] tracking-[-0.5px] tabular-nums text-ink">
-          {formatKrw(vm.totalValueKrw)}
-        </span>
+        <PrivacyAmount revealLabel="총평가금 보기">
+          <span className="text-[36px] font-bold leading-[1.2] tracking-[-0.5px] tabular-nums text-ink">
+            {formatKrw(vm.totalValueKrw)}
+          </span>
+        </PrivacyAmount>
       </div>
 
       <div className="flex items-center gap-2 flex-wrap">

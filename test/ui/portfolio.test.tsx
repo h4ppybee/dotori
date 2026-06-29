@@ -1,12 +1,22 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { SummaryHero } from "@/components/portfolio/SummaryHero";
 import { SectorDonut } from "@/components/portfolio/SectorDonut";
 import { HoldingWeightBars } from "@/components/portfolio/HoldingWeightBars";
 import { HoldingsTable } from "@/components/portfolio/HoldingsTable";
 import { RefreshBar } from "@/components/portfolio/RefreshBar";
+import { renderWithQuery } from "@/test/utils/query";
+import { useAppStore } from "@/stores/app-store";
+import { db } from "@/lib/db/schema";
 import type { PortfolioVM, PortfolioRow } from "@/lib/portfolio/portfolio-service";
 import type { Holding } from "@/lib/types";
+
+// SummaryHero가 react-query 훅(usePrivacyAmounts)을 쓰므로 DB·store를 초기화한다.
+afterEach(async () => {
+  await db.delete();
+  await db.open();
+  useAppStore.setState({ locked: true, sessionKey: null, lastRefreshAt: null });
+});
 
 function makeHolding(over: Partial<Holding> = {}): Holding {
   return {
@@ -53,26 +63,32 @@ function makeVm(over: Partial<PortfolioVM> = {}): PortfolioVM {
 
 describe("SummaryHero", () => {
   it("총평가금을 포맷해 보여준다", () => {
-    render(<SummaryHero vm={makeVm()} />);
+    renderWithQuery(<SummaryHero vm={makeVm()} />);
     expect(screen.getByText("₩800,000")).toBeInTheDocument();
   });
 
   it("수익(양수)일 때 총손익에 up(빨강) 클래스를 적용한다", () => {
-    render(<SummaryHero vm={makeVm({ totalPnlKrw: 100000 })} />);
+    renderWithQuery(<SummaryHero vm={makeVm({ totalPnlKrw: 100000 })} />);
     const pnl = screen.getByText("+₩100,000");
     expect(pnl).toHaveClass("text-up");
   });
 
   it("손실(음수)일 때 총손익에 down(파랑) 클래스를 적용한다", () => {
-    render(<SummaryHero vm={makeVm({ totalPnlKrw: -50000 })} />);
+    renderWithQuery(<SummaryHero vm={makeVm({ totalPnlKrw: -50000 })} />);
     const pnl = screen.getByText("-₩50,000");
     expect(pnl).toHaveClass("text-down");
   });
 
   it("일간손익 값이 있어도 오늘 손익은 노출하지 않는다", () => {
-    render(<SummaryHero vm={makeVm({ totalDailyPnlKrw: 12000 })} />);
+    renderWithQuery(<SummaryHero vm={makeVm({ totalDailyPnlKrw: 12000 })} />);
     expect(screen.queryByText("오늘")).not.toBeInTheDocument();
     expect(screen.queryByText("+₩12,000")).not.toBeInTheDocument();
+  });
+
+  it("프라이버시 미설정이면 총평가금이 그대로 보인다", async () => {
+    useAppStore.setState({ locked: false });
+    renderWithQuery(<SummaryHero vm={makeVm({ totalValueKrw: 1234000 })} />);
+    expect(await screen.findByText("₩1,234,000")).toBeInTheDocument();
   });
 });
 
