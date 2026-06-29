@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { SummaryHero } from "@/components/portfolio/SummaryHero";
 import { SectorDonut } from "@/components/portfolio/SectorDonut";
 import { HoldingWeightBars } from "@/components/portfolio/HoldingWeightBars";
@@ -8,6 +8,7 @@ import { RefreshBar } from "@/components/portfolio/RefreshBar";
 import { renderWithQuery } from "@/test/utils/query";
 import { useAppStore } from "@/stores/app-store";
 import { db } from "@/lib/db/schema";
+import { putSettings } from "@/lib/db/local-store";
 import type { PortfolioVM, PortfolioRow } from "@/lib/portfolio/portfolio-service";
 import type { Holding } from "@/lib/types";
 
@@ -89,6 +90,20 @@ describe("SummaryHero", () => {
     useAppStore.setState({ locked: false });
     renderWithQuery(<SummaryHero vm={makeVm({ totalValueKrw: 1234000 })} />);
     expect(await screen.findByText("₩1,234,000")).toBeInTheDocument();
+  });
+
+  it("프라이버시 ON이면 총평가금이 초기엔 가려지고 탭하면 보인다", async () => {
+    await putSettings({ id: "app", kdfSalt: "s", verifier: "v", schemaVersion: 1, privacyAmounts: true });
+    useAppStore.setState({ locked: false });
+    renderWithQuery(<SummaryHero vm={makeVm({ totalValueKrw: 1234000 })} />);
+
+    // 초기엔 노출용 버튼(가려진 상태)으로 렌더된다
+    const revealBtn = await screen.findByRole("button", { name: "총평가금 보기" });
+    fireEvent.click(revealBtn);
+
+    // 탭하면 선명해지고 버튼이 사라진다
+    expect(screen.queryByRole("button", { name: "총평가금 보기" })).toBeNull();
+    expect(screen.getByText("₩1,234,000")).toBeInTheDocument();
   });
 });
 
