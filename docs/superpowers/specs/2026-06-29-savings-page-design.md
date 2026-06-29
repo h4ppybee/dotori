@@ -212,6 +212,12 @@ interface DonutChartProps {
 - 저축 일별 스냅샷/추이(손익 없음).
 - 계좌번호 표시(모델엔 두지 않음 — 필요 시 후속).
 
+## 구현 순서/참고 (스펙 리뷰 반영)
+
+- `DonutChart` 추출을 **첫 작업**으로 두고, 저축 컴포넌트 착수 전에 기존 `SectorDonut` 테스트를 회귀 게이트로 통과시킨다(두 도넛이 이 프리미티브에 의존).
+- 카드 외곽(헤딩 "섹터 비중" / "총 자산 비중")은 `DonutChart` 밖, 각 소비자(`SectorDonut`/`SavingsDonut`)에 둔다. `DonutChart`는 도넛+범례+가운데 텍스트만 담당(`centerLabel`/`centerValue` props).
+- 저축 금액 포맷은 새 포매터를 만들지 말고 기존 `lib/format`의 `formatKrw` 등을 재사용한다.
+
 ## 영향 파일 요약
 
 신규: `lib/savings/savings-service.ts`, `lib/query/use-savings.ts`,
