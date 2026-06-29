@@ -20,6 +20,7 @@ dotori 자산 탭의 **저축/현금성** 화면을 구현한다. 현재 `/asset
 - **화면 구조**: 개요 페이지 + 별도 관리 페이지 분리(목업 3단계 흐름).
 - **요약 지표**: 총액 + 카테고리 비율 강조(손익 개념 없음).
 - **상세 컬럼 노출**: 카테고리별 선택 노출(해당 없는 필드는 입력칸 자체를 숨김).
+- **외화(달러)**: **모든 카테고리**에서 통화 선택(KRW/USD)을 지원하고 기본값은 KRW. USD 항목은 자기 통화로 금액을 보관하고, 합계·도넛·요약은 저장된 USDKRW 환율로 원화 환산한다. (카테고리별 허용 제한은 두지 않는다 — 단순화.)
 - **도넛**: 공용 `DonutChart` 프리미티브로 추출해 `SectorDonut`/`SavingsDonut`이 공유. 다른 탭에서도 재사용 예정.
 
 ## 데이터 모델
@@ -36,7 +37,8 @@ export interface SavingsAccount {
   category: SavingsCategory;
   name: string;            // 내용(계좌명) — 예: "뚜니 청년도약"
   bank?: string;           // 은행 — 예: "우리"
-  amount: number;          // 총 금액 (KRW)
+  amount: number;          // 총 금액 (currency 기준 통화)
+  currency?: Currency;     // 통화. undefined === "KRW" (기본). 모든 카테고리에서 KRW/USD 선택 가능
   interestRate?: number;   // 이율 (%) — DEPOSIT/CHECKING/BOND
   maturityDate?: string;   // 만기 "YYYY-MM-DD" — DEPOSIT/BOND
   monthlyDeposit?: number; // 월 불입액 (KRW) — DEPOSIT
@@ -45,6 +47,10 @@ export interface SavingsAccount {
   updatedAt: number;
 }
 ```
+
+`Currency`는 기존 `lib/types.ts`의 `"KRW" | "USD"`를 재사용한다. `currency`가
+`undefined`면 KRW로 간주한다(기본값·마이그레이션 안전). 통화는 모든 카테고리에서 KRW/USD 중
+자유롭게 선택할 수 있다(카테고리별 허용 제한 없음).
 
 Dexie 스키마:
 
@@ -55,16 +61,17 @@ savings: "id, category, sortOrder",
 
 ### 카테고리별 노출 필드
 
-| 카테고리 | 이율 | 만기 | 월 불입액 |
-|---|---|---|---|
-| 예적금(DEPOSIT) | O | O | O |
-| 입출금(CHECKING) | O | - | - |
-| 채권(BOND) | O | O | - |
-| 기타(ETC) | - | - | - |
+| 카테고리 | 이율 | 만기 | 월 불입액 | 통화 선택 |
+|---|---|---|---|---|
+| 예적금(DEPOSIT) | O | O | O | O (KRW/USD) |
+| 입출금(CHECKING) | O | - | - | O (KRW/USD) |
+| 채권(BOND) | O | O | - | O (KRW/USD) |
+| 기타(ETC) | - | - | - | O (KRW/USD) |
 
 해당 없는 필드는 편집 다이얼로그에서 입력칸 자체를 렌더링하지 않는다.
 
-통화는 KRW 고정(시트의 미국 국채/발행어음도 원화 환산 금액). USD 환산 입력은 범위에서 제외(YAGNI).
+통화는 모든 카테고리에서 KRW/USD 중 선택할 수 있고 기본값은 KRW. USD 금액은 자기 통화로
+저장하고 합계/도넛에서 USDKRW 환율로 원화 환산한다(아래 순수 계산).
 
 ## 순수 계산 (`lib/savings/savings-service.ts`)
 
@@ -86,11 +93,15 @@ export interface SavingsCategorySummary {
   count: number;
 }
 
+export interface SavingsAccountView extends SavingsAccount {
+  amountKrw: number;   // currency==="USD"면 amount * usdKrwRate, 아니면 amount
+}
+
 export interface SavingsGroup {
   category: SavingsCategory;
   label: string;
   amountKrw: number;
-  accounts: SavingsAccount[]; // sortOrder 정렬
+  accounts: SavingsAccountView[]; // sortOrder 정렬, 원화 환산값 포함
 }
 
 export interface SavingsVM {
@@ -99,11 +110,14 @@ export interface SavingsVM {
   byCategory: SavingsCategorySummary[]; // 금액 0 카테고리 제외(도넛/요약), 정렬은 SAVINGS_CATEGORIES 순
   groups: SavingsGroup[];               // 관리 화면용, 빈 카테고리 제외
   count: number;
+  usdKrwRate?: number;                  // 환산에 쓴 환율(표시·디버그용). 없으면 USD 환산 불가 상태
 }
 
-export function buildSavingsVM(accounts: SavingsAccount[]): SavingsVM;
+export function buildSavingsVM(accounts: SavingsAccount[], usdKrwRate?: number): SavingsVM;
 ```
 
+- **원화 환산**: `currency === "USD"`인 항목의 `amountKrw = amount * usdKrwRate`. KRW 항목은 `amount` 그대로.
+- **환율 부재 처리**: `usdKrwRate`가 없을 때 USD 항목의 `amountKrw`는 0으로 집계하되, 원본 `amount`(달러)는 행에 그대로 표시한다. 페이지는 환율 미보유 시 안내 문구를 노출할 수 있다("환율을 불러오면 원화 합계에 반영돼요"). KRW만 있는 경우엔 영향 없음.
 - 비율은 `totalKrw === 0`일 때 0으로 처리(0 나눗셈 방지).
 - 정렬: 카테고리는 `SAVINGS_CATEGORIES` 고정 순서, 카테고리 내부는 `sortOrder` 오름차순.
 
@@ -122,7 +136,8 @@ export async function bulkUpdateSavings(rows: SavingsAccount[]): Promise<void>; 
 
 `@tanstack/react-query` 사용(포트폴리오 패턴과 일치).
 
-- `useSavings()` — queryKey `["savings"]`, `buildSavingsVM(await listSavings())` 반환.
+- `useSavings()` — queryKey `["savings"]`. 내부에서 `listSavings()`와 `getFx()`를 함께 읽어
+  `buildSavingsVM(accounts, fx?.rate)`를 반환한다(USD 환산용 환율 주입).
 - mutation 헬퍼는 호출부에서 `queryClient.invalidateQueries({ queryKey: ["savings"] })`로 갱신.
 
 ## 컴포넌트
@@ -165,16 +180,22 @@ interface DonutChartProps {
 ### `components/savings/SavingsAccountDialog.tsx`
 
 단건 추가/편집 다이얼로그(`components/ui/Dialog` 사용). 필드: 카테고리(칩 선택) · 이름 · 은행 ·
-금액 · (카테고리별) 이율 · 만기 · 월 불입액 · 비고. 좌측 버튼은 "닫기"(DESIGN.md 규칙),
-우측 "저장하기". 삭제는 편집 다이얼로그 하단의 텍스트 버튼 또는 편집 모드 X로 처리.
+금액 · 통화(KRW/USD 칩, 기본 KRW) · (카테고리별) 이율 · 만기 · 월 불입액 · 비고.
+좌측 버튼은 "닫기"(DESIGN.md 규칙), 우측 "저장하기". 삭제는 편집 다이얼로그 하단의 텍스트
+버튼 또는 편집 모드 X로 처리.
+
+- 통화 칩은 모든 카테고리에서 노출(기본 KRW).
+- 금액 입력 라벨·기호는 선택 통화에 맞춰 `₩`/`$`로 전환. USD 선택 시 보조 텍스트로 원화 환산값(`≈ ₩…`)을 환율 기준으로 미리보기(환율 없으면 생략).
 
 ### `components/savings/SavingsManageList.tsx`
 
 관리 화면 본문. 카테고리 필터 칩(전체/예적금/입출금/채권/기타) + 카테고리별 접이식 섹션
 (소계 표시) + 계좌 행.
 
-- **보기 모드**: 행 = `이름 / 은행 · 연 X% · 만기 / 금액 >`. 행 탭 → `SavingsAccountDialog`(편집).
-- **편집 모드**: 각 행의 금액이 인라인 입력으로 전환 + 우측 X(삭제). 섹션 하단 "+ 항목 추가"
+- **보기 모드**: 행 = `이름 / 은행 · 연 X% · 만기 / 금액 >`. USD 항목은 금액을 `$X,XXX.XX`로,
+  바로 아래 보조에 원화 환산 `≈ ₩…`(환율 있을 때)을 표시. 행 탭 → `SavingsAccountDialog`(편집).
+- **편집 모드**: 각 행의 금액이 인라인 입력으로 전환 + 우측 X(삭제). USD 항목의 입력 기호는 `$`,
+  통화 자체 변경은 단건 다이얼로그에서 처리(인라인은 금액만). 섹션 하단 "+ 항목 추가"
   → 새 항목은 `SavingsAccountDialog`로 추가(카테고리 프리셋). 헤더는 취소/저장으로 전환,
   저장 시 변경분 `bulkUpdateSavings`로 일괄 반영. 취소 시 폐기.
 
@@ -194,6 +215,7 @@ interface DonutChartProps {
 - 색·타이포·간격·radius·shadow는 DESIGN.md 토큰만 사용. 임의 값 신설 금지.
 - 도넛 팔레트 = `donut-chart.palette`.
 - 금액은 `number-hero`/`number-lg`/`number-md` + tabular-nums. 손익색(up/down) 미사용.
+- 통화 포맷은 `lib/format`의 `formatKrw`/`formatUsd` 재사용(신규 포매터 금지). USD 원화 환산 표기는 `≈ ₩…`.
 - 버튼 primary(갈색)/secondary(brown-surface), 입력은 `text-input`, 칩은 `chip`/`chip-selected`.
 - UX 라이팅: 해요체·능동·긍정. 다이얼로그 좌측 버튼 "닫기". 빈 상태/저장 카피 토스 톤.
 - `PrivacyAmount`로 총액·카테고리·행 금액 마스킹(설정 금액 숨기기 연동).
@@ -201,13 +223,13 @@ interface DonutChartProps {
 ## 테스트
 
 - `test/savings/savings-service.test.ts` — `buildSavingsVM`: 합계, 카테고리 비율(0 나눗셈 포함),
-  월 불입액 합계, 정렬, 빈 입력, 빈 카테고리 제외.
+  월 불입액 합계, 정렬, 빈 입력, 빈 카테고리 제외, **USD 원화 환산(환율 있음/없음 케이스)**.
 - `test/savings/savings-store.test.ts`(또는 통합) — `fake-indexeddb`로 CRUD + 편집 일괄 저장 1 케이스.
 - `DonutChart` 추출 후 기존 `SectorDonut` 관련 테스트 회귀 통과.
 
 ## 범위 밖 (YAGNI)
 
-- 토스 API 연동, USD 환산 입력.
+- 토스 API 연동. (USD 입력은 지원하되 환율은 기존 저장된 USDKRW만 사용 — 저축 전용 환율 갱신은 하지 않음.)
 - 만기 D-day 알림/리마인더.
 - 저축 일별 스냅샷/추이(손익 없음).
 - 계좌번호 표시(모델엔 두지 않음 — 필요 시 후속).
