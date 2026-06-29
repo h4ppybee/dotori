@@ -7,13 +7,63 @@ import { Button } from "@/components/ui/Button";
 import { TextInput } from "@/components/ui/TextInput";
 import { Banner } from "@/components/ui/Banner";
 import { Dialog } from "@/components/ui/Dialog";
+import { Switch } from "@/components/ui/Switch";
 import { ConnectionForm } from "@/components/settings/ConnectionForm";
 import { BackupPanel } from "@/components/settings/BackupPanel";
 import { getSettings, putSettings } from "@/lib/db/local-store";
+import { useSettings } from "@/lib/query/use-settings";
+import { useQueryClient } from "@tanstack/react-query";
 import { deriveKey, makeSalt, makeVerifier, checkVerifier } from "@/lib/crypto/crypto";
 import { rekeyVault } from "@/lib/crypto/rekey";
 import { db } from "@/lib/db/schema";
 import { useAppStore } from "@/stores/app-store";
+
+// ─── 프라이버시 섹션 ──────────────────────────────────────────────────────────
+
+function PrivacySection() {
+  const { data: settings } = useSettings();
+  const queryClient = useQueryClient();
+  const [saving, setSaving] = useState(false);
+
+  const enabled = settings?.privacyAmounts ?? false;
+
+  async function handleToggle(next: boolean) {
+    if (!settings || saving) {
+      return;
+    }
+    setSaving(true);
+    try {
+      await putSettings({ ...settings, privacyAmounts: next });
+      await queryClient.invalidateQueries({ queryKey: ["settings"] });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Card>
+      <h2 className="text-[19px] font-bold leading-[1.4] tracking-[-0.2px] text-ink mb-2">
+        프라이버시
+      </h2>
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex flex-col">
+          <span className="text-[15px] font-medium leading-[1.5] text-ink">
+            금액 숨기기
+          </span>
+          <span className="text-[13px] text-body-soft leading-[1.5]">
+            켜면 총평가금이 가려지고, 탭하면 보여요.
+          </span>
+        </div>
+        <Switch
+          checked={enabled}
+          onChange={handleToggle}
+          label="금액 숨기기"
+          disabled={!settings || saving}
+        />
+      </div>
+    </Card>
+  );
+}
 
 // ─── 비밀번호 변경 섹션 ──────────────────────────────────────────────────
 
@@ -215,6 +265,7 @@ export default function SettingsPage() {
         <div className="flex flex-col gap-4">
           <ConnectionForm />
           <BackupPanel />
+          <PrivacySection />
           <PassphraseSection />
           <DeleteAllSection />
         </div>

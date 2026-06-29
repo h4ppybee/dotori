@@ -1,8 +1,10 @@
 import { describe, it, expect, afterEach, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { useAppStore } from "@/stores/app-store";
 import { db } from "@/lib/db/schema";
 import { deriveKey, makeSalt } from "@/lib/crypto/crypto";
+import { QueryWrapper } from "@/test/utils/query";
+import { putSettings, getSettings } from "@/lib/db/local-store";
 
 // next/navigation mock
 vi.mock("next/navigation", () => ({
@@ -25,7 +27,11 @@ afterEach(async () => {
 // 설정 페이지는 "use client" 클라이언트 컴포넌트이므로 동적 import 없이 직접 사용
 async function renderSettings() {
   const { default: SettingsPage } = await import("@/app/settings/page");
-  return render(<SettingsPage />);
+  return render(
+    <QueryWrapper>
+      <SettingsPage />
+    </QueryWrapper>,
+  );
 }
 
 describe("SettingsPage — 섹션 제목 렌더링", () => {
@@ -78,5 +84,24 @@ describe("SettingsPage — 섹션 제목 렌더링", () => {
   it("모든 데이터 삭제 버튼이 렌더링된다", async () => {
     await renderSettings();
     expect(screen.getByRole("button", { name: "모든 데이터 삭제" })).toBeInTheDocument();
+  });
+
+  it("프라이버시 섹션이 렌더링된다", async () => {
+    await renderSettings();
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { level: 2, name: "프라이버시" })).toBeInTheDocument();
+    });
+  });
+
+  it("금액 숨기기 토글을 켜면 Settings에 저장된다", async () => {
+    await putSettings({ id: "app", kdfSalt: "s", verifier: "v", schemaVersion: 1 });
+    await renderSettings();
+    const sw = await screen.findByRole("switch", { name: "금액 숨기기" });
+    await waitFor(() => expect(sw).not.toBeDisabled());
+    fireEvent.click(sw);
+    await waitFor(async () => {
+      const s = await getSettings();
+      expect(s?.privacyAmounts).toBe(true);
+    });
   });
 });
