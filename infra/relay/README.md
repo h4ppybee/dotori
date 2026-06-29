@@ -38,16 +38,20 @@ ssh ubuntu@RELAY_IP
 sudo apt update && sudo apt -y upgrade
 ```
 
-## 4. OS 방화벽 (ufw) — 클라우드 방화벽과 이중 방어
+## 4. OS 방화벽 (iptables) — 클라우드 방화벽과 이중 방어
+> Oracle Ubuntu 이미지는 기본 iptables 규칙(22만 허용, 나머지 REJECT)과 `InstanceServices`
+> 체인(메타데이터/부팅 필수)을 갖고 있다. `ufw`를 켜면 충돌하기 쉬우므로 **기존 iptables에
+> 80/443만 추가**하고 영속화한다.
 ```bash
-sudo ufw default deny incoming
-sudo ufw default allow outgoing
-sudo ufw allow 22/tcp
-sudo ufw allow 80/tcp
-sudo ufw allow 443/tcp
-sudo ufw enable
-sudo ufw status verbose
+# 기존 REJECT 규칙(보통 5번) 앞에 80/443 NEW 허용 삽입
+sudo iptables -I INPUT 5 -p tcp -m state --state NEW --dport 80 -j ACCEPT
+sudo iptables -I INPUT 6 -p tcp -m state --state NEW --dport 443 -j ACCEPT
+# 영속화 (재부팅 복원)
+sudo DEBIAN_FRONTEND=noninteractive apt-get install -y iptables-persistent
+sudo netfilter-persistent save
+sudo iptables -L INPUT -n --line-numbers   # 22/80/443 ACCEPT 후 REJECT 인지 확인
 ```
+> 클라우드 쪽(VCN Security List)에도 80·443 인그레스를 반드시 추가해야 외부에서 닿는다(§2).
 
 ## 5. SSH 하드닝
 `/etc/ssh/sshd_config`(또는 `/etc/ssh/sshd_config.d/99-hardening.conf`):
@@ -145,9 +149,18 @@ curl -s https://RELAY_IP.nip.io/healthz   # {"ok":true}
 ---
 
 ## 업데이트 배포
+private 레포라 git pull 대신 **로컬에서 rsync로 전송**한다. 배포 스크립트로 한 번에:
 ```bash
-cd /opt/dotori && sudo -u relay git pull
-cd relay && sudo -u relay npm ci
+# 로컬(레포 루트)에서
+RELAY_VM=ubuntu@<공인IP> infra/relay/deploy.sh
+```
+스크립트가 소스 rsync → `/opt/dotori` 갱신 → `npm ci` → `systemctl restart dotori-relay` → healthz 확인까지 수행한다. 수동으로 하려면:
+```bash
+# 로컬
+rsync -az --exclude node_modules --exclude .git --exclude '.env*' ./ ubuntu@<IP>:/tmp/dotori-src/
+# VM
+sudo cp -a /tmp/dotori-src/. /opt/dotori/ && sudo chown -R relay:relay /opt/dotori
+sudo -u relay bash -c 'cd /opt/dotori/relay && npm ci'
 sudo systemctl restart dotori-relay
 ```
 
@@ -155,4 +168,4 @@ sudo systemctl restart dotori-relay
 - **헬스 200, 동기화 401(토스)**: 토스 IP 등록 누락 또는 IP 변경 → `curl ifconfig.me`로 VM 아웃바운드 IP 확인 후 재등록.
 - **브라우저 CORS 에러**: `ALLOWED_ORIGINS`/프리뷰 정규식과 실제 도메인 불일치.
 - **릴레이 401**: `NEXT_PUBLIC_RELAY_SECRET`(Vercel) ≠ `RELAY_SECRET`(VM).
-- **TLS 발급 실패**: 80 포트 차단(클라우드/ufw) 또는 nip.io 도메인 오타.
+- **TLS 발급 실패**: 80 포트 차단(클라우드 Security List 또는 OS iptables) 또는 nip.io 도메인 오타.
