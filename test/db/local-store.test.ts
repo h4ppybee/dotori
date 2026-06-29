@@ -52,4 +52,16 @@ describe("local-store", () => {
     await store.putSectorOverride("005930", "전자");
     expect(await store.getSectorOverrides()).toEqual({ "005930": "전자" });
   });
+
+  it("privacyAmounts 플래그를 저장하고 다시 읽는다", async () => {
+    await store.putSettings({
+      id: "app",
+      kdfSalt: "s",
+      verifier: "v",
+      schemaVersion: 1,
+      privacyAmounts: true,
+    });
+    const got = await store.getSettings();
+    expect(got?.privacyAmounts).toBe(true);
+  });
 });

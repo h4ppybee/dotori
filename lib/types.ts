@@ -66,4 +66,5 @@ export interface Settings {
   verifier: string;
   lastSnapshotDate?: string;
   schemaVersion: number;
+  privacyAmounts?: boolean;   // 금액 숨기기 ON/OFF. undefined === OFF
 }
