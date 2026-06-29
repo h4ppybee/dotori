@@ -9,15 +9,21 @@ import { useNavStore } from "@/stores/nav-store";
 /**
  * 메인 하단 탭(5개). 고정 하단, surface-card 배경, active=ink/inactive=muted.
  * 자산 탭 진입 시 직전 메인 탭 경로를 저장해 중첩 바 ← 복귀에 사용한다.
+ * visible=false(자산 경로)면 아래로 슬라이드되어 사라지고, 그 자리에 플로팅 중첩 바가 뜬다.
+ * 항상 마운트하고 transform/opacity만 토글해 양방향 애니메이션을 만든다(inert로 차단).
  */
-export function MainTabBar() {
+export function MainTabBar({ visible = true }: { visible?: boolean }) {
   const pathname = usePathname();
   const activeKey = resolveActiveMain(pathname);
   const setLastMainTab = useNavStore((s) => s.setLastMainTab);
 
   return (
     <nav
-      className="fixed bottom-0 inset-x-0 z-[41] bg-surface-card border-t border-hairline"
+      aria-hidden={visible ? undefined : true}
+      inert={!visible ? true : undefined}
+      className={`fixed bottom-0 inset-x-0 z-40 bg-surface-card border-t border-hairline transition-[transform,opacity] duration-[250ms] ease-out ${
+        visible ? "translate-y-0 opacity-100" : "translate-y-full opacity-0 pointer-events-none"
+      }`}
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       aria-label="주요 화면"
     >
