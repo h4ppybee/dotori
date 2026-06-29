@@ -5,9 +5,11 @@ interface AppState {
   locked: boolean;
   sessionKey: CryptoKey | null;
   lastRefreshAt: number | null;
+  amountsRevealed: boolean; // 금액 숨기기 ON일 때 한 번 탭하면 전체 노출(세션 한정)
   unlock: (key: CryptoKey) => void;
   lock: () => void;
   setLastRefresh: (t: number) => void;
+  revealAmounts: () => void;
 }
 
 /**
@@ -21,14 +23,17 @@ export const useAppStore = create<AppState>((set) => ({
   locked: true,
   sessionKey: null,
   lastRefreshAt: null,
+  amountsRevealed: false,
   unlock: (key) => {
     set({ locked: false, sessionKey: key });
     // 자동 잠금용 세션 영속화 (fire-and-forget). 잠금 해제 = 활동으로 보고 만료시각을 연장한다.
     void saveSession(key, Date.now() + AUTO_LOCK_MS);
   },
   lock: () => {
-    set({ locked: true, sessionKey: null });
+    // 잠그면 금액 노출도 다시 가린다.
+    set({ locked: true, sessionKey: null, amountsRevealed: false });
     void clearSession();
   },
   setLastRefresh: (t) => set({ lastRefreshAt: t }),
+  revealAmounts: () => set({ amountsRevealed: true }),
 }));
