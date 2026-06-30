@@ -1,6 +1,9 @@
 import { db } from "@/lib/db/schema";
 
-export const SCHEMA_VERSION = 1;
+// v2: 저축(savings)·연금(pension)·코인(coin) 테이블 포함.
+// 구버전(v1) 백업도 계속 불러올 수 있다(없는 테이블은 빈 배열로 처리).
+export const SCHEMA_VERSION = 2;
+const SUPPORTED_VERSIONS = new Set([1, 2]);
 
 interface BackupData {
   members: unknown[];
@@ -11,6 +14,9 @@ interface BackupData {
   snapshots: unknown[];
   settings: unknown[];
   sectorOverrides: unknown[];
+  savings: unknown[];
+  pension: unknown[];
+  coin: unknown[];
 }
 
 interface BackupPayload {
@@ -31,6 +37,9 @@ export async function exportAll(): Promise<string> {
     snapshots,
     settings,
     sectorOverrides,
+    savings,
+    pension,
+    coin,
   ] = await Promise.all([
     db.members.toArray(),
     db.connections.toArray(),
@@ -40,6 +49,9 @@ export async function exportAll(): Promise<string> {
     db.snapshots.toArray(),
     db.settings.toArray(),
     db.sectorOverrides.toArray(),
+    db.savings.toArray(),
+    db.pension.toArray(),
+    db.coin.toArray(),
   ]);
 
   const payload: BackupPayload = {
@@ -54,6 +66,9 @@ export async function exportAll(): Promise<string> {
       snapshots,
       settings,
       sectorOverrides,
+      savings,
+      pension,
+      coin,
     },
   };
 
@@ -68,7 +83,7 @@ export async function importAll(json: string, opts: { mode: "merge" | "overwrite
     throw new Error("백업 파일을 읽을 수 없어요");
   }
 
-  if (parsed.schemaVersion !== SCHEMA_VERSION) {
+  if (!SUPPORTED_VERSIONS.has(parsed.schemaVersion)) {
     throw new Error("백업 버전이 호환되지 않아요");
   }
 
@@ -82,6 +97,9 @@ export async function importAll(json: string, opts: { mode: "merge" | "overwrite
   const snapshots = (data.snapshots ?? []) as Parameters<typeof db.snapshots.bulkPut>[0];
   const settings = (data.settings ?? []) as Parameters<typeof db.settings.bulkPut>[0];
   const sectorOverrides = (data.sectorOverrides ?? []) as Parameters<typeof db.sectorOverrides.bulkPut>[0];
+  const savings = (data.savings ?? []) as Parameters<typeof db.savings.bulkPut>[0];
+  const pension = (data.pension ?? []) as Parameters<typeof db.pension.bulkPut>[0];
+  const coin = (data.coin ?? []) as Parameters<typeof db.coin.bulkPut>[0];
 
   await db.transaction("rw", db.tables, async () => {
     if (opts.mode === "overwrite") {
@@ -95,5 +113,8 @@ export async function importAll(json: string, opts: { mode: "merge" | "overwrite
     await db.snapshots.bulkPut(snapshots);
     await db.settings.bulkPut(settings);
     await db.sectorOverrides.bulkPut(sectorOverrides);
+    await db.savings.bulkPut(savings);
+    await db.pension.bulkPut(pension);
+    await db.coin.bulkPut(coin);
   });
 }
