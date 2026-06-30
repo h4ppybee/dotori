@@ -28,6 +28,30 @@ describe("exportAll / importAll", () => {
     expect(settings?.kdfSalt).toBe("salt1");
   });
 
+  it("저축·연금·코인도 내보내고 덮어쓰기로 복원된다 (schemaVersion 2)", async () => {
+    await db.savings.put({ id: "s1", category: "DEPOSIT", name: "청약", amount: 1000, sortOrder: 0, updatedAt: 1 });
+    await db.pension.put({ id: "p1", category: "PERSONAL", name: "TIGER", symbol: "360750", quantity: 10, buyPrice: 100, currentPrice: 110, sortOrder: 0, updatedAt: 1 });
+    await db.coin.put({ id: "c1", name: "비트코인", quantity: 0.02, buyPrice: 100, currentPrice: 80, sortOrder: 0, updatedAt: 1 });
+
+    const json = await exportAll();
+    expect(JSON.parse(json).schemaVersion).toBe(2);
+
+    await db.delete();
+    await db.open();
+    await importAll(json, { mode: "overwrite" });
+
+    expect(await db.savings.count()).toBe(1);
+    expect((await db.pension.get("p1"))?.symbol).toBe("360750");
+    expect((await db.coin.get("c1"))?.currentPrice).toBe(80);
+  });
+
+  it("저축·연금·코인이 없는 구버전(v1) 백업도 오류 없이 불러온다", async () => {
+    const v1 = JSON.stringify({ schemaVersion: 1, exportedAt: Date.now(), data: { holdings: [] } });
+    await importAll(v1, { mode: "overwrite" });
+    expect(await db.savings.count()).toBe(0);
+    expect(await db.pension.count()).toBe(0);
+  });
+
   it("schemaVersion이 다르면 '백업 버전이 호환되지 않아요' 오류를 던진다", async () => {
     const bad = JSON.stringify({ schemaVersion: 999, exportedAt: Date.now(), data: {} });
     await expect(importAll(bad, { mode: "overwrite" })).rejects.toThrow("백업 버전이 호환되지 않아요");

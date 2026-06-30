@@ -14,6 +14,8 @@ import {
   putFx,
   getFx,
   getSectorOverrides,
+  listPension,
+  bulkUpdatePension,
 } from "@/lib/db/local-store";
 import { buildPortfolio, type PortfolioVM } from "@/lib/portfolio/portfolio-service";
 
@@ -252,4 +254,57 @@ export async function refreshAll(opts: {
     }),
     failures,
   };
+}
+
+/**
+ * 연금 현재가 갱신. symbol이 있는 연금 계좌의 현재가를 토스 시세(KRW)로 업데이트한다.
+ * KRX 상장 ETF/펀드는 보유 여부와 무관하게 심볼로 조회된다(검증 완료).
+ * 토스 연동이 없거나 symbol 가진 항목이 없으면 조용히 0건 반환.
+ */
+export async function refreshPensionPrices(opts: {
+  key: CryptoKey;
+}): Promise<{ updated: number; failures: RefreshFailure[] }> {
+  const failures: RefreshFailure[] = [];
+  const accounts = await listPension();
+  const withSymbol = accounts.filter((a) => a.symbol && a.symbol.trim());
+  if (withSymbol.length === 0) {
+    return { updated: 0, failures };
+  }
+
+  const connections = await listConnections();
+  const conn = connections.find(
+    (c) => c.type === "TOSS_API" && c.clientId && c.clientSecretEnc,
+  );
+  if (!conn) {
+    failures.push({ connectionId: "pension", label: "연금 시세", message: "토스 연동이 없어요." });
+    return { updated: 0, failures };
+  }
+
+  try {
+    const distinct = [...new Set(withSymbol.map((a) => a.symbol!.trim()))];
+    const symbols = distinct.map((s) => ({ symbol: s, currency: "KRW" }));
+    const pricesRes = await proxyPostWithTokenRetry<{
+      prices: { symbol: string; currency: "KRW" | "USD"; lastPrice: number }[];
+    }>(
+      "/prices",
+      (t) => ({ token: t, symbols }),
+      { id: conn.id, clientId: conn.clientId!, clientSecretEnc: conn.clientSecretEnc! },
+      opts.key,
+    );
+    const priceBySymbol = new Map(pricesRes.prices.map((p) => [p.symbol, p.lastPrice]));
+    const toUpdate = withSymbol
+      .filter((a) => priceBySymbol.has(a.symbol!.trim()))
+      .map((a) => ({ ...a, currentPrice: priceBySymbol.get(a.symbol!.trim())! }));
+    if (toUpdate.length > 0) {
+      await bulkUpdatePension(toUpdate);
+    }
+    return { updated: toUpdate.length, failures };
+  } catch (e) {
+    failures.push({
+      connectionId: "pension",
+      label: "연금 시세",
+      message: e instanceof Error ? e.message : String(e),
+    });
+    return { updated: 0, failures };
+  }
 }

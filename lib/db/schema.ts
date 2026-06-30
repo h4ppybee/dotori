@@ -1,6 +1,7 @@
 import Dexie, { type Table } from "dexie";
 import type {
   Member, Connection, TokenCache, Holding, PriceCache, FxRate, DailySnapshot, Settings, SavingsAccount,
+  PensionAccount, CoinHolding,
 } from "@/lib/types";
 
 /**
@@ -25,6 +26,8 @@ export class DotoriDB extends Dexie {
   sectorOverrides!: Table<{ symbol: string; sector: string }, string>; // key: symbol
   session!: Table<SessionRecord, string>;     // key: id ("current")
   savings!: Table<SavingsAccount, string>;    // key: id (수동 저축/현금성 계좌)
+  pension!: Table<PensionAccount, string>;    // key: id (수동 연금 계좌)
+  coin!: Table<CoinHolding, string>;          // key: id (수동 코인 보유)
 
   constructor() {
     super("dotori");
@@ -46,6 +49,11 @@ export class DotoriDB extends Dexie {
     // v3: 수동 저축/현금성 계좌 테이블 추가
     this.version(3).stores({
       savings: "id, category, sortOrder",
+    });
+    // v4: 수동 연금 계좌 + 코인 보유 테이블 추가
+    this.version(4).stores({
+      pension: "id, category, sortOrder",
+      coin: "id, sortOrder",
     });
   }
 }

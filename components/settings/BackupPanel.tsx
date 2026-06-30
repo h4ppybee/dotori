@@ -163,16 +163,13 @@ export function BackupPanel({ onImportSuccess }: { onImportSuccess?: () => void 
       {/* 병합/덮어쓰기 선택 다이얼로그 */}
       <Dialog
         open={dialogOpen}
-        title="불러오기 방식을 선택해 주세요"
+        title="어떻게 불러올까요?"
         onClose={handleDialogClose}
-        actionLabel={importMode === "overwrite" ? "덮어쓰기로 불러오기" : "병합해서 불러오기"}
+        actionLabel={importMode === "overwrite" ? "덮어쓰기" : "병합하기"}
         onAction={handleImportConfirm}
         actionVariant="primary"
       >
         <div className="flex flex-col gap-3">
-          <p className="text-[15px] text-body leading-[1.5]">
-            기존 데이터를 어떻게 처리할까요?
-          </p>
           <div className="flex flex-col gap-2">
             <label className="flex items-center gap-3 cursor-pointer">
               <input

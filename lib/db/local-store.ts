@@ -1,6 +1,7 @@
 import { db, priceKey } from "@/lib/db/schema";
 import type {
   Connection, Holding, PriceCache, FxRate, Settings, Member, SavingsAccount, SavingsCategory,
+  PensionAccount, PensionCategory, CoinHolding,
 } from "@/lib/types";
 
 const now = () => Date.now();
@@ -109,4 +110,62 @@ export const deleteSavings = (id: string) => db.savings.delete(id);
 export async function bulkUpdateSavings(rows: SavingsAccount[]): Promise<void> {
   const stamped = rows.map((r) => ({ ...r, updatedAt: now() }));
   await db.savings.bulkPut(stamped);
+}
+
+// ── 연금 계좌 (수동) ──────────────────────────────────────────────────────
+export const listPension = () => db.pension.toArray();
+
+async function nextPensionSortOrder(category: PensionCategory): Promise<number> {
+  const rows = await db.pension.where("category").equals(category).toArray();
+  const max = rows.reduce((m, r) => Math.max(m, r.sortOrder), -1);
+  return max + 1;
+}
+
+export async function upsertPension(
+  p: Partial<PensionAccount> & { id?: string },
+): Promise<PensionAccount> {
+  const existing = p.id ? await db.pension.get(p.id) : undefined;
+  const category = (p.category ?? existing?.category ?? "PERSONAL") as PensionCategory;
+  const sortOrder =
+    p.sortOrder ?? existing?.sortOrder ?? (await nextPensionSortOrder(category));
+  const rec = {
+    ...existing, ...p, id: p.id ?? uid(), category, sortOrder, updatedAt: now(),
+  } as PensionAccount;
+  await db.pension.put(rec);
+  return rec;
+}
+
+export const deletePension = (id: string) => db.pension.delete(id);
+
+export async function bulkUpdatePension(rows: PensionAccount[]): Promise<void> {
+  const stamped = rows.map((r) => ({ ...r, updatedAt: now() }));
+  await db.pension.bulkPut(stamped);
+}
+
+// ── 코인 보유 (수동) ──────────────────────────────────────────────────────
+export const listCoin = () => db.coin.toArray();
+
+async function nextCoinSortOrder(): Promise<number> {
+  const rows = await db.coin.toArray();
+  const max = rows.reduce((m, r) => Math.max(m, r.sortOrder), -1);
+  return max + 1;
+}
+
+export async function upsertCoin(
+  c: Partial<CoinHolding> & { id?: string },
+): Promise<CoinHolding> {
+  const existing = c.id ? await db.coin.get(c.id) : undefined;
+  const sortOrder = c.sortOrder ?? existing?.sortOrder ?? (await nextCoinSortOrder());
+  const rec = {
+    ...existing, ...c, id: c.id ?? uid(), sortOrder, updatedAt: now(),
+  } as CoinHolding;
+  await db.coin.put(rec);
+  return rec;
+}
+
+export const deleteCoin = (id: string) => db.coin.delete(id);
+
+export async function bulkUpdateCoin(rows: CoinHolding[]): Promise<void> {
+  const stamped = rows.map((r) => ({ ...r, updatedAt: now() }));
+  await db.coin.bulkPut(stamped);
 }
