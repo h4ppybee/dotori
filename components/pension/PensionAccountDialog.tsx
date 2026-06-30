@@ -35,6 +35,7 @@ export function PensionAccountDialog({
 }: PensionAccountDialogProps) {
   const [category, setCategory] = useState<PensionCategory>(initial?.category ?? presetCategory ?? "PERSONAL");
   const [name, setName] = useState(initial?.name ?? "");
+  const [symbol, setSymbol] = useState(initial?.symbol ?? "");
   const [company, setCompany] = useState(initial?.company ?? "");
   const [fundType, setFundType] = useState(initial?.fundType ?? "");
   const [quantity, setQuantity] = useState(initial?.quantity != null ? String(initial.quantity) : "");
@@ -68,6 +69,7 @@ export function PensionAccountDialog({
       id: initial?.id,
       category,
       name: name.trim(),
+      symbol: symbol.trim() || undefined,
       company: company.trim() || undefined,
       fundType: fundType.trim() || undefined,
       quantity: q,
@@ -98,6 +100,10 @@ export function PensionAccountDialog({
         </div>
 
         <TextInput label="종목" value={name} onChange={setName} placeholder="예: TIGER 미국S&P500" />
+        <div className="flex flex-col gap-1">
+          <TextInput label="종목코드" value={symbol} onChange={setSymbol} placeholder="예: 360750" />
+          <span className="text-[12px] font-normal text-muted pl-1">자산 탭에서 새로고침하면 토스 시세로 현재가가 자동 갱신돼요.</span>
+        </div>
         <TextInput label="회사명" value={company} onChange={setCompany} placeholder="예: 미래에셋" />
         <TextInput label="유형" value={fundType} onChange={setFundType} placeholder="예: ETF / 펀드 / 예적금" />
         <TextInput label="수량" value={quantity} onChange={setQuantity} inputMode="decimal" placeholder="0" />

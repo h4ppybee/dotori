@@ -86,6 +86,7 @@ export interface PensionAccount {
   id: string;
   category: PensionCategory;
   name: string;          // 종목 — 예: "TIGER 미국S&P500"
+  symbol?: string;       // KRX 종목코드 — 예: "360750". 토스 시세 자동 갱신에 사용
   company?: string;      // 회사명 — 예: "미래에셋"
   fundType?: string;     // 구분 — ETF/펀드/예적금 등
   quantity: number;      // 수량
