@@ -78,6 +78,37 @@ export interface SavingsAccount {
   updatedAt: number;
 }
 
+export type PensionCategory = "PERSONAL" | "RETIREMENT";
+// 개인연금 / 퇴직연금
+
+/** 연금 계좌(수동). 평가금/손익은 수량×단가로 파생한다(KRW 고정). */
+export interface PensionAccount {
+  id: string;
+  category: PensionCategory;
+  name: string;          // 종목 — 예: "TIGER 미국S&P500"
+  company?: string;      // 회사명 — 예: "미래에셋"
+  fundType?: string;     // 구분 — ETF/펀드/예적금 등
+  quantity: number;      // 수량
+  buyPrice: number;      // 매수가(단가) → cost = quantity * buyPrice
+  currentPrice: number;  // 현재가(주가) → value = quantity * currentPrice
+  note?: string;
+  sortOrder: number;
+  updatedAt: number;
+}
+
+/** 코인 보유(수동). 카테고리 없이 평탄. 평가금/손익은 수량×단가로 파생(KRW 고정). */
+export interface CoinHolding {
+  id: string;
+  name: string;          // 종목 — 예: "비트코인"
+  exchange?: string;     // 거래소 — 예: "업비트"
+  quantity: number;
+  buyPrice: number;
+  currentPrice: number;
+  note?: string;
+  sortOrder: number;
+  updatedAt: number;
+}
+
 export interface Settings {
   id: "app";
   kdfSalt: string;
