@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import Link from "next/link";
 import { Card } from "@/components/ui/Card";
 import { PrivacyAmount } from "@/components/ui/PrivacyAmount";
@@ -21,6 +22,9 @@ interface AssetRow {
   returnPct?: number; // 손익 개념 있는 자산만
 }
 
+// 마지막 갱신이 이 시간을 넘겼으면 자산 탭 진입 시 자동 전체 갱신(자동 잠금과 동일한 10분).
+const AUTO_REFRESH_MS = 10 * 60 * 1000;
+
 export default function AssetsOverviewPage() {
   const portfolio = usePortfolio();
   const savings = useSavings();
@@ -28,6 +32,22 @@ export default function AssetsOverviewPage() {
   const coin = useCoin();
   const refresh = useAssetsRefresh();
   const lastRefreshAt = useAppStore((s) => s.lastRefreshAt);
+  const sessionKey = useAppStore((s) => s.sessionKey);
+
+  // 자산 탭 진입(또는 잠금 해제) 시, 마지막 갱신에서 10분이 지났으면 자동으로 전체 갱신한다.
+  // 잠금 상태·이미 갱신 중·마지막 갱신 기록 없음(첫 방문)이면 건너뛴다.
+  const refreshMutate = refresh.mutate;
+  const isRefreshing = refresh.isPending;
+  useEffect(() => {
+    if (sessionKey == null || isRefreshing) {
+      return;
+    }
+    if (lastRefreshAt != null && Date.now() - lastRefreshAt > AUTO_REFRESH_MS) {
+      refreshMutate();
+    }
+    // 마운트/잠금 해제 시점에만 판단한다. lastRefreshAt는 그 시점 값으로 읽는다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionKey]);
 
   const stocksValue = portfolio.data?.totalValueKrw ?? 0;
   const savingsValue = savings.data?.totalKrw ?? 0;
