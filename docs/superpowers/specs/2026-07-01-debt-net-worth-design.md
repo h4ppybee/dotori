@@ -84,11 +84,17 @@ export interface LoanAccount {
 - DB·비동기·`Date` 없이 입력만으로 결과. 만기까지 남은 기간 등 Date 의존 표시는 컴포넌트에서 처리.
 - 테스트: `test/debt/debt-service.test.ts` (빈 목록·합산·정렬).
 
-### 5) 쿼리 훅 — `lib/query/use-debt.ts`
+### 5) DB 헬퍼 + 쿼리 훅
 
-`lib/query/use-savings.ts`를 미러링:
-- `useDebt()` — `debts` 조회 + `buildDebtVM`.
-- add / update / delete 뮤테이션(쿼리 무효화 포함).
+기존 컨벤션상 CRUD는 훅이 아니라 `lib/db/local-store.ts` 헬퍼를 경유한다(`use-savings`는
+`listSavings`/`upsertSavings`/`deleteSavings`를 호출). 동일 패턴을 따른다:
+
+- `lib/db/local-store.ts`: `listDebts` / `upsertDebt` / `deleteDebt` 추가(`db.debts` 접근은 여기서만).
+- `lib/query/use-debt.ts` — `lib/query/use-savings.ts`를 미러링:
+  - `useDebt()` — 헬퍼로 `debts` 조회 + `buildDebtVM`.
+  - add / update / delete 뮤테이션(헬퍼 호출 + 쿼리 무효화).
+  - 단, `buildDebtVM({ debts })`는 FX/`source` 인자가 없어 `buildSavingsVM(accounts, fx?.rate)`와
+    시그니처가 의도적으로 다름(KRW 고정·AUTO 없음).
 
 ### 6) 순자산 집계 — `app/assets/page.tsx`
 
@@ -116,7 +122,8 @@ export interface LoanAccount {
 | DB | `lib/db/schema.ts` | v6 + `debts` 스토어 |
 | 백업 | `lib/backup/backup.ts` | `debts` 포함, `SCHEMA_VERSION` bump |
 | 계산 | `lib/debt/debt-service.ts` | `buildDebtVM` (순수) |
-| 쿼리 | `lib/query/use-debt.ts` | 조회 + CRUD 뮤테이션 |
+| DB 헬퍼 | `lib/db/local-store.ts` | `listDebts`/`upsertDebt`/`deleteDebt` |
+| 쿼리 | `lib/query/use-debt.ts` | 조회 + CRUD 뮤테이션(헬퍼 경유) |
 | 집계 | `app/assets/page.tsx` | 순자산 계산·히어로 |
 | UI | `components/` (부채 섹션·폼 컴포넌트) | 목록·인라인 편집 |
 | 테스트 | `test/debt/debt-service.test.ts` 등 | 순수 계산·백업 커버리지 |
