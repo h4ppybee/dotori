@@ -35,7 +35,9 @@ async function proxyPost<T>(path: string, body: unknown): Promise<T> {
 export async function refreshUpbit(opts: { key: CryptoKey }): Promise<UpbitRefreshResult> {
   const failures: RefreshFailure[] = [];
   let updated = 0;
-  const conns = (await listConnections()).filter((c) => c.type === "UPBIT_API");
+  const conns = (await listConnections()).filter(
+    (c) => c.type === "UPBIT_API" && c.clientId && c.clientSecretEnc,
+  );
   if (conns.length === 0) {
     return { updated, failures };
   }

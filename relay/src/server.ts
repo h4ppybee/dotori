@@ -8,7 +8,13 @@ export async function buildApp(config: RelayConfig): Promise<FastifyInstance> {
     bodyLimit: config.bodyLimit,
     // 토큰·시크릿이 로그에 남지 않도록 마스킹
     logger: {
-      redact: ["req.headers.x-relay-secret", "req.body.clientSecret", "req.body.token"],
+      redact: [
+        "req.headers.x-relay-secret",
+        "req.body.clientSecret",
+        "req.body.token",
+        "req.body.secretKey",
+        "req.body.accessKey",
+      ],
     },
   });
   await registerSecurity(app, config);
