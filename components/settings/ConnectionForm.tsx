@@ -8,6 +8,7 @@ import { Dialog } from "@/components/ui/Dialog";
 import { Chip } from "@/components/ui/Chip";
 import { listConnections, upsertConnection, deleteConnection, listMembers, upsertMember } from "@/lib/db/local-store";
 import { encrypt } from "@/lib/crypto/crypto";
+import { relayIpForDisplay } from "@/lib/upbit/relay-endpoint";
 import { useAppStore } from "@/stores/app-store";
 import type { Connection, ConnectionType, Member } from "@/lib/types";
 
@@ -372,6 +373,17 @@ export function ConnectionForm() {
             masked
             placeholder={editing.id ? "변경하지 않으려면 비워두세요" : TYPE_COPY[editing.type].secretPlaceholder}
           />
+
+          {/* 업비트: 허용 IP 안내 (릴레이 고정 IP를 업비트 API 관리에 등록해야 조회 가능) */}
+          {editing.type === "UPBIT_API" && relayIpForDisplay() != null && (
+            <div className="rounded-[12px] px-4 py-3 bg-surface-soft">
+              <p className="text-[13px] leading-[1.5] text-body-soft">
+                업비트 API 관리 페이지의 <span className="font-semibold text-ink">허용 IP</span>에{" "}
+                <span className="font-semibold text-ink tabular-nums">{relayIpForDisplay()}</span> 를 등록해야
+                시세와 잔고를 불러올 수 있어요.
+              </p>
+            </div>
+          )}
 
           {error != null && (
             <p className="text-[13px] leading-[1.45]" style={{ color: "#F04452" }}>
