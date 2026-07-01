@@ -68,13 +68,13 @@ export interface SavingsAccount {
 
 ### Dexie 스키마 v5
 ```ts
-// v5: 코인/저축 AUTO 연동 필드 인덱스 추가
+// v5: 코인/저축 AUTO 연동 필드 인덱스 추가 (coin/savings 두 테이블만 재선언, 나머지는 상속)
 this.version(5).stores({
   coin: "id, sortOrder, connectionId, source",
   savings: "id, category, sortOrder, connectionId, source",
 });
 ```
-Dexie는 인덱스만 선언; 신규 속성 자체는 스키마 선언에 없어도 저장된다. `connectionId`·`source` 인덱스는 prune 쿼리를 위해 추가.
+Dexie는 인덱스만 선언; 신규 속성 자체는 스키마 선언에 없어도 저장된다. `connectionId`·`source` 인덱스는 prune 쿼리를 위해 추가. **v5는 `coin`·`savings`만 재선언하고 나머지 테이블은 v1~v4 정의를 그대로 상속**한다(다른 테이블을 다시 나열하지 않는다).
 
 ## 업비트 클라이언트 (`lib/upbit/`)
 
@@ -135,7 +135,7 @@ export function upbitEndpoint(path: string): { url: string; headers } {
 ## 동기화 (`lib/sync/`)
 
 ### `refreshUpbit({ key, now })` 신설
-`lib/sync/refresh.ts`(또는 `lib/sync/refresh-upbit.ts`)에 추가. `upbitEndpoint` 기반 `proxyPost` 헬퍼 사용(토스 `proxyPost`와 대칭, 토큰 재시도 로직은 불필요).
+**`lib/sync/refresh-upbit.ts` 신규 파일**에 둔다(기존 `refresh.ts`는 토스 토큰 로직과 결합돼 있고 `refreshUpbit`은 그 로직을 공유하지 않으므로 분리). `upbitEndpoint` 기반 `proxyPost` 헬퍼 사용(토스 `proxyPost`와 대칭, 토큰 재시도 로직은 불필요).
 
 흐름 (connection별 try/catch로 부분 실패 격리):
 1. `listConnections()`에서 `type === "UPBIT_API"` 필터.
@@ -162,7 +162,7 @@ export function upbitEndpoint(path: string): { url: string; headers } {
 - 기존 수동 CRUD(`upsertCoin`/`upsertSavings` 등)는 MANUAL 행만 다루도록 유지(AUTO 행은 UI 편집 잠금).
 
 ### React Query (`lib/query/use-assets-refresh.ts`)
-`useAssetsRefresh`의 `mutationFn`에 `refreshUpbit({ key })` 합류(주식 `refreshAll`·연금 `refreshPensionPrices`와 함께). `onSuccess`에서 `["portfolio"]`·`["pension"]`에 더해 `["coin"]`·`["savings"]` invalidate 추가. 실패는 기존 `failures` 집계에 병합.
+`useAssetsRefresh`의 `mutationFn`에 `refreshUpbit({ key })` 합류(주식 `refreshAll`·연금 `refreshPensionPrices`와 함께). 현재 훅은 순차 실행 구조이므로 **`refreshUpbit`도 뒤에 순차로 이어 붙이고**, 반환된 `failures`를 기존 `failures` 배열에 병합한다(부분 실패가 깔끔히 합쳐지도록). `onSuccess`에서 `["portfolio"]`·`["pension"]`에 더해 `["coin"]`·`["savings"]` invalidate 추가.
 
 ## UI
 
@@ -182,9 +182,10 @@ export function upbitEndpoint(path: string): { url: string; headers } {
 - AUTO 연동 배지·잠금 표기 규칙을 새로 추가한다면 DESIGN.md에 토큰/규칙을 함께 반영(기존 색·컴포넌트 재사용 우선, 신규 규칙 시 문서 동기화).
 
 ## 백업 (`lib/backup/backup.ts`)
-- `coin`·`savings`·`connections`는 이미 export/import 대상이라 **신규 필드는 자동 포함**된다(전체 객체 bulkPut).
-- 복원된 AUTO 행은 다음 새로고침 시 upsert/prune으로 최신화되므로 stale 위험 낮음. `importAll`의 누락 필드 기본값 처리(구버전 호환)만 점검.
-- `SCHEMA_VERSION`은 필드 추가만으로는 올릴 필요 없으나, 구버전(누락 `source`) 복원 시 `source` 기본값을 `"MANUAL"`로 채우는 보정 추가.
+- **export는 자동**: `coin`·`savings`·`connections`가 이미 export 대상이므로 신규 필드는 `toArray()` 전체 객체에 그대로 실려 나간다(추가 작업 없음).
+- **import backfill은 신규 코드**: 현재 `importAll`은 per-row 정규화 없이 raw `bulkPut`만 한다. 따라서 **v5 이전 백업**(`source` 누락)을 복원할 때 coin/savings 각 행의 `source`를 `"MANUAL"`로 채우는 backfill 로직을 **새로 추가**해야 한다("자동 포함"이 아님, 반드시 구현 대상에 포함).
+- `SCHEMA_VERSION`은 payload 형태가 안 바뀌므로 현행 `2` 유지 가능(backfill은 import 시 per-row 보정으로 처리). 올리지 않는다면 `SUPPORTED_VERSIONS`도 그대로 두되, backfill이 `{1, 2}` 모두에 적용되게 한다.
+- 복원된 AUTO 행은 다음 새로고침 시 upsert/prune으로 최신화되므로 stale 위험은 낮다.
 
 ## 테스트 (`test/` 미러링)
 - `upbit-jwt`: payload 구조·서명 검증(고정 key로 결정적 결과, HMAC 재검증).
