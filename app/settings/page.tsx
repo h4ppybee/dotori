@@ -251,10 +251,6 @@ function DeleteAllSection() {
 // ─── 설정 페이지 ─────────────────────────────────────────────────────────────
 
 export default function SettingsPage() {
-  // 백업 복원 후 ConnectionForm(로컬 state 기반)을 재마운트해 목록을 즉시 갱신한다.
-  // (react-query 화면은 BackupPanel이 invalidateQueries로 갱신한다.)
-  const [connReloadKey, setConnReloadKey] = useState(0);
-
   return (
     <div className="min-h-screen bg-canvas">
       <div className="mx-auto w-full max-w-[480px] px-4 pb-16">
@@ -267,8 +263,8 @@ export default function SettingsPage() {
 
         {/* 섹션들 */}
         <div className="flex flex-col gap-4">
-          <ConnectionForm key={connReloadKey} />
-          <BackupPanel onImportSuccess={() => setConnReloadKey((k) => k + 1)} />
+          <ConnectionForm />
+          <BackupPanel />
           <PrivacySection />
           <PassphraseSection />
           <DeleteAllSection />
