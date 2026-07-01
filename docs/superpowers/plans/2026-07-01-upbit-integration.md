@@ -24,7 +24,7 @@
 - `lib/sync/refresh-upbit.ts` — `refreshUpbit({ key, now })` 오케스트레이션.
 - `app/api/upbit/accounts/route.ts` · `app/api/upbit/tickers/route.ts` · `app/api/upbit/markets/route.ts` — 로컬 개발 폴백 프록시.
 - `relay/src/upbit-handlers.ts` — 릴레이 핸들러 맵.
-- 테스트: `test/upbit/upbit-jwt.test.ts`, `test/upbit/upbit-client.test.ts`, `test/sync/refresh-upbit.test.ts`, `test/db/upbit-store.test.ts`, `test/backup/backup-source-backfill.test.ts`, `test/coin/coin-service-auto.test.ts`.
+- 테스트: `test/upbit/upbit-jwt.test.ts`, `test/upbit/normalize.test.ts`, `test/sync/refresh-upbit.test.ts`, `test/db/upbit-store.test.ts`, `test/backup/backup-source-backfill.test.ts`.
 
 **수정 파일**
 - `lib/types.ts` — `ConnectionType`에 `"UPBIT_API"`; `CoinHolding`/`SavingsAccount`에 `source`/`connectionId`(+코인 `market`).
