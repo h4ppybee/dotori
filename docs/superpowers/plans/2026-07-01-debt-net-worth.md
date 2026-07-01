@@ -10,6 +10,8 @@
 
 **참고 스펙:** `docs/superpowers/specs/2026-07-01-debt-net-worth-design.md`
 
+> 📌 두 개의 독립된 버전 카운터가 등장한다. 혼동하지 말 것: **Dexie 스키마 버전 = v6**(Task 1), **백업 포맷 버전 `SCHEMA_VERSION` = 2→3**(Task 4).
+
 ---
 
 ## File Structure
@@ -287,7 +289,7 @@ git commit -m "feat(debt): buildDebtVM 순수 계산 + 카테고리 메타"
 ```typescript
     await db.debts.put({ id: "d1", category: "MORTGAGE", name: "주택담보대출", lender: "국민", balance: 120_000_000, interestRate: 3.5, monthlyPayment: 700_000, sortOrder: 0, updatedAt: 1 });
 ```
-2. 라인 37 어서션을 `.toBe(2)` → `.toBe(3)`으로 변경.
+2. 라인 37 어서션을 `.toBe(2)` → `.toBe(3)`으로 변경하고, 테스트 제목(라인 31)의 "(schemaVersion 2)"도 "(schemaVersion 3)"으로 갱신.
 3. 복원 검증부(라인 43-45 부근)에 대출 보존 확인 추가:
 ```typescript
     expect(await db.debts.count()).toBe(1);
