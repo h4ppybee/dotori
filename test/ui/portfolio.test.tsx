@@ -214,16 +214,23 @@ describe("RefreshBar", () => {
     expect(screen.getByText(/10:32/)).toBeInTheDocument();
   });
 
-  it("실패 항목이 있으면 경고 배너를 보여준다", () => {
+  it("실패 항목이 있으면 경고 배너와 항목별 사유를 보여준다", () => {
     render(
       <RefreshBar
         onRefresh={() => {}}
         pending={false}
         lastRefreshAt={Date.now()}
-        failures={[{ symbol: "AAPL" }]}
+        failures={[
+          { connectionId: "prices", label: "시세", message: "요청 시간이 초과됐어요." },
+          { connectionId: "pension", label: "연금 시세", message: "토스 연동이 없어요." },
+        ]}
       />,
     );
-    expect(screen.getByText(/동기화에 실패한 항목/)).toBeInTheDocument();
+    expect(screen.getByText(/동기화에 실패한 항목이 2개/)).toBeInTheDocument();
     expect(screen.getByText("다시 시도하기")).toBeInTheDocument();
+    // 항목별 label·message가 노출돼 원인을 알 수 있어야 한다
+    expect(screen.getByText("시세")).toBeInTheDocument();
+    expect(screen.getByText(/요청 시간이 초과됐어요/)).toBeInTheDocument();
+    expect(screen.getByText(/토스 연동이 없어요/)).toBeInTheDocument();
   });
 });
