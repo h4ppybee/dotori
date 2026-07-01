@@ -29,7 +29,7 @@ interface NormalizedHolding {
   dailyPnl?: number;
 }
 
-interface RefreshFailure {
+export interface RefreshFailure {
   connectionId: string;
   label: string;
   message: string;
