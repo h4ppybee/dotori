@@ -101,6 +101,13 @@ export async function importAll(json: string, opts: { mode: "merge" | "overwrite
   const pension = (data.pension ?? []) as Parameters<typeof db.pension.bulkPut>[0];
   const coin = (data.coin ?? []) as Parameters<typeof db.coin.bulkPut>[0];
 
+  // v5 이전 백업엔 coin/savings에 source 필드가 없다(Task 1에서 필수 필드가 됨).
+  // 없으면 connectionId 없는 순수 수동 데이터로 간주해 MANUAL로 채운다.
+  const withSource = <T extends { source?: string }>(rows: readonly T[]): T[] =>
+    rows.map((r) => ({ ...r, source: r.source ?? "MANUAL" }));
+  const savingsWithSource = withSource(savings);
+  const coinWithSource = withSource(coin);
+
   await db.transaction("rw", db.tables, async () => {
     if (opts.mode === "overwrite") {
       await Promise.all(db.tables.map((t) => t.clear()));
@@ -113,8 +120,8 @@ export async function importAll(json: string, opts: { mode: "merge" | "overwrite
     await db.snapshots.bulkPut(snapshots);
     await db.settings.bulkPut(settings);
     await db.sectorOverrides.bulkPut(sectorOverrides);
-    await db.savings.bulkPut(savings);
+    await db.savings.bulkPut(savingsWithSource);
     await db.pension.bulkPut(pension);
-    await db.coin.bulkPut(coin);
+    await db.coin.bulkPut(coinWithSource);
   });
 }
