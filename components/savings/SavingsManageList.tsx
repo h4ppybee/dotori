@@ -56,6 +56,9 @@ export function SavingsManageList({ vm, initialCat = "ALL" }: SavingsManageListP
     const draft: Record<string, string> = {};
     for (const g of vm.groups) {
       for (const a of g.accounts) {
+        if (a.source === "AUTO") {
+          continue;
+        }
         draft[a.id] = String(a.amount);
       }
     }
@@ -75,6 +78,9 @@ export function SavingsManageList({ vm, initialCat = "ALL" }: SavingsManageListP
     const changed: SavingsAccount[] = [];
     for (const g of vm.groups) {
       for (const a of g.accounts) {
+        if (a.source === "AUTO") {
+          continue;
+        }
         if (deletedIds.has(a.id)) {
           continue;
         }
@@ -195,6 +201,15 @@ export function SavingsManageList({ vm, initialCat = "ALL" }: SavingsManageListP
   );
 }
 
+/** 업비트 등 외부 연동에서 자동으로 가져온 행. 편집·삭제 잠금 + 출처 배지. */
+function SourceBadge({ label }: { label: string }) {
+  return (
+    <span className="inline-flex shrink-0 items-center rounded-full bg-surface-strong px-2 py-0.5 text-[12px] font-semibold leading-[1.4] text-body-soft">
+      {label}
+    </span>
+  );
+}
+
 interface SavingsSectionProps {
   group: SavingsGroup;
   editing: boolean;
@@ -251,34 +266,69 @@ function SavingsSection({
 
       {!collapsed && (
         <ul className="flex flex-col">
-          {visible.map((a) => (
+          {visible.map((a) => {
+            const isAuto = a.source === "AUTO";
+            return (
             <li key={a.id} className="border-t border-hairline">
               {editing ? (
-                <div className="flex items-center gap-3 px-5 py-3">
-                  <span className="flex min-w-0 flex-1 flex-col">
-                    <span className="truncate text-[15px] font-semibold text-ink">{a.name}</span>
-                    {a.bank && <span className="truncate text-[12px] text-muted">{a.bank}</span>}
+                isAuto ? (
+                  <div className="flex items-center gap-3 px-5 py-3">
+                    <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                      <span className="flex items-center gap-1.5">
+                        <span className="truncate text-[15px] font-semibold text-ink">{a.name}</span>
+                        <SourceBadge label={a.bank ?? "업비트"} />
+                      </span>
+                      <span className="truncate text-[12px] text-muted">{a.bank ?? "업비트"}에서 자동으로 가져와요</span>
+                    </span>
+                    <span className="shrink-0 text-[15px] font-semibold tabular-nums text-muted">{formatAccountAmount(a)}</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-3 px-5 py-3">
+                    <span className="flex min-w-0 flex-1 flex-col">
+                      <span className="truncate text-[15px] font-semibold text-ink">{a.name}</span>
+                      {a.bank && <span className="truncate text-[12px] text-muted">{a.bank}</span>}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      {a.currency === "USD" && <span className="text-[13px] text-muted">$</span>}
+                      <input
+                        inputMode="decimal"
+                        value={draftAmounts[a.id] ?? String(a.amount)}
+                        onChange={(e) => onAmountChange(a.id, e.target.value)}
+                        className="w-[120px] rounded-[10px] border border-hairline bg-surface-soft px-3 py-2 text-right text-[15px] font-semibold tabular-nums text-ink outline-none focus:border-[1.5px] focus:border-primary"
+                        aria-label={`${a.name} 금액`}
+                      />
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => onDelete(a.id)}
+                      aria-label={`${a.name} 삭제`}
+                      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-muted hover:bg-surface-soft"
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                        <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth={2} strokeLinecap="round" />
+                      </svg>
+                    </button>
+                  </div>
+                )
+              ) : isAuto ? (
+                <div className="flex w-full items-center gap-3 px-5 py-3 text-left">
+                  <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                    <span className="flex items-center gap-1.5">
+                      <span className="truncate text-[15px] font-semibold text-ink">{a.name}</span>
+                      <SourceBadge label={a.bank ?? "업비트"} />
+                    </span>
+                    <span className="truncate text-[12px] text-muted">{a.bank ?? "업비트"}에서 자동으로 가져와요</span>
                   </span>
-                  <span className="flex items-center gap-1">
-                    {a.currency === "USD" && <span className="text-[13px] text-muted">$</span>}
-                    <input
-                      inputMode="decimal"
-                      value={draftAmounts[a.id] ?? String(a.amount)}
-                      onChange={(e) => onAmountChange(a.id, e.target.value)}
-                      className="w-[120px] rounded-[10px] border border-hairline bg-surface-soft px-3 py-2 text-right text-[15px] font-semibold tabular-nums text-ink outline-none focus:border-[1.5px] focus:border-primary"
-                      aria-label={`${a.name} 금액`}
-                    />
+                  <span className="flex shrink-0 flex-col items-end">
+                    <PrivacyAmount revealLabel={`${a.name} 금액 보기`}>
+                      <span className="text-[15px] font-semibold tabular-nums text-ink">
+                        {formatAccountAmount(a)}
+                      </span>
+                    </PrivacyAmount>
+                    {a.currency === "USD" && a.amountKrw > 0 && (
+                      <span className="text-[12px] text-muted tabular-nums">≈ {formatKrw(a.amountKrw)}</span>
+                    )}
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => onDelete(a.id)}
-                    aria-label={`${a.name} 삭제`}
-                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-muted hover:bg-surface-soft"
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                      <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth={2} strokeLinecap="round" />
-                    </svg>
-                  </button>
                 </div>
               ) : (
                 <button
@@ -308,7 +358,8 @@ function SavingsSection({
                 </button>
               )}
             </li>
-          ))}
+            );
+          })}
 
           {/* 항목 추가 */}
           <li className="border-t border-hairline">

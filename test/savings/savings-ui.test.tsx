@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { renderWithQuery } from "@/test/utils/query";
 import { useAppStore } from "@/stores/app-store";
 import { db } from "@/lib/db/schema";
@@ -82,5 +83,27 @@ describe("SavingsManageList", () => {
     renderWithQuery(<SavingsManageList vm={vm} initialCat="BOND" />);
     expect(screen.getByText("미국 국채")).toBeInTheDocument();
     expect(screen.queryByText("뚜니 청년도약")).toBeNull();
+  });
+
+  it("업비트 AUTO 예수금 행은 출처 배지와 잠금 안내를 보여준다", () => {
+    const auto = a({ id: "up1", category: "CHECKING", name: "업비트 예수금", bank: "업비트", amount: 500000, source: "AUTO", connectionId: "c1" });
+    const vm = buildSavingsVM([...ACCOUNTS, auto], 1500);
+    renderWithQuery(<SavingsManageList vm={vm} initialCat="CHECKING" />);
+    expect(screen.getByText("업비트 예수금")).toBeInTheDocument();
+    expect(screen.getByText("업비트에서 자동으로 가져와요")).toBeInTheDocument();
+    // 배지("업비트")가 최소 1회는 렌더된다.
+    expect(screen.getAllByText("업비트").length).toBeGreaterThan(0);
+  });
+
+  it("편집 모드에서 AUTO 행은 인라인 입력·삭제 버튼이 없다", async () => {
+    const auto = a({ id: "up1", category: "CHECKING", name: "업비트 예수금", bank: "업비트", amount: 500000, source: "AUTO", connectionId: "c1" });
+    const vm = buildSavingsVM([...ACCOUNTS, auto], 1500);
+    renderWithQuery(<SavingsManageList vm={vm} initialCat="CHECKING" />);
+    await userEvent.click(screen.getByRole("button", { name: "편집" }));
+    // MANUAL 계좌(수연 파킹)는 금액 입력이 생긴다.
+    expect(screen.getByLabelText("수연 파킹 금액")).toBeInTheDocument();
+    // AUTO 행은 입력·삭제 컨트롤이 없다.
+    expect(screen.queryByLabelText("업비트 예수금 금액")).toBeNull();
+    expect(screen.queryByLabelText("업비트 예수금 삭제")).toBeNull();
   });
 });

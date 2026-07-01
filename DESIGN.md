@@ -271,6 +271,12 @@ components:
     textColor: "{colors.primary}"
     rounded: "{rounded.pill}"
     padding: 6px 14px
+  source-badge:
+    backgroundColor: "{colors.surface-strong}"
+    textColor: "{colors.body-soft}"
+    typography: "{typography.caption-strong}"
+    rounded: "{rounded.pill}"
+    padding: 2px 8px
   dialog:
     backgroundColor: "{colors.surface-card}"
     textColor: "{colors.ink}"
@@ -408,6 +414,7 @@ dotori는 토스(Toss)의 디자인 언어를 따른다 — 차분하고, 신뢰
 - **다이얼로그** (`{component.dialog}`): radius `{rounded.xxl}`, 왼쪽 버튼은 항상 "닫기"(아래 UX Writing).
 - **메인 탭 바** (`{component.main-tab-bar}`): 화면 하단 고정 5탭(홈·자산·계획·가계부·설정). 높이 56px, 배경 `{colors.surface-card}`, 상단 `border-hairline`. 활성 탭은 `text-ink`, 비활성은 `text-muted`. 하단은 `env(safe-area-inset-bottom)` 패딩으로 PWA 세이프에어리어를 확보한다. 활성 탭은 `aria-current="page"`. **자산(`/assets/*`) 진입 시에는 아래로 슬라이드되어 사라지고**(그 자리에 플로팅 중첩 바가 뜬다), 이탈하면 다시 올라온다. z-order `z-40`.
 - **자산 플로팅 중첩 바** (`{component.asset-sub-tab-bar}`): 자산(`/assets/*`) 진입 시 메인 바를 **대체하여** 떠오르는 둥근 플로팅 바(pill). 토스 증권의 nested 플로팅 UX와 동일하다. 구성은 ← + 자산 카테고리 서브탭(자산·주식·저축·연금·코인). 각 서브탭은 **아이콘(24px, 단순 stroke) + 라벨(`text-[11px]`)을 세로로 쌓아** 표시한다(라벨은 2글자로 통일 — "저축/현금성"은 "저축"으로 축약). 화면 좌우 16px 여백(`px-4`, `max-w-[480px]` 중앙)을 두고, 화면 하단에서 `bottom: calc(env(safe-area-inset-bottom) + 12px)`만큼 띄운다. 높이 56px, `{rounded.pill}`(100px), 배경 `{colors.surface-card}`, **테두리 없이 `{shadows.floating}`로 띄운다**(엣지투엣지 바가 아니라 떠 있는 알약 형태). ←는 좌측 원형 버튼(`{rounded.full}`, 탭 시 `surface-soft`). z-order는 메인 바 위(`z-50`)라 교차 슬라이드 시 위에 뜬다. 등장/사라짐 모션은 `{motion.nested-bar-slide}`. 활성 서브탭은 `font-bold text-ink`/`aria-current="page"`, 비활성은 `font-semibold text-muted`. ← 또는 카테고리 이탈로만 빠져나오며, 자산 안에서는 다른 메인 탭으로 직접 이동하지 않는다(메인 바가 숨겨져 있으므로).
+- **연동 출처 배지** (`{component.source-badge}`): 외부 연동(업비트 등)에서 자동으로 가져온 행(`source === "AUTO"`)임을 알리는 중립 pill 배지. 항목명 옆에 연동명(예: "업비트")을 `{colors.surface-strong}` 배경 + `{colors.body-soft}` 텍스트로 표시한다. 브랜드색·증시색을 쓰지 않아 눈에 튀지 않게 정보만 전달한다. **AUTO 행은 다음 새로고침에 덮어써지므로 편집·삭제를 잠근다** — 편집 모드에서 인라인 입력과 X 삭제 버튼을 숨기고(현재 값을 `text-muted`로 읽기 전용 표기) 잠금 사유를 한 줄로 안내한다(예: "업비트에서 자동으로 가져와요"). 보기 모드 행 탭도 비활성(편집 다이얼로그를 열지 않음)한다.
 - **더미 페이지** (`{component.dummy-page}`): 아직 구현되지 않은 화면. 제목 `text-[22px] font-bold text-ink` + 보조문구 `text-muted`를 중앙 정렬로 표시한다.
 - **저축/현금성 화면**: 손익 개념이 없으므로 금액은 모두 `text-ink`로만 표기하고 증시 색(up/down)을 쓰지 않는다. 카테고리(예적금·입출금·채권·기타) 요약 카드는 `bg-primary-surface` 타일에 `text-primary` 단순 stroke 아이콘(`SavingsCategoryIcon`, 24px)을 얹는다. 관리 화면은 카테고리 필터 칩 + 접이식 섹션 + 행으로 구성하며, **편집 모드**에선 금액을 인라인 입력(`bg-surface-soft`, radius 10px, 우측 정렬 `tabular-nums`)으로 일괄 수정하고 X로 삭제한다(저장 시 일괄 반영). 통화는 모든 카테고리에서 KRW/USD 선택 가능(기본 KRW), USD는 금액 아래 `≈ ₩…` 환산을 `text-muted`로 보조 표기한다.
 
