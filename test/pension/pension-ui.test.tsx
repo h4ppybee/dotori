@@ -22,7 +22,7 @@ const PENSIONS: PensionAccount[] = [
 ];
 
 const COINS: CoinHolding[] = [
-  { id: "btc", name: "비트코인", exchange: "업비트", quantity: 0.02, buyPrice: 160598977, currentPrice: 84699700, sortOrder: 0, updatedAt: 0 },
+  { id: "btc", name: "비트코인", exchange: "업비트", quantity: 0.02, buyPrice: 160598977, currentPrice: 84699700, sortOrder: 0, updatedAt: 0, source: "MANUAL" },
 ];
 
 describe("InvestmentHero", () => {

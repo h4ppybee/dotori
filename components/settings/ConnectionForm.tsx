@@ -5,13 +5,18 @@ import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { TextInput } from "@/components/ui/TextInput";
 import { Dialog } from "@/components/ui/Dialog";
+import { Chip } from "@/components/ui/Chip";
 import { listConnections, upsertConnection, deleteConnection, listMembers, upsertMember } from "@/lib/db/local-store";
 import { encrypt } from "@/lib/crypto/crypto";
+import { relayIpForDisplay } from "@/lib/upbit/relay-endpoint";
 import { useAppStore } from "@/stores/app-store";
-import type { Connection, Member } from "@/lib/types";
+import type { Connection, ConnectionType, Member } from "@/lib/types";
+
+type ProviderType = "TOSS_API" | "UPBIT_API";
 
 interface EditState {
   id?: string;
+  type: ProviderType;
   label: string;
   memberId: string;
   clientId: string;
@@ -19,10 +24,44 @@ interface EditState {
 }
 
 const EMPTY_EDIT: EditState = {
+  type: "TOSS_API",
   label: "",
   memberId: "",
   clientId: "",
   clientSecret: "",
+};
+
+/** 연동 타입별 UI 문구 — 토스는 Client ID/Secret, 업비트는 Access Key/Secret Key */
+const TYPE_COPY: Record<ProviderType, {
+  name: string;
+  labelPlaceholder: string;
+  clientIdLabel: string;
+  clientIdPlaceholder: string;
+  secretLabel: string;
+  secretPlaceholder: string;
+  clientIdError: string;
+  secretError: string;
+}> = {
+  TOSS_API: {
+    name: "토스",
+    labelPlaceholder: "예: 내 토스 계정",
+    clientIdLabel: "Client ID",
+    clientIdPlaceholder: "토스 개발자센터에서 발급받은 Client ID",
+    secretLabel: "Client Secret",
+    secretPlaceholder: "Client Secret 입력",
+    clientIdError: "Client ID를 입력해 주세요.",
+    secretError: "Client Secret을 입력해 주세요.",
+  },
+  UPBIT_API: {
+    name: "업비트",
+    labelPlaceholder: "예: 내 업비트 계정",
+    clientIdLabel: "Access Key",
+    clientIdPlaceholder: "업비트에서 발급받은 Access Key",
+    secretLabel: "Secret Key",
+    secretPlaceholder: "Secret Key 입력",
+    clientIdError: "Access Key를 입력해 주세요.",
+    secretError: "Secret Key를 입력해 주세요.",
+  },
 };
 
 function maskClientId(clientId: string | undefined): string {
@@ -32,8 +71,17 @@ function maskClientId(clientId: string | undefined): string {
   return `${clientId.slice(0, 4)}••••${clientId.slice(-4)}`;
 }
 
+/** 목록 항목의 타입 배지 (DESIGN.md chip 규격 — pill, caption-strong). */
+function TypeBadge({ type }: { type: ProviderType }) {
+  return (
+    <span className="inline-flex items-center px-[10px] py-[3px] rounded-full bg-primary-surface text-primary text-[12px] font-semibold leading-[1.4]">
+      {TYPE_COPY[type].name}
+    </span>
+  );
+}
+
 /**
- * 토스 API 프리셋(Connection) 관리 섹션.
+ * API 연동(Connection) 관리 섹션 — 토스·업비트.
  * 목록 + 추가/수정 폼 + 삭제 확인 다이얼로그.
  */
 export function ConnectionForm() {
@@ -50,7 +98,7 @@ export function ConnectionForm() {
 
   const reload = useCallback(async () => {
     const [conns, mems] = await Promise.all([listConnections(), listMembers()]);
-    setConnections(conns.filter((c) => c.type === "TOSS_API"));
+    setConnections(conns.filter((c) => c.type === "TOSS_API" || c.type === "UPBIT_API"));
     setMembers(mems);
   }, []);
 
@@ -69,6 +117,7 @@ export function ConnectionForm() {
   function openEdit(conn: Connection) {
     setEditing({
       id: conn.id,
+      type: conn.type === "UPBIT_API" ? "UPBIT_API" : "TOSS_API",
       label: conn.label,
       memberId: conn.memberId,
       clientId: conn.clientId ?? "",
@@ -109,13 +158,14 @@ export function ConnectionForm() {
       setError("멤버를 선택해 주세요.");
       return;
     }
+    const copy = TYPE_COPY[editing.type];
     if (!editing.clientId.trim()) {
-      setError("Client ID를 입력해 주세요.");
+      setError(copy.clientIdError);
       return;
     }
     // 신규 등록이거나 시크릿 필드가 비어 있지 않을 때만 시크릿 필수 체크
     if (!editing.id && !editing.clientSecret.trim()) {
-      setError("Client Secret을 입력해 주세요.");
+      setError(copy.secretError);
       return;
     }
 
@@ -136,7 +186,7 @@ export function ConnectionForm() {
       await upsertConnection({
         id: editing.id,
         memberId: editing.memberId,
-        type: "TOSS_API",
+        type: editing.type as ConnectionType,
         label: editing.label.trim(),
         clientId: editing.clientId.trim(),
         clientSecretEnc: clientSecretEnc ?? existing?.clientSecretEnc,
@@ -163,7 +213,7 @@ export function ConnectionForm() {
     <Card>
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-[19px] font-bold leading-[1.4] tracking-[-0.2px] text-ink">
-          토스 API 프리셋
+          API 연동
         </h2>
         {editing == null && (
           <Button variant="secondary" onClick={openAdd} className="h-[38px] px-4 text-[15px]">
@@ -175,7 +225,7 @@ export function ConnectionForm() {
       {/* 커넥션 목록 */}
       {connections.length === 0 && editing == null && (
         <p className="text-[15px] text-muted leading-[1.5] py-2">
-          아직 연동이 없어요. 추가하기를 눌러 토스 API를 연결해 보세요.
+          아직 연동이 없어요. 추가하기를 눌러 토스나 업비트를 연결해 보세요.
         </p>
       )}
 
@@ -189,8 +239,11 @@ export function ConnectionForm() {
                 className="flex items-center justify-between py-3 border-b border-hairline last:border-0"
               >
                 <div className="flex flex-col gap-[2px]">
-                  <span className="text-[17px] font-semibold leading-[1.45] text-ink tracking-[-0.2px]">
-                    {conn.label}
+                  <span className="flex items-center gap-2">
+                    <span className="text-[17px] font-semibold leading-[1.45] text-ink tracking-[-0.2px]">
+                      {conn.label}
+                    </span>
+                    <TypeBadge type={conn.type === "UPBIT_API" ? "UPBIT_API" : "TOSS_API"} />
                   </span>
                   <span className="text-[13px] text-muted leading-[1.45]">
                     {member?.name ?? "알 수 없는 멤버"} · {maskClientId(conn.clientId)}
@@ -217,12 +270,35 @@ export function ConnectionForm() {
       {/* 추가/수정 폼 */}
       {editing != null && (
         <div className="flex flex-col gap-4 pt-1">
+          {/* 연동 타입 선택 — 신규 등록에서만. 기존 연동은 타입을 바꾸지 않는다. */}
+          {editing.id == null && (
+            <div className="flex flex-col gap-[6px]">
+              <span className="text-[13px] font-semibold leading-[1.45] text-body-soft">
+                연동 타입
+              </span>
+              <div className="flex gap-2">
+                <Chip
+                  selected={editing.type === "TOSS_API"}
+                  onClick={() => setEditing((p) => p ? { ...p, type: "TOSS_API" } : p)}
+                >
+                  토스
+                </Chip>
+                <Chip
+                  selected={editing.type === "UPBIT_API"}
+                  onClick={() => setEditing((p) => p ? { ...p, type: "UPBIT_API" } : p)}
+                >
+                  업비트
+                </Chip>
+              </div>
+            </div>
+          )}
+
           <TextInput
             inputId="conn-label"
             label="연동 이름"
             value={editing.label}
             onChange={(v) => setEditing((p) => p ? { ...p, label: v } : p)}
-            placeholder="예: 내 토스 계정"
+            placeholder={TYPE_COPY[editing.type].labelPlaceholder}
           />
 
           {/* 멤버 선택 */}
@@ -283,20 +359,31 @@ export function ConnectionForm() {
 
           <TextInput
             inputId="conn-client-id"
-            label="Client ID"
+            label={TYPE_COPY[editing.type].clientIdLabel}
             value={editing.clientId}
             onChange={(v) => setEditing((p) => p ? { ...p, clientId: v } : p)}
-            placeholder="토스 개발자센터에서 발급받은 Client ID"
+            placeholder={TYPE_COPY[editing.type].clientIdPlaceholder}
           />
 
           <TextInput
             inputId="conn-client-secret"
-            label={editing.id ? "Client Secret (변경 시에만 입력)" : "Client Secret"}
+            label={editing.id ? `${TYPE_COPY[editing.type].secretLabel} (변경 시에만 입력)` : TYPE_COPY[editing.type].secretLabel}
             value={editing.clientSecret}
             onChange={(v) => setEditing((p) => p ? { ...p, clientSecret: v } : p)}
             masked
-            placeholder={editing.id ? "변경하지 않으려면 비워두세요" : "Client Secret 입력"}
+            placeholder={editing.id ? "변경하지 않으려면 비워두세요" : TYPE_COPY[editing.type].secretPlaceholder}
           />
+
+          {/* 업비트: 허용 IP 안내 (릴레이 고정 IP를 업비트 API 관리에 등록해야 조회 가능) */}
+          {editing.type === "UPBIT_API" && relayIpForDisplay() != null && (
+            <div className="rounded-[12px] px-4 py-3 bg-surface-soft">
+              <p className="text-[13px] leading-[1.5] text-body-soft">
+                업비트 API 관리 페이지의 <span className="font-semibold text-ink">허용 IP</span>에{" "}
+                <span className="font-semibold text-ink tabular-nums">{relayIpForDisplay()}</span> 를 등록해야
+                시세와 잔고를 불러올 수 있어요.
+              </p>
+            </div>
+          )}
 
           {error != null && (
             <p className="text-[13px] leading-[1.45]" style={{ color: "#F04452" }}>

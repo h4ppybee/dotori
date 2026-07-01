@@ -98,6 +98,7 @@ export async function upsertSavings(
     id: s.id ?? uid(),
     category,
     sortOrder,
+    source: existing?.source ?? "MANUAL",
     updatedAt: now(),
   } as SavingsAccount;
   await db.savings.put(rec);
@@ -110,6 +111,31 @@ export const deleteSavings = (id: string) => db.savings.delete(id);
 export async function bulkUpdateSavings(rows: SavingsAccount[]): Promise<void> {
   const stamped = rows.map((r) => ({ ...r, updatedAt: now() }));
   await db.savings.bulkPut(stamped);
+}
+
+// ── 저축/현금성 계좌 (업비트 AUTO 예수금) ───────────────────────────────────
+export async function upsertAutoSavings(row: { connectionId: string; amount: number }): Promise<void> {
+  const id = `upbit-krw:${row.connectionId}`;
+  const existing = await db.savings.get(id);
+  await db.savings.put({
+    id,
+    category: "CHECKING",
+    name: "업비트 원화",
+    bank: "업비트",
+    amount: row.amount,
+    currency: "KRW",
+    sortOrder: existing?.sortOrder ?? (await nextSavingsSortOrder("CHECKING")),
+    updatedAt: now(),
+    source: "AUTO",
+    connectionId: row.connectionId,
+  });
+}
+
+export async function pruneAutoSavings(connectionId: string): Promise<void> {
+  const rows = await db.savings
+    .where("connectionId").equals(connectionId)
+    .and((x) => x.source === "AUTO").toArray();
+  await db.savings.bulkDelete(rows.map((r) => r.id));
 }
 
 // ── 연금 계좌 (수동) ──────────────────────────────────────────────────────
@@ -157,7 +183,7 @@ export async function upsertCoin(
   const existing = c.id ? await db.coin.get(c.id) : undefined;
   const sortOrder = c.sortOrder ?? existing?.sortOrder ?? (await nextCoinSortOrder());
   const rec = {
-    ...existing, ...c, id: c.id ?? uid(), sortOrder, updatedAt: now(),
+    ...existing, ...c, id: c.id ?? uid(), sortOrder, source: existing?.source ?? "MANUAL", updatedAt: now(),
   } as CoinHolding;
   await db.coin.put(rec);
   return rec;
@@ -168,4 +194,36 @@ export const deleteCoin = (id: string) => db.coin.delete(id);
 export async function bulkUpdateCoin(rows: CoinHolding[]): Promise<void> {
   const stamped = rows.map((r) => ({ ...r, updatedAt: now() }));
   await db.coin.bulkPut(stamped);
+}
+
+// ── 코인 보유 (업비트 AUTO) ─────────────────────────────────────────────────
+export async function upsertAutoCoin(row: {
+  connectionId: string; market: string; name: string;
+  quantity: number; buyPrice: number; currentPrice?: number; exchange?: string;
+}): Promise<void> {
+  const id = `upbit:${row.connectionId}:${row.market}`;
+  const existing = await db.coin.get(id);
+  // currentPrice 미지정(ticker 실패): 기존 행이면 이전값 유지, 신규면 buyPrice 폴백
+  const currentPrice = row.currentPrice ?? existing?.currentPrice ?? row.buyPrice;
+  await db.coin.put({
+    id,
+    name: row.name,
+    exchange: row.exchange ?? "업비트",
+    quantity: row.quantity,
+    buyPrice: row.buyPrice,
+    currentPrice,
+    sortOrder: existing?.sortOrder ?? (await nextCoinSortOrder()),
+    updatedAt: now(),
+    source: "AUTO",
+    connectionId: row.connectionId,
+    market: row.market,
+  });
+}
+
+export async function pruneAutoCoins(connectionId: string, keepMarkets: string[]): Promise<void> {
+  const keep = new Set(keepMarkets);
+  const rows = await db.coin
+    .where("connectionId").equals(connectionId)
+    .and((x) => x.source === "AUTO" && !keep.has(x.market ?? "")).toArray();
+  await db.coin.bulkDelete(rows.map((r) => r.id));
 }

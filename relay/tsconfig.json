@@ -9,5 +9,5 @@
     "skipLibCheck": true,
     "types": ["node"]
   },
-  "include": ["src/**/*.ts", "test/**/*.ts", "../lib/toss/toss-client.ts"]
+  "include": ["src/**/*.ts", "test/**/*.ts", "../lib/toss/toss-client.ts", "../lib/upbit/**/*.ts"]
 }

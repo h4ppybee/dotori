@@ -44,10 +44,10 @@ describe("SettingsPage — 섹션 제목 렌더링", () => {
     expect(screen.getByRole("heading", { level: 1, name: "설정" })).toBeInTheDocument();
   });
 
-  it("토스 API 프리셋 섹션이 렌더링된다", async () => {
+  it("API 연동 섹션이 렌더링된다", async () => {
     await renderSettings();
     await waitFor(() => {
-      expect(screen.getByRole("heading", { level: 2, name: "토스 API 프리셋" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { level: 2, name: "API 연동" })).toBeInTheDocument();
     });
   });
 

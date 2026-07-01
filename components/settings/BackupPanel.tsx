@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import { Banner } from "@/components/ui/Banner";
 import { exportAll, importAll } from "@/lib/backup/backup";
+import { useAppStore } from "@/stores/app-store";
 
 type ImportMode = "merge" | "overwrite";
 
@@ -14,7 +15,8 @@ type ImportMode = "merge" | "overwrite";
  * 내보내기: Blob 다운로드.
  * 불러오기: 파일 선택 → 병합/덮어쓰기 선택 다이얼로그 → importAll 실행.
  */
-export function BackupPanel({ onImportSuccess }: { onImportSuccess?: () => void }) {
+export function BackupPanel() {
+  const lock = useAppStore((s) => s.lock);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [pendingJson, setPendingJson] = useState<string | null>(null);
   const [importMode, setImportMode] = useState<ImportMode>("merge");
@@ -79,12 +81,10 @@ export function BackupPanel({ onImportSuccess }: { onImportSuccess?: () => void 
     try {
       await importAll(pendingJson, { mode: importMode });
       setPendingJson(null);
-      setSuccessMsg(
-        importMode === "overwrite"
-          ? "데이터를 덮어씌워 불러왔어요."
-          : "기존 데이터와 병합해서 불러왔어요.",
-      );
-      onImportSuccess?.();
+      // 백업엔 salt/verifier가 포함돼 복원 시 볼트 키가 바뀔 수 있다. 현재 세션키는
+      // 옛 salt로 파생돼 있어 복원된 연동을 복호화하지 못하므로, 잠금 후 재로그인해
+      // 새 salt로 키를 다시 파생하게 한다(복원 데이터와 정합). 재해제 시 전 데이터가 새로 로드된다.
+      lock();
     } catch (err) {
       const msg = err instanceof Error ? err.message : "알 수 없는 오류";
       setErrorMsg(`불러오기에 실패했어요. ${msg}`);
@@ -204,6 +204,9 @@ export function BackupPanel({ onImportSuccess }: { onImportSuccess?: () => void 
               </div>
             </label>
           </div>
+          <p className="text-[13px] text-muted leading-[1.45]">
+            불러온 뒤에는 보안을 위해 다시 잠금을 해제해야 해요.
+          </p>
         </div>
       </Dialog>
     </Card>

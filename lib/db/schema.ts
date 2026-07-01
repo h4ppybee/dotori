@@ -55,6 +55,11 @@ export class DotoriDB extends Dexie {
       pension: "id, category, sortOrder",
       coin: "id, sortOrder",
     });
+    // v5: 코인/저축 AUTO 연동 필드 인덱스 추가
+    this.version(5).stores({
+      coin: "id, sortOrder, connectionId, source",
+      savings: "id, category, sortOrder, connectionId, source",
+    });
   }
 }
 export const db = new DotoriDB();
