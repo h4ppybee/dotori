@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
@@ -15,6 +16,7 @@ type ImportMode = "merge" | "overwrite";
  * 불러오기: 파일 선택 → 병합/덮어쓰기 선택 다이얼로그 → importAll 실행.
  */
 export function BackupPanel({ onImportSuccess }: { onImportSuccess?: () => void }) {
+  const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [pendingJson, setPendingJson] = useState<string | null>(null);
   const [importMode, setImportMode] = useState<ImportMode>("merge");
@@ -79,6 +81,8 @@ export function BackupPanel({ onImportSuccess }: { onImportSuccess?: () => void 
     try {
       await importAll(pendingJson, { mode: importMode });
       setPendingJson(null);
+      // 복원된 데이터가 F5 없이 즉시 반영되도록 모든 쿼리를 무효화한다.
+      await queryClient.invalidateQueries();
       setSuccessMsg(
         importMode === "overwrite"
           ? "데이터를 덮어씌워 불러왔어요."
