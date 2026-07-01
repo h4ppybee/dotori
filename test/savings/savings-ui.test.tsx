@@ -24,6 +24,7 @@ function a(over: Partial<SavingsAccount>): SavingsAccount {
     amount: 1000,
     sortOrder: 0,
     updatedAt: 0,
+    source: "MANUAL",
     ...over,
   };
 }

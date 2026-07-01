@@ -11,6 +11,7 @@ function c(over: Partial<CoinHolding>): CoinHolding {
     currentPrice: 1000,
     sortOrder: 0,
     updatedAt: 0,
+    source: "MANUAL",
     ...over,
   };
 }

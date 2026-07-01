@@ -1,4 +1,4 @@
-export type ConnectionType = "TOSS_API" | "MANUAL";
+export type ConnectionType = "TOSS_API" | "UPBIT_API" | "MANUAL";
 export type HoldingSource = "AUTO" | "MANUAL";
 export type Currency = "KRW" | "USD";
 
@@ -76,6 +76,8 @@ export interface SavingsAccount {
   note?: string;           // 비고
   sortOrder: number;       // 카테고리 내 표시 순서
   updatedAt: number;
+  source: HoldingSource;   // "AUTO" | "MANUAL"
+  connectionId?: string;   // AUTO 행만: 소속 업비트 연결
 }
 
 export type PensionCategory = "PERSONAL" | "RETIREMENT";
@@ -108,6 +110,9 @@ export interface CoinHolding {
   note?: string;
   sortOrder: number;
   updatedAt: number;
+  source: HoldingSource;   // "AUTO" | "MANUAL"
+  connectionId?: string;   // AUTO 행만: 소속 업비트 연결
+  market?: string;         // AUTO 행만: "KRW-BTC"
 }
 
 export interface Settings {

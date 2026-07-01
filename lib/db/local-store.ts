@@ -98,6 +98,7 @@ export async function upsertSavings(
     id: s.id ?? uid(),
     category,
     sortOrder,
+    source: existing?.source ?? "MANUAL",
     updatedAt: now(),
   } as SavingsAccount;
   await db.savings.put(rec);
@@ -157,7 +158,7 @@ export async function upsertCoin(
   const existing = c.id ? await db.coin.get(c.id) : undefined;
   const sortOrder = c.sortOrder ?? existing?.sortOrder ?? (await nextCoinSortOrder());
   const rec = {
-    ...existing, ...c, id: c.id ?? uid(), sortOrder, updatedAt: now(),
+    ...existing, ...c, id: c.id ?? uid(), sortOrder, source: existing?.source ?? "MANUAL", updatedAt: now(),
   } as CoinHolding;
   await db.coin.put(rec);
   return rec;

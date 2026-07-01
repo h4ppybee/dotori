@@ -29,9 +29,9 @@ describe("exportAll / importAll", () => {
   });
 
   it("저축·연금·코인도 내보내고 덮어쓰기로 복원된다 (schemaVersion 2)", async () => {
-    await db.savings.put({ id: "s1", category: "DEPOSIT", name: "청약", amount: 1000, sortOrder: 0, updatedAt: 1 });
+    await db.savings.put({ id: "s1", category: "DEPOSIT", name: "청약", amount: 1000, sortOrder: 0, updatedAt: 1, source: "MANUAL" });
     await db.pension.put({ id: "p1", category: "PERSONAL", name: "TIGER", symbol: "360750", quantity: 10, buyPrice: 100, currentPrice: 110, sortOrder: 0, updatedAt: 1 });
-    await db.coin.put({ id: "c1", name: "비트코인", quantity: 0.02, buyPrice: 100, currentPrice: 80, sortOrder: 0, updatedAt: 1 });
+    await db.coin.put({ id: "c1", name: "비트코인", quantity: 0.02, buyPrice: 100, currentPrice: 80, sortOrder: 0, updatedAt: 1, source: "MANUAL" });
 
     const json = await exportAll();
     expect(JSON.parse(json).schemaVersion).toBe(2);
