@@ -13,7 +13,8 @@ dotori에는 `snapshots` 테이블(`DailySnapshot`)과 `saveDailySnapshotIfNeede
 
 - 자산 탭에 "스냅샷 기록" 버튼: 누르면 현재 주식·저축·연금·코인·부채 전체 상태를 1건의 스냅샷으로 저장.
 - 자산 탭 하단 스냅샷 섹션: 최근 10개 목록(시점 + 순자산 대표 표시), "더보기" → 전체 목록 화면.
-- 스냅샷 섹션 상단에 **순자산 추이 선형 차트(Line Chart)**: 최신 20개 스냅샷의 순자산을 꺾은선으로 표시.
+- 스냅샷 섹션 상단에 **순자산 추이 스택 막대그래프**: 최신 20개 스냅샷의 순자산을 막대로 표시하고,
+  순자산 중 수익합(주식+연금+코인 손익 합)을 막대 하단에 다른 색 세그먼트로 구분 표시.
 - 목록 항목 클릭 → 상세 화면:
   - 주식·연금·코인: 종목명 / 수량 / 매수금액 / 스냅샷 시점 평가금액 / 손익금액 / 수익률 표
   - 저축·부채: 항목명 / 금액 표
@@ -22,7 +23,7 @@ dotori에는 `snapshots` 테이블(`DailySnapshot`)과 `saveDailySnapshotIfNeede
 
 ## 비목표 (YAGNI)
 
-- 스냅샷 간 비교·추이 그래프(향후 별도 요청 시 확장).
+- 스냅샷 간 항목별 상세 비교 화면(순자산 추이 막대그래프는 범위 내, 그 외 비교·분석은 향후 확장).
 - 자동/예약 스냅샷(수동 버튼만).
 - 스냅샷 수정(기록은 불변, 삭제만 가능).
 - 기존 `snapshots` 테이블 데이터 마이그레이션·삭제(테이블·과거 데이터는 그대로 두고 신규 기록만 중단).
@@ -33,7 +34,8 @@ dotori에는 `snapshots` 테이블(`DailySnapshot`)과 `saveDailySnapshotIfNeede
 2. **기존 DailySnapshot**: 자동 저장 로직 제거·통합. 테이블/과거 데이터는 유지, 신규 기록 중단.
 3. **삭제**: 스냅샷 상세 화면에서 삭제 가능.
 4. **배포**: PR 프리뷰 방식(worktree → PR → Vercel 프리뷰 → 머지).
-5. **추이 차트**: 스냅샷 순자산 최신 20개를 선형 차트(Line Chart)로 표시(브레인스토밍 중 추가 요청).
+5. **추이 차트**: 스냅샷 순자산 최신 20개를 막대그래프로 표시하되, 순자산 중 수익합을
+   다른 색으로 막대 하단에 배치(브레인스토밍 중 추가 요청, 선형 차트 검토 후 막대로 확정).
 
 ## 접근법
 
@@ -165,12 +167,16 @@ export function buildAssetSnapshot(input: {
 - 헤더: "스냅샷" 타이틀 + "기록" 버튼.
   - 버튼은 5개 자산 쿼리 중 하나라도 로딩 중이면 비활성.
   - 클릭 → `useTakeSnapshot` 실행 → 목록 즉시 갱신.
-- 헤더 아래 **순자산 추이 선형 차트(Line Chart)** — `components/snapshot/SnapshotTrendChart.tsx`:
-  - 최신 20개 스냅샷의 `netWorthKrw`를 꺾은선으로 표시. 좌→우 = 과거→최신(시간순), 각 지점에 포인트 마커.
-  - 스냅샷 2개 미만이면 차트 숨김(점 1개는 추이 의미 없음).
-  - SVG 기반(외부 라이브러리 없음, `DonutChart`와 동일 접근). 색은 DESIGN.md 브랜드 토큰.
-  - 금액 축 라벨은 생략하고 y 스케일은 최신 20개의 최소~최대값 범위 기준 상대 스케일.
-    `PrivacyAmount`(금액 숨기기) ON이어도 선 자체는 상대 비율이라 그대로 표시.
+- 헤더 아래 **순자산 추이 스택 막대그래프** — `components/snapshot/SnapshotTrendChart.tsx`:
+  - 최신 20개 스냅샷의 `netWorthKrw`를 막대로 표시. 좌→우 = 과거→최신(시간순).
+  - 각 막대는 2개 세그먼트 스택: **하단 = 수익합**(`stocks.totalPnlKrw + pension.totalPnlKrw + coin.totalPnlKrw`,
+    수익 시맨틱 색 `up`), **상단 = 나머지**(순자산 − 수익합, 중립/브랜드 토큰).
+  - 수익합이 0 이하(손실·수익 없음)면 해당 막대는 세그먼트 없이 단색으로 표시(음수 스택 미지원, 단순 유지).
+  - 수익합은 저장된 섹션 합계에서 파생 계산(스키마 추가 필드 없음).
+  - 스냅샷 2개 미만이면 차트 숨김(막대 1개는 추이 의미 없음).
+  - SVG 기반(외부 라이브러리 없음, `DonutChart`와 동일 접근). 색은 DESIGN.md 토큰.
+  - 금액 축 라벨은 생략하고 막대 높이는 최신 20개 중 최대 순자산 기준 상대 스케일.
+    `PrivacyAmount`(금액 숨기기) ON이어도 막대 자체는 상대 비율이라 그대로 표시.
 - 목록: 최근 10개. 각 행 = 시점(`YYYY.MM.DD HH:mm`) + 순자산(`PrivacyAmount` 적용).
   행 클릭 → `/assets/snapshots/[id]`.
 - 스냅샷이 하나도 없으면 빈 상태 문구(예: "아직 기록한 스냅샷이 없어요").
@@ -190,7 +196,7 @@ export function buildAssetSnapshot(input: {
     손익·수익률 색상은 `PnlText`(상승=빨강 `up`, 하락=파랑 `down`).
     섹션 헤더에 자산군 합계(평가금·손익·수익률).
   - 저축 / 부채: 표 — 항목명 · 금액. 섹션 헤더에 합계.
-- 하단 삭제 버튼: 확인(confirm) 후 `useDeleteSnapshot` → 자산 탭(또는 목록)으로 복귀.
+- 하단 삭제 버튼: 확인(confirm) 후 `useDeleteSnapshot` → 진입 경로와 무관하게 `/assets/snapshots` 목록으로 복귀.
 - 존재하지 않는 id면 안내 문구 + 목록으로 이동 링크.
 - DESIGN.md 토큰·기존 `components/ui/` 프리미티브(Card, PnlText, PrivacyAmount) 재사용.
   표가 좁은 화면에서 넘치면 컨테이너에 가로 스크롤 적용.
@@ -199,7 +205,10 @@ export function buildAssetSnapshot(input: {
 
 - `BackupData`에 `assetSnapshots: AssetSnapshot[]` 추가.
 - `exportAll()`/`importAll()`에 처리 추가(없으면 빈 배열 폴백해 구버전 호환).
-- `SCHEMA_VERSION` bump.
+- `importAll`의 overwrite 모드에서는 `pension`·`debts`와 동일하게 `assetSnapshots`를 **clear 후 bulkPut**
+  (기존 `snapshots`는 merge 전례지만, 스냅샷 로그는 백업본으로 완전 교체가 "복원" 의미에 부합).
+  merge 모드는 bulkPut만(id 충돌 시 백업본 우선, 그 외 병합).
+- `SCHEMA_VERSION` bump + `SUPPORTED_VERSIONS`에 신규 버전 추가.
 
 ### 9) 문서 동기화
 
@@ -221,5 +230,7 @@ export function buildAssetSnapshot(input: {
 ## 검증
 
 - `npm run typecheck && npm run lint && npm test` 통과.
-- 수동: 기록 → 목록 표시 → 상세 표 확인 → 삭제 → 목록 갱신. 자산 없음 상태에서 버튼 동작.
-  추이 차트: 스냅샷 0~1개(숨김) / 2개 이상(표시) / 20개 초과(최신 20개만) 확인.
+- 수동: 기록 → 목록 표시 → 상세 표 확인 → 삭제 → 목록 갱신.
+  자산 없음 상태에서도 기록 허용(합계 0원 스냅샷 저장 — 빌더의 빈 섹션 폴백과 일관).
+  추이 차트: 스냅샷 0~1개(숨김) / 2개 이상(표시) / 20개 초과(최신 20개만) /
+  수익합 양수(하단 세그먼트) vs 0 이하(단색 막대) 확인.
