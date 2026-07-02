@@ -162,4 +162,60 @@ describe("exportAll / importAll", () => {
     await importAll(payload, { mode: "merge" });
     expect(await db.tokenCache.count()).toBe(0);
   });
+
+  it("overwrite는 API 연결·AUTO 행·priceCache를 보존하고 MANUAL 행만 교체한다", async () => {
+    await upsertConnection({ id: "api1", memberId: "m1", type: "UPBIT_API", label: "업비트",
+      clientId: "cid", clientSecretEnc: "enc" });
+    await db.holdings.put({ id: "hAuto", connectionId: "api1", market: "KOSPI", symbol: "000660",
+      name: "SK하이닉스", sector: "반도체", currency: "KRW", quantity: 5, avgBuyPrice: 100000,
+      source: "AUTO", updatedAt: 1 });
+    await putPrice({ symbol: "005930", currency: "KRW", lastPrice: 71000, asOf: 1 });
+    await upsertManualHolding({ id: "hOld", connectionId: "man1", market: "KOSPI", symbol: "005930",
+      name: "삼성전자", currency: "KRW", quantity: 1, avgBuyPrice: 1, sector: "반도체" });
+
+    const backup = JSON.stringify({
+      schemaVersion: 4, exportedAt: 1,
+      data: { holdings: [
+        { id: "hNew", connectionId: "man2", market: "KOSPI", symbol: "035420", name: "NAVER",
+          sector: "인터넷", currency: "KRW", quantity: 2, avgBuyPrice: 200000, source: "MANUAL", updatedAt: 1 },
+      ] },
+    });
+
+    await importAll(backup, { mode: "overwrite" });
+
+    expect(await db.connections.get("api1")).toBeDefined();
+    expect(await db.holdings.get("hAuto")).toBeDefined();
+    expect(await db.priceCache.count()).toBe(1);
+    expect(await db.holdings.get("hOld")).toBeUndefined();
+    expect(await db.holdings.get("hNew")).toBeDefined();
+  });
+
+  it("구버전 백업의 API 연결·AUTO 행·settings는 import에서 무시된다", async () => {
+    const legacy = JSON.stringify({
+      schemaVersion: 3, exportedAt: 1,
+      data: {
+        connections: [
+          { id: "api1", memberId: "m1", type: "TOSS_API", label: "토스", clientSecretEnc: "enc",
+            createdAt: 1, updatedAt: 1 },
+          { id: "man1", memberId: "m1", type: "MANUAL", label: "미래에셋", createdAt: 1, updatedAt: 1 },
+        ],
+        holdings: [
+          { id: "hAuto", connectionId: "api1", market: "KOSPI", symbol: "000660", name: "SK하이닉스",
+            sector: "반도체", currency: "KRW", quantity: 5, avgBuyPrice: 100000, source: "AUTO", updatedAt: 1 },
+        ],
+        priceCache: [{ key: "005930|KRW", symbol: "005930", currency: "KRW", lastPrice: 1, asOf: 1 }],
+        fxRates: [{ pair: "USDKRW", rate: 1300, asOf: 1 }],
+        settings: [{ id: "app", kdfSalt: "backupSalt", verifier: "v", schemaVersion: 1 }],
+      },
+    });
+
+    await importAll(legacy, { mode: "overwrite" });
+
+    expect(await db.connections.get("man1")).toBeDefined();
+    expect(await db.connections.get("api1")).toBeUndefined();
+    expect(await db.holdings.count()).toBe(0);
+    expect(await db.priceCache.count()).toBe(0);
+    expect(await db.fxRates.count()).toBe(0);
+    expect(await db.settings.get("app")).toBeUndefined();
+  });
 });

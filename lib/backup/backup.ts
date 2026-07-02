@@ -1,4 +1,5 @@
 import { db } from "@/lib/db/schema";
+import type { Connection, Holding, SavingsAccount, CoinHolding } from "@/lib/types";
 
 // 백업 payload 버전(Dexie DB 버전과는 독립된 네임스페이스).
 // v2: 저축·연금·코인 포함. v3: 대출 포함.
@@ -17,11 +18,6 @@ interface BackupData {
   pension: unknown[];
   coin: unknown[];
   debts: unknown[];
-  // 아래 필드는 v4 export에서 더 이상 쓰지 않지만, 구버전 백업을 읽는
-  // 기존 importAll(Task 2에서 정리 예정)이 참조하므로 인터페이스에 남겨둔다.
-  priceCache: unknown[];
-  fxRates: unknown[];
-  settings: unknown[];
 }
 
 interface BackupPayload {
@@ -37,7 +33,15 @@ export async function exportAll(): Promise<string> {
   //  - 재조회 캐시: priceCache, fxRates
   //  - 보안 앵커: settings(kdfSalt/verifier) — 보존된 API 연결 복호화 키가 이 salt에 묶여 있어 덮으면 손상
   const [
-    members, connections, holdings, snapshots, sectorOverrides, savings, pension, coin, debts,
+    members,
+    connections,
+    holdings,
+    snapshots,
+    sectorOverrides,
+    savings,
+    pension,
+    coin,
+    debts,
   ] = await Promise.all([
     db.members.toArray(),
     db.connections.where("type").equals("MANUAL").toArray(),
@@ -54,7 +58,15 @@ export async function exportAll(): Promise<string> {
     schemaVersion: SCHEMA_VERSION,
     exportedAt: Date.now(),
     data: {
-      members, connections, holdings, snapshots, sectorOverrides, savings, pension, coin, debts,
+      members,
+      connections,
+      holdings,
+      snapshots,
+      sectorOverrides,
+      savings,
+      pension,
+      coin,
+      debts,
     },
   };
 
@@ -75,41 +87,44 @@ export async function importAll(json: string, opts: { mode: "merge" | "overwrite
 
   const data = parsed.data ?? {};
 
-  const members = (data.members ?? []) as Parameters<typeof db.members.bulkPut>[0];
-  const connections = (data.connections ?? []) as Parameters<typeof db.connections.bulkPut>[0];
-  const holdings = (data.holdings ?? []) as Parameters<typeof db.holdings.bulkPut>[0];
-  const priceCache = (data.priceCache ?? []) as Parameters<typeof db.priceCache.bulkPut>[0];
-  const fxRates = (data.fxRates ?? []) as Parameters<typeof db.fxRates.bulkPut>[0];
-  const snapshots = (data.snapshots ?? []) as Parameters<typeof db.snapshots.bulkPut>[0];
-  const settings = (data.settings ?? []) as Parameters<typeof db.settings.bulkPut>[0];
-  const sectorOverrides = (data.sectorOverrides ?? []) as Parameters<typeof db.sectorOverrides.bulkPut>[0];
-  const savings = (data.savings ?? []) as Parameters<typeof db.savings.bulkPut>[0];
-  const pension = (data.pension ?? []) as Parameters<typeof db.pension.bulkPut>[0];
-  const coin = (data.coin ?? []) as Parameters<typeof db.coin.bulkPut>[0];
-  const debts = (data.debts ?? []) as Parameters<typeof db.debts.bulkPut>[0];
-
-  // v5 이전 백업엔 coin/savings에 source 필드가 없다(Task 1에서 필수 필드가 됨).
-  // 없으면 connectionId 없는 순수 수동 데이터로 간주해 MANUAL로 채운다.
+  // 입력 정제: 수동 데이터만 통과. 구버전 백업의 API 설정·AUTO·priceCache·fxRates·settings·tokenCache는 무시.
+  const manualConnections = ((data.connections ?? []) as Connection[])
+    .filter((c) => c.type === "MANUAL");
+  const manualHoldings = ((data.holdings ?? []) as Holding[])
+    .filter((h) => (h.source ?? "MANUAL") === "MANUAL");
+  // savings/coin은 source 백필(v5 이전엔 필드 없음 → MANUAL) 후 MANUAL만 통과.
   const withSource = <T extends { source?: string }>(rows: readonly T[]): T[] =>
     rows.map((r) => ({ ...r, source: r.source ?? "MANUAL" }));
-  const savingsWithSource = withSource(savings);
-  const coinWithSource = withSource(coin);
+  const manualSavings = withSource((data.savings ?? []) as SavingsAccount[])
+    .filter((r) => r.source === "MANUAL");
+  const manualCoin = withSource((data.coin ?? []) as CoinHolding[])
+    .filter((r) => r.source === "MANUAL");
 
+  const members = (data.members ?? []) as Parameters<typeof db.members.bulkPut>[0];
+  const snapshots = (data.snapshots ?? []) as Parameters<typeof db.snapshots.bulkPut>[0];
+  const sectorOverrides = (data.sectorOverrides ?? []) as Parameters<typeof db.sectorOverrides.bulkPut>[0];
+  const pension = (data.pension ?? []) as Parameters<typeof db.pension.bulkPut>[0];
+  const debts = (data.debts ?? []) as Parameters<typeof db.debts.bulkPut>[0];
+
+  // 트랜잭션 스코프는 db.tables 전체 유지(선택적 삭제가 여러 테이블에 걸침).
   await db.transaction("rw", db.tables, async () => {
     if (opts.mode === "overwrite") {
-      await Promise.all(db.tables.map((t) => t.clear()));
+      // 수동 데이터만 교체. API 설정·AUTO 행·캐시·settings·session은 보존.
+      await db.connections.where("type").equals("MANUAL").delete();
+      await db.holdings.where("source").equals("MANUAL").delete();
+      await db.coin.where("source").equals("MANUAL").delete();
+      await db.savings.where("source").equals("MANUAL").delete();
+      await db.pension.clear();
+      await db.debts.clear();
     }
     await db.members.bulkPut(members);
-    await db.connections.bulkPut(connections);
-    await db.holdings.bulkPut(holdings);
-    await db.priceCache.bulkPut(priceCache);
-    await db.fxRates.bulkPut(fxRates);
+    await db.connections.bulkPut(manualConnections as Parameters<typeof db.connections.bulkPut>[0]);
+    await db.holdings.bulkPut(manualHoldings as Parameters<typeof db.holdings.bulkPut>[0]);
     await db.snapshots.bulkPut(snapshots);
-    await db.settings.bulkPut(settings);
     await db.sectorOverrides.bulkPut(sectorOverrides);
-    await db.savings.bulkPut(savingsWithSource);
+    await db.savings.bulkPut(manualSavings as Parameters<typeof db.savings.bulkPut>[0]);
     await db.pension.bulkPut(pension);
-    await db.coin.bulkPut(coinWithSource);
+    await db.coin.bulkPut(manualCoin as Parameters<typeof db.coin.bulkPut>[0]);
     await db.debts.bulkPut(debts);
   });
 }
