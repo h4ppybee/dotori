@@ -42,11 +42,12 @@ npm run test:watch # vitest watch
 app/                       App Router 라우트 (모두 "use client")
   layout.tsx               QueryProvider + LockGate + AppNav + ServiceWorker 등록
   page.tsx                 홈 (플레이스홀더 DummyPage)
-  assets/page.tsx          자산 개요 — 순자산 = 자산 합계 − 부채, 자산별 카드 + DebtSection
+  assets/page.tsx          자산 개요 — 순자산 = 자산 합계 − 부채, 자산별 카드 + DebtSection + SnapshotSection
   assets/stocks/page.tsx   주식 대시보드 (구 홈 — 포트폴리오/섹터/보유)
   assets/savings/page.tsx  저축/현금성 (+ savings/manage 추가·수정)
   assets/pension/page.tsx  연금 (+ pension/manage)
   assets/crypto/page.tsx   코인 (+ crypto/manage)
+  assets/snapshots         자산 스냅샷 전체 목록 (+ snapshots/[id] 상세 표+삭제)
   holdings/new, holdings/[id]  주식 직접 추가 / 상세·섹터 편집·MANUAL 수정·삭제
   plan, ledger             계획·가계부 (플레이스홀더 DummyPage)
   settings/page.tsx        연동(토스·업비트) / 백업 / 비밀번호 변경
@@ -61,6 +62,7 @@ components/
   portfolio/               주식 대시보드 위젯
                            (SummaryHero, SectorDonut, HoldingWeightBars, HoldingsTable, RefreshBar, SectorDialog)
   savings/, pension/, coin/, debt/   자산별 위젯·관리 목록·입력 다이얼로그
+  snapshot/                SnapshotSection(기록 버튼+차트+최근 목록), SnapshotListItem, SnapshotTrendChart(추이 콤보 차트)
   holdings/HoldingForm.tsx 종목 추가/편집 폼
   nav/                     AppNav, MainTabBar, AssetSubTabBar, DummyPage
   settings/                ConnectionForm, BackupPanel
@@ -75,10 +77,10 @@ lib/
   savings/, pension/, coin/, debt/   자산별 순수 서비스(VM 빌드·집계·카테고리 라벨)
   sector/                  seed(종목→섹터 시드), sector-map(resolveSector + KNOWN_SECTORS)
   crypto/                  crypto(PBKDF2/AES-GCM), rekey(비밀번호 변경 재암호화)
-  snapshot/                일별 스냅샷 저장
+  snapshot/                수동 전체 자산 스냅샷 — capture(DB 상태→VM 5종→저장), asset-snapshot(순수 빌더), trend(추이 차트 데이터 헬퍼)
   backup/                  수동 데이터 export/import (JSON) — 상세 docs/backup.md
   nav/                     nav-config(탭 정의), active(활성 탭 판정)
-  query/                   client(QueryProvider), use-portfolio·use-savings·use-pension·use-coin·use-debt·use-settings, use-assets-refresh
+  query/                   client(QueryProvider), use-portfolio·use-savings·use-pension·use-coin·use-debt·use-settings, use-assets-refresh, use-asset-snapshots(목록/단건/기록·삭제 뮤테이션)
   format.ts, types.ts
 
 stores/
@@ -102,7 +104,7 @@ docs/                      본 문서 + superpowers/(스펙·플랜)
      │   (저축 수동 입력분은 갱신 대상 아님)
      ▼
 [IndexedDB]  holdings · priceCache · fxRates · sectorOverrides · snapshots · settings
-             · savings · pension · coin · debts · session
+             · savings · pension · coin · debts · assetSnapshots · session
      │
 [use-* 훅]   DB 로드 → 자산별 순수 서비스로 VM 빌드
      │   주식: buildPortfolio(merge+pnl+fx+ratios+resolveSector)
@@ -115,6 +117,7 @@ docs/                      본 문서 + superpowers/(스펙·플랜)
 - **직접 추가(MANUAL)**: 주식은 [HoldingForm](../components/holdings/HoldingForm.tsx)이 `upsertManualHolding` + `sectorOverride`를 기록한다(추가는 `holdings/new`, 수정·삭제는 `holdings/[id]`). 저축·연금·코인·부채는 각 자산 화면의 `manage`/다이얼로그에서 직접 입력·수정한다.
 - **자산 소스**: AUTO(연동)는 토스(주식·연금 시세·환율)와 업비트(코인·예수금), MANUAL(직접 입력)은 저축·부채 및 직접 추가분. 연동·수동을 합쳐 보여준다.
 - **갱신 트리거**: 자산 화면의 `RefreshBar` → `useAssetsRefresh` 뮤테이션 → 성공 시 `portfolio`·`pension`·`coin`·`savings` 쿼리 무효화. 각 자산 추가/수정/삭제 후에도 해당 쿼리를 무효화해 화면을 갱신한다.
+- **자산 스냅샷(수동 전체)**: 자동 갱신 흐름과 별개로, 자산 탭 하단 [SnapshotSection](../components/snapshot/SnapshotSection.tsx)의 "+ 지금 기록" 버튼을 누르면 [captureAssetSnapshot](../lib/snapshot/capture.ts)이 DB 상태를 화면과 동일한 VM 5종(주식·저축·연금·코인·부채)으로 계산해 순수 빌더 [buildAssetSnapshot](../lib/snapshot/asset-snapshot.ts)에 넘기고, 결과 1건을 `assetSnapshots` 테이블에 저장한다. 이전의 주식 전용 일별 자동 스냅샷(`snapshots` 테이블, `Settings.lastSnapshotDate`)은 제거되어 이 수동 전체 스냅샷으로 일원화됐다 — `snapshots` 테이블과 과거 데이터는 하위호환을 위해 보존만 되고 더 이상 기록되지 않는다. 추이는 [SnapshotTrendChart](../components/snapshot/SnapshotTrendChart.tsx)가 최신 20건을 [buildTrendData](../lib/snapshot/trend.ts)로 가공해 순자산 선(상단 밴드) + 직전 대비 변화량 막대(하단 밴드)로 보여준다. 목록·상세는 `/assets/snapshots`, `/assets/snapshots/[id]`.
 
 ---
 
