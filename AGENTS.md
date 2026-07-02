@@ -6,16 +6,16 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 # dotori 프로젝트 가이드
 
-토스 스타일 **로컬 퍼스트 PWA 주식 포트폴리오 앱**. 토스인베스트 Open API로 보유 종목·시세·환율을 가져와 직접 추가 종목과 합쳐 보여준다. 모든 데이터는 브라우저 IndexedDB에 저장되고, 민감정보는 비밀번호 파생 키로 암호화한다. **서버 DB 없음.** (패키지명 `dotori`)
+토스 스타일 **로컬 퍼스트 PWA 개인 자산 관리 앱**. 주식·저축/현금성·연금·코인 자산과 부채를 합쳐 **순자산**을 보여준다. 토스인베스트 Open API(주식·연금 시세·환율)와 업비트 API(코인·예수금)로 시세를 가져와 직접 입력한 자산과 합친다. 가계부(`ledger`)·계획(`plan`)은 탭만 있고 아직 플레이스홀더(`DummyPage`)다. 모든 데이터는 브라우저 IndexedDB에 저장되고, 민감정보는 비밀번호 파생 키로 암호화한다. **서버 DB 없음.** (패키지명 `dotori`)
 
-전체 구조·데이터 흐름·보안 모델은 **[docs/architecture.md](docs/architecture.md)** 를 먼저 읽는다.
+전체 구조·데이터 흐름·보안 모델은 **[docs/architecture.md](docs/architecture.md)** 를 먼저 읽는다. 주제별 서비스 구조 문서는 **[docs/](docs/README.md)** 카탈로그 참고 — 백업은 [docs/backup.md](docs/backup.md), 외부 OpenAPI 연동은 [docs/external-api.md](docs/external-api.md).
 
 ## 기술 스택
 
 - **Next.js 16.2.9** (App Router) — 위 경고 준수
 - React 19 · TypeScript 5 · Tailwind CSS v4
-- `@tanstack/react-query` 5 (포트폴리오 쿼리/갱신)
-- `dexie` 4 (IndexedDB) · `zustand` 5 (잠금·세션 키, 인메모리)
+- `@tanstack/react-query` 5 (자산별 쿼리/갱신)
+- `dexie` 4 (IndexedDB) · `zustand` 5 (잠금·세션 키·네비, 인메모리)
 - `vitest` 4 + Testing Library + `fake-indexeddb`
 
 ## 명령어
@@ -45,10 +45,12 @@ GitHub `h4ppybee/dotori` ↔ Vercel 프로젝트가 **Git 연동**되어 있다.
 
 ## 디렉토리 요약
 
-- `app/` — App Router 라우트(모두 `"use client"`): `page`(홈), `holdings/new`(추가), `holdings/[id]`(상세·수정·삭제), `settings` + `api/toss/*` 서버 프록시
-- `components/` — `ui/`(디자인 프리미티브), `portfolio/`(대시보드 위젯), `holdings/`, `settings/`
-- `lib/` — `toss/`·`sync/`(동기화), `db/`(Dexie·CRUD), `portfolio/`(순수 계산), `sector/`, `crypto/`, `snapshot/`, `backup/`, `query/`
-- `stores/app-store.ts` — zustand(잠금·세션 키·마지막 갱신)
+- `app/` — App Router 라우트(모두 `"use client"`). 메인 5탭: `page`(홈·플레이스홀더), `assets`(자산 개요), `plan`·`ledger`(플레이스홀더), `settings`
+  - `assets/{stocks,savings,pension,crypto}` — 자산별 화면, 각 `manage/`에 추가·수정 화면(주식은 `holdings/new`·`holdings/[id]` 사용)
+  - `api/toss/*`·`api/upbit/*` — 서버 프록시(토스·업비트)
+- `components/` — `ui/`(디자인 프리미티브·`DonutChart` 등), `portfolio/`, `holdings/`, `savings/`, `pension/`, `coin/`, `debt/`, `nav/`(탭 바), `settings/`
+- `lib/` — 자산 소스: `toss/`·`upbit/`·`sync/`(동기화). 도메인 서비스(순수 계산): `portfolio/`·`savings/`·`pension/`·`coin/`·`debt/`. 공통: `db/`(Dexie·CRUD), `sector/`, `crypto/`, `snapshot/`, `backup/`, `nav/`, `query/`(자산별 훅)
+- `stores/` — `app-store.ts`(잠금·세션 키·마지막 갱신), `nav-store.ts`(탭 복귀 지점)
 - `test/` — 모듈 구조를 미러링한 테스트
 
 ## 핵심 규칙
@@ -58,10 +60,16 @@ GitHub `h4ppybee/dotori` ↔ Vercel 프로젝트가 **Git 연동**되어 있다.
   - 임의의 색·폰트·간격·radius를 새로 만들지 말고 DESIGN.md에 정의된 토큰과 Tailwind 클래스(`text-up`, `bg-surface-soft` 등)를 사용한다.
   - 기존 `components/ui/` 프리미티브를 우선 재사용한다.
   - **새 디자인 토큰/규칙을 추가하거나 기존 규칙을 바꿀 때는 [DESIGN.md](DESIGN.md)도 함께 수정**해 코드와 문서를 항상 일치시킨다. 새 색·간격·컴포넌트 규격·UX 카피 규칙이 생기면 먼저(또는 함께) DESIGN.md에 반영한다.
-- **보안**: 비밀번호는 절대 저장하지 않는다(`salt` + `verifier`만 저장). 세션 키(CryptoKey)는 비추출 키로 파생하고, 자동 잠금(10분 유휴 슬라이딩)을 위해서만 비추출 핸들 + 만료시각을 세션 볼트(`lib/db/session-vault`, IndexedDB)에 둔다 — 만료/잠금 시 폐기되며 원본 키 바이트는 영속화되지 않는다. 토스 시크릿·토큰은 `app/api/toss/*` 프록시 경유. 암호화는 `lib/crypto`.
-- **순수 계산**: `lib/portfolio/`의 함수는 DB·비동기·`Date` 없이 입력만으로 결과를 낸다. 계산 로직은 여기에 두고 테스트한다.
+- **보안**: 비밀번호는 절대 저장하지 않는다(`salt` + `verifier`만 저장). 세션 키(CryptoKey)는 비추출 키로 파생하고, 자동 잠금(10분 유휴 슬라이딩)을 위해서만 비추출 핸들 + 만료시각을 세션 볼트(`lib/db/session-vault`, IndexedDB)에 둔다 — 만료/잠금 시 폐기되며 원본 키 바이트는 영속화되지 않는다. 토스·업비트 시크릿·토큰은 `app/api/toss/*`·`app/api/upbit/*` 프록시 경유. 암호화는 `lib/crypto`.
+- **순수 계산**: `lib/portfolio/`(및 `savings/`·`pension/`·`coin/`·`debt/`)의 서비스 함수는 DB·비동기·`Date` 없이 입력만으로 결과를 낸다. 계산 로직은 여기에 두고 테스트한다.
 - **섹터**: 화면 표시는 항상 `resolveSector(symbol, sectorOverrides)` 기반(우선순위 overrides > seed > "미분류"). `sectorOverrides`는 symbol을 키로 저장해 AUTO·MANUAL 모두에 적용된다. 기본 목록은 `KNOWN_SECTORS`(테마형).
 - **Next 16**: 동적 라우트 `params`는 Promise → 클라이언트에서 `use(params)`. 네비게이션은 `next/navigation`. IndexedDB는 서버/SSR에서 접근 금지.
+- 📄 **문서 동기화 (필수)**: 기능을 추가·변경할 때는 관련 문서를 **코드와 같은 작업에서 함께 갱신**한다. 문서가 코드와 어긋난 채로 남기지 않는다. 무엇을 만졌는지에 따라:
+  - **서비스 구조**(새 라우트/탭·`lib` 모듈·`components` 디렉토리·데이터 흐름·자산 종류) → 이 **AGENTS.md**와 **[docs/architecture.md](docs/architecture.md)**.
+  - **백업**(`lib/backup`, 새 Dexie 테이블/영속 데이터) → **[docs/backup.md](docs/backup.md)** + `lib/backup`의 export/import.
+  - **외부 OpenAPI 연동**(`lib/{toss,upbit,sync}`, `app/api/*`, 프록시·릴레이·토큰) → **[docs/external-api.md](docs/external-api.md)**.
+  - **디자인 토큰·UI 규칙** → [DESIGN.md](DESIGN.md)(위 디자인 규칙 참조).
+  - 새 주제 영역이 생기면 `docs/`에 문서를 추가하고 [docs/README.md](docs/README.md) 카탈로그에 등록한다.
 
 ## 코딩 스타일
 
