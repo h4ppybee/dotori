@@ -4,9 +4,10 @@ import type { Connection, Holding, SavingsAccount, CoinHolding, HoldingSource } 
 // 백업 payload 버전(Dexie DB 버전과는 독립된 네임스페이스).
 // v2: 저축·연금·코인 포함. v3: 대출 포함.
 // v4: 사용자가 직접 입력한 수동 데이터만 백업. API 설정·AUTO 데이터·시세/환율 캐시·settings 제외.
-// 구버전(v1~v3) 백업도 계속 불러올 수 있다(그 안의 API 설정·AUTO·캐시·settings는 무시).
-export const SCHEMA_VERSION = 4;
-const SUPPORTED_VERSIONS = new Set([1, 2, 3, 4]);
+// v5: 자산 스냅샷(assetSnapshots) 포함.
+// 구버전(v1~v4) 백업도 계속 불러올 수 있다(그 안의 API 설정·AUTO·캐시·settings는 무시).
+export const SCHEMA_VERSION = 5;
+const SUPPORTED_VERSIONS = new Set([1, 2, 3, 4, 5]);
 
 interface BackupData {
   members: unknown[];
@@ -18,6 +19,7 @@ interface BackupData {
   pension: unknown[];
   coin: unknown[];
   debts: unknown[];
+  assetSnapshots: unknown[];
 }
 
 interface BackupPayload {
@@ -42,6 +44,7 @@ export async function exportAll(): Promise<string> {
     pension,
     coin,
     debts,
+    assetSnapshots,
   ] = await Promise.all([
     db.members.toArray(),
     db.connections.where("type").equals("MANUAL").toArray(),
@@ -52,6 +55,7 @@ export async function exportAll(): Promise<string> {
     db.pension.toArray(),
     db.coin.where("source").equals("MANUAL").toArray(),
     db.debts.toArray(),
+    db.assetSnapshots.toArray(),
   ]);
 
   const payload: BackupPayload = {
@@ -67,6 +71,7 @@ export async function exportAll(): Promise<string> {
       pension,
       coin,
       debts,
+      assetSnapshots,
     },
   };
 
@@ -105,6 +110,7 @@ export async function importAll(json: string, opts: { mode: "merge" | "overwrite
   const sectorOverrides = (data.sectorOverrides ?? []) as Parameters<typeof db.sectorOverrides.bulkPut>[0];
   const pension = (data.pension ?? []) as Parameters<typeof db.pension.bulkPut>[0];
   const debts = (data.debts ?? []) as Parameters<typeof db.debts.bulkPut>[0];
+  const assetSnapshots = (data.assetSnapshots ?? []) as Parameters<typeof db.assetSnapshots.bulkPut>[0];
 
   // 트랜잭션 스코프는 db.tables 전체 유지(선택적 삭제가 여러 테이블에 걸침).
   await db.transaction("rw", db.tables, async () => {
@@ -116,6 +122,7 @@ export async function importAll(json: string, opts: { mode: "merge" | "overwrite
       await db.savings.where("source").equals("MANUAL").delete();
       await db.pension.clear();
       await db.debts.clear();
+      await db.assetSnapshots.clear();
     }
     await db.members.bulkPut(members);
     await db.connections.bulkPut(manualConnections);
@@ -126,5 +133,6 @@ export async function importAll(json: string, opts: { mode: "merge" | "overwrite
     await db.pension.bulkPut(pension);
     await db.coin.bulkPut(manualCoin);
     await db.debts.bulkPut(debts);
+    await db.assetSnapshots.bulkPut(assetSnapshots);
   });
 }

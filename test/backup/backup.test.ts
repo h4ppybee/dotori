@@ -7,6 +7,15 @@ import { exportAll, importAll } from "@/lib/backup/backup";
 
 afterEach(async () => { await db.delete(); await db.open(); });
 
+const makeSnap = (id: string, createdAt: number) => ({
+  id, createdAt, netWorthKrw: 0, totalAssetsKrw: 0, totalDebtKrw: 0,
+  stocks: { totalValueKrw: 0, totalCostKrw: 0, totalPnlKrw: 0, returnPct: 0, rows: [] },
+  pension: { totalValueKrw: 0, totalCostKrw: 0, totalPnlKrw: 0, returnPct: 0, rows: [] },
+  coin: { totalValueKrw: 0, totalCostKrw: 0, totalPnlKrw: 0, returnPct: 0, rows: [] },
+  savings: { totalKrw: 0, rows: [] },
+  debt: { totalKrw: 0, rows: [] },
+});
+
 describe("exportAll / importAll", () => {
   it("내보내기 후 DB를 비우고 덮어쓰기로 불러오면 데이터가 동일하게 복원된다", async () => {
     // seed
@@ -56,7 +65,7 @@ describe("exportAll / importAll", () => {
       data: Record<string, unknown[] | undefined>;
     };
 
-    expect(parsed.schemaVersion).toBe(4);
+    expect(parsed.schemaVersion).toBe(5);
     expect((parsed.data.connections as { id: string }[]).map((c) => c.id)).toEqual(["man1"]);
     expect((parsed.data.holdings as { id: string }[]).map((h) => h.id)).toEqual(["h1"]);
     expect(parsed.data.savings).toEqual([]);
@@ -66,14 +75,14 @@ describe("exportAll / importAll", () => {
     expect(parsed.data.settings).toBeUndefined();
   });
 
-  it("저축·연금·코인도 내보내고 덮어쓰기로 복원된다 (schemaVersion 4)", async () => {
+  it("저축·연금·코인도 내보내고 덮어쓰기로 복원된다 (schemaVersion 5)", async () => {
     await db.savings.put({ id: "s1", category: "DEPOSIT", name: "청약", amount: 1000, sortOrder: 0, updatedAt: 1, source: "MANUAL" });
     await db.pension.put({ id: "p1", category: "PERSONAL", name: "TIGER", symbol: "360750", quantity: 10, buyPrice: 100, currentPrice: 110, sortOrder: 0, updatedAt: 1 });
     await db.coin.put({ id: "c1", name: "비트코인", quantity: 0.02, buyPrice: 100, currentPrice: 80, sortOrder: 0, updatedAt: 1, source: "MANUAL" });
     await db.debts.put({ id: "d1", category: "MORTGAGE", name: "주택담보대출", lender: "국민", balance: 120_000_000, interestRate: 3.5, monthlyPayment: 700_000, sortOrder: 0, updatedAt: 1 });
 
     const json = await exportAll();
-    expect(JSON.parse(json).schemaVersion).toBe(4);
+    expect(JSON.parse(json).schemaVersion).toBe(5);
 
     await db.delete();
     await db.open();
@@ -251,5 +260,30 @@ describe("exportAll / importAll", () => {
     expect(await db.connections.get("man2")).toBeDefined();
     expect(await db.connections.get("api1")).toBeUndefined();
     expect(await db.settings.get("app")).toBeUndefined();
+  });
+
+  it("assetSnapshots를 export/import 라운드트립한다", async () => {
+    await db.assetSnapshots.put({ ...makeSnap("s1", 10), savings: { totalKrw: 100, rows: [{ name: "예금", amountKrw: 100 }] } });
+    const json = await exportAll();
+    await db.delete(); await db.open();
+    await importAll(json, { mode: "merge" });
+    const got = await db.assetSnapshots.get("s1");
+    expect(got?.savings.rows[0].name).toBe("예금");
+  });
+
+  it("overwrite 모드는 기존 assetSnapshots를 지우고 백업본으로 교체한다", async () => {
+    await db.assetSnapshots.put(makeSnap("old", 1));
+    const json = JSON.stringify({
+      schemaVersion: 5, exportedAt: 1,
+      data: { assetSnapshots: [makeSnap("new", 2)] },
+    });
+    await importAll(json, { mode: "overwrite" });
+    expect(await db.assetSnapshots.get("old")).toBeUndefined();
+    expect(await db.assetSnapshots.get("new")).toBeDefined();
+  });
+
+  it("assetSnapshots 없는 v4 백업도 불러온다", async () => {
+    const json = JSON.stringify({ schemaVersion: 4, exportedAt: 1, data: {} });
+    await expect(importAll(json, { mode: "merge" })).resolves.toBeUndefined();
   });
 });
