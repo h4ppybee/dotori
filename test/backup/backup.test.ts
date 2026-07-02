@@ -2,6 +2,7 @@ import { describe, it, expect, afterEach } from "vitest";
 import { db } from "@/lib/db/schema";
 import { upsertConnection, upsertManualHolding } from "@/lib/db/local-store";
 import { putSettings } from "@/lib/db/local-store";
+import { putPrice, putFx } from "@/lib/db/local-store";
 import { exportAll, importAll } from "@/lib/backup/backup";
 
 afterEach(async () => { await db.delete(); await db.open(); });
@@ -24,18 +25,55 @@ describe("exportAll / importAll", () => {
 
     expect(await db.connections.count()).toBe(1);
     expect(await db.holdings.count()).toBe(1);
-    const settings = await db.settings.get("app");
-    expect(settings?.kdfSalt).toBe("salt1");
+    // settings는 백업에서 제외되므로 복원되지 않는다
+    expect(await db.settings.get("app")).toBeUndefined();
   });
 
-  it("저축·연금·코인도 내보내고 덮어쓰기로 복원된다 (schemaVersion 3)", async () => {
+  it("export는 API 연결·AUTO 행·priceCache·fxRates·settings를 제외한다", async () => {
+    // API 설정
+    await upsertConnection({ id: "api1", memberId: "m1", type: "TOSS_API", label: "토스",
+      clientId: "cid", clientSecretEnc: "enc" });
+    // 수동 연결 + 수동 보유
+    await upsertConnection({ id: "man1", memberId: "m1", type: "MANUAL", label: "미래에셋" });
+    await upsertManualHolding({ id: "h1", connectionId: "man1", market: "KOSPI", symbol: "005930",
+      name: "삼성전자", currency: "KRW", quantity: 10, avgBuyPrice: 70000, sector: "반도체" });
+    // AUTO 보유
+    await db.holdings.put({ id: "hAuto", connectionId: "api1", market: "KOSPI", symbol: "000660",
+      name: "SK하이닉스", sector: "반도체", currency: "KRW", quantity: 5, avgBuyPrice: 100000,
+      source: "AUTO", updatedAt: 1 });
+    // AUTO 저축/코인
+    await db.savings.put({ id: "sAuto", category: "CHECKING", name: "업비트 원화", amount: 100,
+      sortOrder: 0, updatedAt: 1, source: "AUTO", connectionId: "api1" });
+    await db.coin.put({ id: "cAuto", name: "비트코인", quantity: 1, buyPrice: 1, currentPrice: 1,
+      sortOrder: 0, updatedAt: 1, source: "AUTO", connectionId: "api1" });
+    // 캐시 + settings
+    await putPrice({ symbol: "005930", currency: "KRW", lastPrice: 71000, asOf: 1 });
+    await putFx({ pair: "USDKRW", rate: 1300, asOf: 1 });
+    await putSettings({ id: "app", kdfSalt: "salt1", verifier: "ver1", schemaVersion: 1 });
+
+    const parsed = JSON.parse(await exportAll()) as {
+      schemaVersion: number;
+      data: Record<string, unknown[] | undefined>;
+    };
+
+    expect(parsed.schemaVersion).toBe(4);
+    expect((parsed.data.connections as { id: string }[]).map((c) => c.id)).toEqual(["man1"]);
+    expect((parsed.data.holdings as { id: string }[]).map((h) => h.id)).toEqual(["h1"]);
+    expect(parsed.data.savings).toEqual([]);
+    expect(parsed.data.coin).toEqual([]);
+    expect(parsed.data.priceCache).toBeUndefined();
+    expect(parsed.data.fxRates).toBeUndefined();
+    expect(parsed.data.settings).toBeUndefined();
+  });
+
+  it("저축·연금·코인도 내보내고 덮어쓰기로 복원된다 (schemaVersion 4)", async () => {
     await db.savings.put({ id: "s1", category: "DEPOSIT", name: "청약", amount: 1000, sortOrder: 0, updatedAt: 1, source: "MANUAL" });
     await db.pension.put({ id: "p1", category: "PERSONAL", name: "TIGER", symbol: "360750", quantity: 10, buyPrice: 100, currentPrice: 110, sortOrder: 0, updatedAt: 1 });
     await db.coin.put({ id: "c1", name: "비트코인", quantity: 0.02, buyPrice: 100, currentPrice: 80, sortOrder: 0, updatedAt: 1, source: "MANUAL" });
     await db.debts.put({ id: "d1", category: "MORTGAGE", name: "주택담보대출", lender: "국민", balance: 120_000_000, interestRate: 3.5, monthlyPayment: 700_000, sortOrder: 0, updatedAt: 1 });
 
     const json = await exportAll();
-    expect(JSON.parse(json).schemaVersion).toBe(3);
+    expect(JSON.parse(json).schemaVersion).toBe(4);
 
     await db.delete();
     await db.open();

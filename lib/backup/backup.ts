@@ -1,24 +1,27 @@
 import { db } from "@/lib/db/schema";
 
-// v2: 저축(savings)·연금(pension)·코인(coin) 테이블 포함.
-// v3: 대출(debts) 테이블 포함.
-// 구버전(v1) 백업도 계속 불러올 수 있다(없는 테이블은 빈 배열로 처리).
-export const SCHEMA_VERSION = 3;
-const SUPPORTED_VERSIONS = new Set([1, 2, 3]);
+// 백업 payload 버전(Dexie DB 버전과는 독립된 네임스페이스).
+// v2: 저축·연금·코인 포함. v3: 대출 포함.
+// v4: 사용자가 직접 입력한 수동 데이터만 백업. API 설정·AUTO 데이터·시세/환율 캐시·settings 제외.
+// 구버전(v1~v3) 백업도 계속 불러올 수 있다(그 안의 API 설정·AUTO·캐시·settings는 무시).
+export const SCHEMA_VERSION = 4;
+const SUPPORTED_VERSIONS = new Set([1, 2, 3, 4]);
 
 interface BackupData {
   members: unknown[];
   connections: unknown[];
   holdings: unknown[];
-  priceCache: unknown[];
-  fxRates: unknown[];
   snapshots: unknown[];
-  settings: unknown[];
   sectorOverrides: unknown[];
   savings: unknown[];
   pension: unknown[];
   coin: unknown[];
   debts: unknown[];
+  // 아래 필드는 v4 export에서 더 이상 쓰지 않지만, 구버전 백업을 읽는
+  // 기존 importAll(Task 2에서 정리 예정)이 참조하므로 인터페이스에 남겨둔다.
+  priceCache: unknown[];
+  fxRates: unknown[];
+  settings: unknown[];
 }
 
 interface BackupPayload {
@@ -28,33 +31,22 @@ interface BackupPayload {
 }
 
 export async function exportAll(): Promise<string> {
-  // tokenCache는 휘발성(clientSecret으로 언제든 재발급) + 비밀번호 파생 키로 암호화돼
-  // 있어 백업/복원 대상에서 제외한다. 복원 시 죽은 토큰이 주입되어 401을 유발하던 문제 방지.
+  // 수동 데이터만 백업한다. 제외 대상:
+  //  - API 설정: connections(TOSS_API/UPBIT_API), tokenCache — 기기별 민감정보
+  //  - 자동 데이터: holdings/savings/coin 중 source==="AUTO" — 재연결+새로고침으로 복구
+  //  - 재조회 캐시: priceCache, fxRates
+  //  - 보안 앵커: settings(kdfSalt/verifier) — 보존된 API 연결 복호화 키가 이 salt에 묶여 있어 덮으면 손상
   const [
-    members,
-    connections,
-    holdings,
-    priceCache,
-    fxRates,
-    snapshots,
-    settings,
-    sectorOverrides,
-    savings,
-    pension,
-    coin,
-    debts,
+    members, connections, holdings, snapshots, sectorOverrides, savings, pension, coin, debts,
   ] = await Promise.all([
     db.members.toArray(),
-    db.connections.toArray(),
-    db.holdings.toArray(),
-    db.priceCache.toArray(),
-    db.fxRates.toArray(),
+    db.connections.where("type").equals("MANUAL").toArray(),
+    db.holdings.where("source").equals("MANUAL").toArray(),
     db.snapshots.toArray(),
-    db.settings.toArray(),
     db.sectorOverrides.toArray(),
-    db.savings.toArray(),
+    db.savings.where("source").equals("MANUAL").toArray(),
     db.pension.toArray(),
-    db.coin.toArray(),
+    db.coin.where("source").equals("MANUAL").toArray(),
     db.debts.toArray(),
   ]);
 
@@ -62,18 +54,7 @@ export async function exportAll(): Promise<string> {
     schemaVersion: SCHEMA_VERSION,
     exportedAt: Date.now(),
     data: {
-      members,
-      connections,
-      holdings,
-      priceCache,
-      fxRates,
-      snapshots,
-      settings,
-      sectorOverrides,
-      savings,
-      pension,
-      coin,
-      debts,
+      members, connections, holdings, snapshots, sectorOverrides, savings, pension, coin, debts,
     },
   };
 
