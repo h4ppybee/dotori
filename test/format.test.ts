@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatKrw, formatUsd, formatPct, signClass, formatKoreanUnit } from "@/lib/format";
+import { formatKrw, formatUsd, formatPct, signClass, formatKoreanUnit, formatDateTime } from "@/lib/format";
 
 describe("formatKoreanUnit", () => {
   it("만 단위로 읽기 쉽게 표기한다", () => {
@@ -89,5 +89,13 @@ describe("signClass", () => {
 
   it("아주 작은 음수도 down을 반환한다", () => {
     expect(signClass(-0.001)).toBe("down");
+  });
+});
+
+describe("formatDateTime", () => {
+  it("formatDateTime: epoch ms → YYYY.MM.DD HH:mm", () => {
+    // 로컬 타임존 기준 — 고정 시각으로 구성
+    const d = new Date(2026, 6, 2, 14, 5); // 2026-07-02 14:05
+    expect(formatDateTime(d.getTime())).toBe("2026.07.02 14:05");
   });
 });

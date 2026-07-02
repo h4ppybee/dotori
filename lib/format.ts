@@ -68,3 +68,10 @@ export function signClass(n: number): SignClass {
   }
   return "flat";
 }
+
+/** epoch ms → "YYYY.MM.DD HH:mm" (스냅샷 시점 등 로컬 시각 표기). */
+export function formatDateTime(ms: number): string {
+  const d = new Date(ms);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}.${pad(d.getMonth() + 1)}.${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
