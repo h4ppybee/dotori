@@ -65,10 +65,12 @@ function PrivacySection() {
   );
 }
 
-// ─── 비밀번호 변경 섹션 ──────────────────────────────────────────────────
+// ─── PIN 설정/변경 섹션 ──────────────────────────────────────────────────
 
-function PassphraseSection() {
+function PinSection() {
   const unlock = useAppStore((s) => s.unlock);
+  const { data: settings } = useSettings();
+  const queryClient = useQueryClient();
 
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
@@ -76,6 +78,9 @@ function PassphraseSection() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  // lockType 없음(undefined)은 기존 문자 비밀번호 사용자로 간주한다
+  const isPinLock = settings?.lockType === "pin";
 
   function clearFields() {
     setCurrent("");
@@ -88,34 +93,30 @@ function PassphraseSection() {
     setSuccess(false);
 
     if (!current.trim()) {
-      setError("현재 비밀번호를 입력해 주세요.");
+      setError(isPinLock ? "현재 PIN을 입력해 주세요." : "현재 비밀번호를 입력해 주세요.");
       return;
     }
-    if (!next.trim()) {
-      setError("새 비밀번호를 입력해 주세요.");
+    if (!/^\d{6}$/.test(next)) {
+      setError("PIN은 숫자 6자리로 입력해 주세요.");
       return;
     }
     if (next !== confirm) {
-      setError("새 비밀번호와 확인이 일치하지 않아요.");
-      return;
-    }
-    if (next.length < 8) {
-      setError("비밀번호는 8자 이상으로 설정해 주세요.");
+      setError("새 PIN과 확인이 일치하지 않아요.");
       return;
     }
 
     setLoading(true);
     try {
-      const settings = await getSettings();
-      if (!settings) {
+      const stored = await getSettings();
+      if (!stored) {
         setError("설정을 불러올 수 없어요. 앱을 다시 시작해 주세요.");
         return;
       }
 
-      const oldKey = await deriveKey(current, settings.kdfSalt);
-      const valid = await checkVerifier(oldKey, settings.verifier);
+      const oldKey = await deriveKey(current, stored.kdfSalt);
+      const valid = await checkVerifier(oldKey, stored.verifier);
       if (!valid) {
-        setError("현재 비밀번호가 일치하지 않아요.");
+        setError(isPinLock ? "현재 PIN이 일치하지 않아요." : "현재 비밀번호가 일치하지 않아요.");
         return;
       }
 
@@ -123,17 +124,19 @@ function PassphraseSection() {
       const newKey = await deriveKey(next, newSalt);
       await rekeyVault(oldKey, newKey);
       await putSettings({
-        ...settings,
+        ...stored,
         kdfSalt: newSalt,
         verifier: await makeVerifier(newKey),
+        lockType: "pin",
       });
+      await queryClient.invalidateQueries({ queryKey: ["settings"] });
       // 세션 키를 새 키로 교체 — 잠금 해제 상태를 유지한다
       unlock(newKey);
 
       clearFields();
       setSuccess(true);
     } catch {
-      setError("비밀번호 변경 중 문제가 생겼어요. 다시 시도해 주세요.");
+      setError("PIN 설정 중 문제가 생겼어요. 다시 시도해 주세요.");
     } finally {
       setLoading(false);
     }
@@ -142,11 +145,11 @@ function PassphraseSection() {
   return (
     <Card>
       <h2 className="text-[19px] font-bold leading-[1.4] tracking-[-0.2px] text-ink mb-4">
-        비밀번호 변경
+        {isPinLock ? "PIN 변경" : "PIN 설정"}
       </h2>
 
       {success && (
-        <Banner message="비밀번호를 바꿨어요." className="mb-4" />
+        <Banner message={isPinLock ? "PIN을 바꿨어요." : "PIN을 설정했어요."} className="mb-4" />
       )}
       {error != null && (
         <div
@@ -161,27 +164,33 @@ function PassphraseSection() {
       <div className="flex flex-col gap-4">
         <TextInput
           inputId="pp-current"
-          label="현재 비밀번호"
+          label={isPinLock ? "현재 PIN" : "현재 비밀번호"}
           value={current}
           onChange={setCurrent}
           masked
-          placeholder="현재 비밀번호"
+          placeholder={isPinLock ? "숫자 6자리" : "현재 비밀번호"}
+          inputMode={isPinLock ? "numeric" : undefined}
+          maxLength={isPinLock ? 6 : undefined}
         />
         <TextInput
           inputId="pp-next"
-          label="새 비밀번호"
+          label="새 PIN"
           value={next}
           onChange={setNext}
           masked
-          placeholder="8자 이상"
+          placeholder="숫자 6자리"
+          inputMode="numeric"
+          maxLength={6}
         />
         <TextInput
           inputId="pp-confirm"
-          label="새 비밀번호 확인"
+          label="새 PIN 확인"
           value={confirm}
           onChange={setConfirm}
           masked
-          placeholder="새 비밀번호를 다시 입력"
+          placeholder="새 PIN을 다시 입력"
+          inputMode="numeric"
+          maxLength={6}
         />
         <Button
           variant="primary"
@@ -189,7 +198,9 @@ function PassphraseSection() {
           disabled={loading}
           className="w-full"
         >
-          {loading ? "변경 중..." : "변경하기"}
+          {loading
+            ? (isPinLock ? "변경 중..." : "설정 중...")
+            : (isPinLock ? "PIN 바꾸기" : "PIN 설정하기")}
         </Button>
       </div>
     </Card>
@@ -266,7 +277,7 @@ export default function SettingsPage() {
           <ConnectionForm />
           <BackupPanel />
           <PrivacySection />
-          <PassphraseSection />
+          <PinSection />
           <DeleteAllSection />
         </div>
       </div>

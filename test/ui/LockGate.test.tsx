@@ -27,8 +27,15 @@ afterEach(async () => {
 
 // 테스트 전체에서 실제 Web Crypto를 사용한다 (no mocks).
 
+/** 넘버패드로 PIN을 한 자리씩 입력한다. */
+async function tapPin(user: ReturnType<typeof userEvent.setup>, pin: string) {
+  for (const digit of pin) {
+    await user.click(screen.getByRole("button", { name: digit }));
+  }
+}
+
 describe("LockGate — 최초 실행 (설정 없음)", () => {
-  it("설정이 없으면 설정 화면이 나타난다", async () => {
+  it("설정이 없으면 PIN 설정 화면(넘버패드)이 나타난다", async () => {
     render(<LockGate><div>앱 콘텐츠</div></LockGate>);
 
     // 로딩 후 setup 화면이 나타날 때까지 대기
@@ -36,24 +43,29 @@ describe("LockGate — 최초 실행 (설정 없음)", () => {
       expect(screen.getByText("dotori에 오신 걸 환영해요")).toBeInTheDocument();
     });
 
-    expect(screen.getByLabelText("비밀번호")).toBeInTheDocument();
-    expect(screen.getByLabelText("비밀번호 확인")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "시작하기" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "1" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "지우기" })).toBeInTheDocument();
+    expect(screen.getByRole("status")).toBeInTheDocument();
     expect(screen.queryByText("앱 콘텐츠")).not.toBeInTheDocument();
   });
 
-  it("비밀번호가 일치하면 설정이 저장되고, 기본 구성원이 생성되고, 잠금이 해제된다", async () => {
+  it("PIN을 두 번 일치 입력하면 설정·기본 구성원이 저장되고 잠금이 해제된다", async () => {
     const user = userEvent.setup();
 
     render(<LockGate><div>앱 콘텐츠</div></LockGate>);
 
     await waitFor(() => {
-      expect(screen.getByLabelText("비밀번호")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "1" })).toBeInTheDocument();
     });
 
-    await user.type(screen.getByLabelText("비밀번호"), "비밀번호1234");
-    await user.type(screen.getByLabelText("비밀번호 확인"), "비밀번호1234");
-    await user.click(screen.getByRole("button", { name: "시작하기" }));
+    await tapPin(user, "135790");
+
+    // 확인 단계로 자동 전환
+    await waitFor(() => {
+      expect(screen.getByText("한 번 더 입력해요")).toBeInTheDocument();
+    });
+
+    await tapPin(user, "135790");
 
     // 잠금 해제 후 children가 보여야 한다
     await waitFor(() => {
@@ -66,6 +78,7 @@ describe("LockGate — 최초 실행 (설정 없음)", () => {
     expect(settings?.kdfSalt).toBeTruthy();
     expect(settings?.verifier).toBeTruthy();
     expect(settings?.schemaVersion).toBe(1);
+    expect(settings?.lockType).toBe("pin");
 
     // 기본 구성원 "나"가 생성되어야 한다
     const members = await listMembers();
@@ -77,59 +90,127 @@ describe("LockGate — 최초 실행 (설정 없음)", () => {
     expect(useAppStore.getState().sessionKey).not.toBeNull();
   });
 
-  it("비밀번호가 일치하지 않으면 긍정형 에러 메시지를 보여준다", async () => {
+  it("확인 PIN이 다르면 에러를 보여주고 처음부터 다시 입력한다", async () => {
     const user = userEvent.setup();
 
     render(<LockGate><div>앱 콘텐츠</div></LockGate>);
 
     await waitFor(() => {
-      expect(screen.getByLabelText("비밀번호")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "1" })).toBeInTheDocument();
     });
 
-    await user.type(screen.getByLabelText("비밀번호"), "비밀번호1234");
-    await user.type(screen.getByLabelText("비밀번호 확인"), "다른비밀번호");
-    await user.click(screen.getByRole("button", { name: "시작하기" }));
+    await tapPin(user, "135790");
+    await waitFor(() => {
+      expect(screen.getByText("한 번 더 입력해요")).toBeInTheDocument();
+    });
+    await tapPin(user, "111111");
 
     await waitFor(() => {
       expect(screen.getByRole("alert")).toBeInTheDocument();
     });
 
     expect(screen.getByRole("alert").textContent).toContain("일치하지 않아요");
+    // 처음 단계로 되돌아가고 점이 모두 비워져야 한다
+    expect(screen.queryByText("한 번 더 입력해요")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("status", { name: "6자리 중 0자리 입력" }),
+    ).toBeInTheDocument();
     expect(screen.queryByText("앱 콘텐츠")).not.toBeInTheDocument();
     expect(useAppStore.getState().locked).toBe(true);
   });
+});
 
-  it("비밀번호가 비어있으면 에러 메시지를 보여준다", async () => {
+describe("LockGate — 재진입 (PIN 잠금)", () => {
+  const PIN = "135790";
+
+  async function seedPinSettings() {
+    const salt = makeSalt();
+    const key = await deriveKey(PIN, salt);
+    const verifier = await makeVerifier(key);
+    await putSettings({
+      id: "app",
+      kdfSalt: salt,
+      verifier,
+      schemaVersion: 1,
+      lockType: "pin",
+    });
+    return { salt, key };
+  }
+
+  it("lockType이 pin이면 넘버패드 잠금 해제 화면이 나타난다", async () => {
+    await seedPinSettings();
+
+    render(<LockGate><div>앱 콘텐츠</div></LockGate>);
+
+    await waitFor(() => {
+      expect(screen.getByText("dotori")).toBeInTheDocument();
+    });
+
+    expect(screen.getByRole("button", { name: "1" })).toBeInTheDocument();
+    expect(screen.getByRole("status")).toBeInTheDocument();
+    expect(screen.queryByLabelText("비밀번호")).not.toBeInTheDocument();
+    expect(screen.queryByText("앱 콘텐츠")).not.toBeInTheDocument();
+  });
+
+  it("올바른 PIN을 입력하면 잠금이 해제된다", async () => {
+    await seedPinSettings();
     const user = userEvent.setup();
 
     render(<LockGate><div>앱 콘텐츠</div></LockGate>);
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "시작하기" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "1" })).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: "시작하기" }));
+    await tapPin(user, PIN);
+
+    await waitFor(() => {
+      expect(screen.getByText("앱 콘텐츠")).toBeInTheDocument();
+    }, { timeout: 15000 });
+
+    expect(useAppStore.getState().locked).toBe(false);
+    expect(useAppStore.getState().sessionKey).not.toBeNull();
+  });
+
+  it("틀린 PIN을 입력하면 에러가 나타나고 입력이 초기화된다", async () => {
+    await seedPinSettings();
+    const user = userEvent.setup();
+
+    render(<LockGate><div>앱 콘텐츠</div></LockGate>);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "1" })).toBeInTheDocument();
+    });
+
+    await tapPin(user, "111111");
 
     await waitFor(() => {
       expect(screen.getByRole("alert")).toBeInTheDocument();
-    });
+    }, { timeout: 15000 });
 
-    expect(screen.getByRole("alert").textContent).toContain("입력해 주세요");
+    expect(screen.getByRole("alert").textContent).toContain("일치하지 않아요");
+    expect(
+      screen.getByRole("status", { name: "6자리 중 0자리 입력" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("앱 콘텐츠")).not.toBeInTheDocument();
+    expect(useAppStore.getState().locked).toBe(true);
+    expect(useAppStore.getState().sessionKey).toBeNull();
   });
 });
 
-describe("LockGate — 재진입 (설정 있음)", () => {
+describe("LockGate — 재진입 (기존 문자 비밀번호)", () => {
   const PASSPHRASE = "올바른비밀번호";
 
   async function seedSettings() {
     const salt = makeSalt();
     const key = await deriveKey(PASSPHRASE, salt);
     const verifier = await makeVerifier(key);
+    // lockType 없음 — 기존 사용자 데이터
     await putSettings({ id: "app", kdfSalt: salt, verifier, schemaVersion: 1 });
     return { salt, key };
   }
 
-  it("설정이 있으면 잠금 해제 화면이 나타난다", async () => {
+  it("lockType이 없으면 기존 텍스트 입력 화면과 PIN 전환 안내가 나타난다", async () => {
     await seedSettings();
 
     render(<LockGate><div>앱 콘텐츠</div></LockGate>);
@@ -141,6 +222,7 @@ describe("LockGate — 재진입 (설정 있음)", () => {
     expect(screen.getByLabelText("비밀번호")).toBeInTheDocument();
     expect(screen.queryByLabelText("비밀번호 확인")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "잠금 해제하기" })).toBeInTheDocument();
+    expect(screen.getByText("설정에서 PIN으로 바꿀 수 있어요.")).toBeInTheDocument();
     expect(screen.queryByText("앱 콘텐츠")).not.toBeInTheDocument();
   });
 

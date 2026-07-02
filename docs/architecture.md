@@ -50,7 +50,7 @@ app/                       App Router 라우트 (모두 "use client")
   assets/snapshots         자산 스냅샷 전체 목록 (+ snapshots/[id] 상세 표+삭제)
   holdings/new, holdings/[id]  주식 직접 추가 / 상세·섹터 편집·MANUAL 수정·삭제
   plan, ledger             계획·가계부 (플레이스홀더 DummyPage)
-  settings/page.tsx        연동(토스·업비트) / 백업 / 비밀번호 변경
+  settings/page.tsx        연동(토스·업비트) / 백업 / PIN 설정·변경
   api/toss/*/route.ts      토스 프록시 (token·holdings·prices·exchange-rate·accounts)
   api/upbit/*/route.ts     업비트 프록시 (accounts·markets·tickers)
   globals.css, manifest.json
@@ -95,7 +95,7 @@ docs/                      본 문서 + superpowers/(스펙·플랜)
 ## 레이어 & 데이터 흐름
 
 ```
-[LockGate] 비밀번호 잠금 해제 → sessionKey(CryptoKey) 메모리 + 세션 볼트(10분) 보관
+[LockGate] PIN(6자리 넘버패드)·비밀번호 잠금 해제 → sessionKey(CryptoKey) 메모리 + 세션 볼트(10분) 보관
      │
 [useAssetsRefresh] 자산 통합 갱신 (자산 탭 진입 시 10분 경과하면 자동 실행)
      │   refreshAll   : 토스 토큰→보유→시세→환율→DB, prevClose 롤오버
@@ -123,11 +123,13 @@ docs/                      본 문서 + superpowers/(스펙·플랜)
 
 ## 보안 모델
 
-- 비밀번호는 **저장하지 않는다.** PBKDF2(310k, SHA-256)로 AES-GCM 256 키를 파생하고, `salt` + `verifier`만 `settings`에 저장한다 ([crypto.ts](../lib/crypto/crypto.ts), [LockGate](../components/LockGate.tsx)). 파생 키는 `extractable: false`(비추출)라 원본 키 바이트를 JS·디스크 어디로도 꺼낼 수 없다.
+- PIN/비밀번호는 **저장하지 않는다.** PBKDF2(310k, SHA-256)로 AES-GCM 256 키를 파생하고, `salt` + `verifier`만 `settings`에 저장한다 ([crypto.ts](../lib/crypto/crypto.ts), [LockGate](../components/LockGate.tsx)). 파생 키는 `extractable: false`(비추출)라 원본 키 바이트를 JS·디스크 어디로도 꺼낼 수 없다.
+- **잠금 수단은 `Settings.lockType`으로 구분한다** — `"pin"`(6자리 숫자, 넘버패드 UI)·`"passphrase"`(기존 문자 비밀번호). 필드가 없는 기존 데이터는 passphrase로 간주해 텍스트 입력으로 잠금 해제하고, 설정의 "PIN 설정"에서 `rekeyVault`를 거쳐 PIN으로 전환한다. 신규 설치는 처음부터 PIN으로 설정된다.
+  - 트레이드오프: 6자리 PIN은 문자 비밀번호보다 오프라인 무차별 대입에 약하다(경우의 수 10^6). 로컬 퍼스트 특성상 서버 측 시도 제한이 없음을 인지하고 모바일 UX를 우선해 채택했다.
 - **세션 키(CryptoKey)는 평상시 메모리(zustand)에** 둔다. 자동 잠금(10분 유휴 슬라이딩)을 위해 비추출 핸들 + 만료시각을 세션 볼트(IndexedDB)에 동기화한다 ([session-vault.ts](../lib/db/session-vault.ts), [use-session-guard.ts](../lib/auth/use-session-guard.ts)). 만료 또는 잠금 시 폐기된다. 새로고침해도 만료 전이면 비밀번호 없이 자동 잠금 해제되지만, 원본 키 바이트는 평문으로 남지 않는다.
   - 트레이드오프: 만료 전(최대 10분)에는 **같은 기기·브라우저**에서 비밀번호 없이 복호화가 가능하다. 디스크/백업 유출이나 다른 origin·기기로부터는 여전히 보호된다(비추출 키 + same-origin).
 - 암호화 대상: `connections.clientSecretEnc`, `tokenCache.accessTokenEnc`. 형식은 `iv.ciphertext`(base64).
-- 비밀번호 변경 시 [rekey.ts](../lib/crypto/rekey.ts)의 `rekeyVault`로 모든 암호값을 재암호화한다.
+- PIN·비밀번호 변경 시 [rekey.ts](../lib/crypto/rekey.ts)의 `rekeyVault`로 모든 암호값을 재암호화한다.
 - 토스·업비트 시크릿/토큰은 브라우저에서 외부로 직접 보내지 않고 **`app/api/toss/*`·`app/api/upbit/*` 프록시**를 경유한다(`runtime = "nodejs"`, `force-dynamic`, `Cache-Control: no-store`). 업비트는 서버에서 JWT를 서명해 호출한다([upbit-jwt.ts](../lib/upbit/upbit-jwt.ts)). 프록시·릴레이·토큰 흐름 상세는 [external-api.md](external-api.md).
 
 ---
