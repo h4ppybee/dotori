@@ -1,8 +1,18 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { db } from "@/lib/db/schema";
 import * as store from "@/lib/db/local-store";
+import type { AssetSnapshot } from "@/lib/types";
 
 afterEach(async () => { await db.delete(); await db.open(); });
+
+const makeSnap = (id: string, createdAt: number): AssetSnapshot => ({
+  id, createdAt, netWorthKrw: createdAt, totalAssetsKrw: createdAt, totalDebtKrw: 0,
+  stocks: { totalValueKrw: 0, totalCostKrw: 0, totalPnlKrw: 0, returnPct: 0, rows: [] },
+  pension: { totalValueKrw: 0, totalCostKrw: 0, totalPnlKrw: 0, returnPct: 0, rows: [] },
+  coin: { totalValueKrw: 0, totalCostKrw: 0, totalPnlKrw: 0, returnPct: 0, rows: [] },
+  savings: { totalKrw: 0, rows: [] },
+  debt: { totalKrw: 0, rows: [] },
+});
 
 describe("local-store", () => {
   it("upserts a connection and lists it", async () => {
@@ -63,5 +73,24 @@ describe("local-store", () => {
     });
     const got = await store.getSettings();
     expect(got?.privacyAmounts).toBe(true);
+  });
+});
+
+describe("asset snapshot CRUD", () => {
+  it("추가하고 createdAt 내림차순으로 limit 조회한다", async () => {
+    await store.addAssetSnapshot(makeSnap("a", 1));
+    await store.addAssetSnapshot(makeSnap("b", 3));
+    await store.addAssetSnapshot(makeSnap("c", 2));
+    const top2 = await store.listAssetSnapshots(2);
+    expect(top2.map((s) => s.id)).toEqual(["b", "c"]);
+    const all = await store.listAssetSnapshots();
+    expect(all.map((s) => s.id)).toEqual(["b", "c", "a"]);
+  });
+
+  it("단건 조회·삭제", async () => {
+    await store.addAssetSnapshot(makeSnap("a", 1));
+    expect((await store.getAssetSnapshot("a"))?.id).toBe("a");
+    await store.deleteAssetSnapshot("a");
+    expect(await store.getAssetSnapshot("a")).toBeUndefined();
   });
 });

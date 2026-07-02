@@ -12,7 +12,7 @@
 
 | 구분 | 대상 | 백업? | 이유 |
 | --- | --- | --- | --- |
-| 수동 입력 | `members`, MANUAL `connections`, MANUAL `holdings`, `savings`(MANUAL), `pension`, `coin`(MANUAL), `debts`, `sectorOverrides`, `snapshots` | ✅ 포함 | 재생성 불가 — 사용자가 직접 넣은 값 |
+| 수동 입력 | `members`, MANUAL `connections`, MANUAL `holdings`, `savings`(MANUAL), `pension`, `coin`(MANUAL), `debts`, `sectorOverrides`, `snapshots`, `assetSnapshots` | ✅ 포함 | 재생성 불가 — 사용자가 직접 넣은 값 |
 | API 설정 | `connections`(TOSS_API/UPBIT_API), `tokenCache` | ❌ 제외 | 기기별 민감정보. 재연결로 복구 |
 | 자동 데이터 | `holdings`/`savings`/`coin` 중 `source === "AUTO"` | ❌ 제외 | 재연결 + 새로고침으로 복구 |
 | 재조회 캐시 | `priceCache`, `fxRates` | ❌ 제외 | 새로고침으로 복구 |
@@ -27,7 +27,7 @@
 
 ```jsonc
 {
-  "schemaVersion": 4,          // 백업 스키마 버전 (Dexie DB 버전과 독립)
+  "schemaVersion": 5,          // 백업 스키마 버전 (Dexie DB 버전과 독립)
   "exportedAt": 1751...,       // Date.now()
   "data": {
     "members": [...],
@@ -38,12 +38,13 @@
     "savings": [...],          // source === "MANUAL" 만
     "pension": [...],
     "coin": [...],             // source === "MANUAL" 만
-    "debts": [...]
+    "debts": [...],
+    "assetSnapshots": [...]
   }
 }
 ```
 
-- `SCHEMA_VERSION`(현재 **4**)은 **백업 payload 전용 네임스페이스**로, `lib/db/schema.ts`의 Dexie DB 버전과 별개다. 헷갈리지 말 것.
+- `SCHEMA_VERSION`(현재 **5**)은 **백업 payload 전용 네임스페이스**로, `lib/db/schema.ts`의 Dexie DB 버전과 별개다. 헷갈리지 말 것.
 - 파일명은 `dotori-backup-YYYY-MM-DD.json` 관례.
 
 ### 버전 히스토리
@@ -53,22 +54,23 @@
 | v1 | 초기(주식 중심) |
 | v2 | 저축·연금·코인 포함 |
 | v3 | 대출(부채) 포함 |
-| **v4** | 수동 데이터만 백업 — API 설정·AUTO·캐시·`settings` 제외 |
+| v4 | 수동 데이터만 백업 — API 설정·AUTO·캐시·`settings` 제외 |
+| **v5** | 자산 스냅샷(`assetSnapshots`) 포함 |
 
-`SUPPORTED_VERSIONS = {1,2,3,4}`. **구버전 백업도 계속 불러올 수 있다.** 단, 구버전이 담고 있던 API 설정·AUTO 행·캐시·`settings`·`tokenCache`는 불러오기 시 **정제 단계에서 무시**된다.
+`SUPPORTED_VERSIONS = {1,2,3,4,5}`. **구버전 백업도 계속 불러올 수 있다.** 단, 구버전이 담고 있던 API 설정·AUTO 행·캐시·`settings`·`tokenCache`는 불러오기 시 **정제 단계에서 무시**된다.
 
 ---
 
 ## 내보내기 (`exportAll`)
 
-각 테이블을 `MANUAL` 필터로 읽어 payload로 직렬화해 JSON 문자열을 반환한다. `connections`는 `type === "MANUAL"`, `holdings`/`savings`/`coin`은 `source === "MANUAL"`만 담는다. `pension`·`debts`·`snapshots`·`sectorOverrides`·`members`는 전량 포함(자동 소스 개념이 없음).
+각 테이블을 `MANUAL` 필터로 읽어 payload로 직렬화해 JSON 문자열을 반환한다. `connections`는 `type === "MANUAL"`, `holdings`/`savings`/`coin`은 `source === "MANUAL"`만 담는다. `pension`·`debts`·`snapshots`·`assetSnapshots`·`sectorOverrides`·`members`는 전량 포함(자동 소스 개념이 없음).
 
 ## 불러오기 (`importAll`)
 
 `importAll(json, { mode })` — 두 모드.
 
 - **merge**: 기존 데이터 위에 `bulkPut`(같은 id는 덮어씀, 없는 id는 추가).
-- **overwrite**: 먼저 **수동 데이터만 삭제**(MANUAL `connections`/`holdings`/`coin`/`savings` + `pension`/`debts` 전체)한 뒤 `bulkPut`. API 설정·AUTO 행·캐시·`settings`·`session`은 **보존**한다.
+- **overwrite**: 먼저 **수동 데이터만 삭제**(MANUAL `connections`/`holdings`/`coin`/`savings` + `pension`/`debts`/`assetSnapshots` 전체)한 뒤 `bulkPut`. API 설정·AUTO 행·캐시·`settings`·`session`은 **보존**한다.
 
 ### 안전장치
 
@@ -76,7 +78,7 @@
 2. **미지원 버전** → `"백업 버전이 호환되지 않아요"`(`SUPPORTED_VERSIONS`에 없을 때).
 3. **입력 정제**: 불러온 데이터도 다시 필터링한다. 구버전 백업이 담은 API 설정·AUTO·캐시·`settings`·`tokenCache`는 통과시키지 않는다.
    - `connections`는 `type === "MANUAL"`, `holdings`는 `source === "MANUAL"`만 통과.
-   - `savings`/`coin`은 **source 백필** 후 필터: v5 이전 백업엔 `source` 필드가 없으므로 `source ?? "MANUAL"`로 채운 뒤 `MANUAL`만 통과(`withSource` 헬퍼).
+   - `savings`/`coin`은 **source 백필** 후 필터: v4 이전 백업엔 `source` 필드가 없으므로 `source ?? "MANUAL"`로 채운 뒤 `MANUAL`만 통과(`withSource` 헬퍼).
 4. **단일 트랜잭션**: 삭제 + 삽입 전체를 `db.transaction("rw", db.tables, …)` 한 번으로 감싼다. 중간 실패 시 롤백. 선택적 삭제가 여러 테이블에 걸쳐 스코프를 전체 테이블로 잡는다.
 
 ---

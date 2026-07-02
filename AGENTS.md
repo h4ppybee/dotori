@@ -47,9 +47,10 @@ GitHub `h4ppybee/dotori` ↔ Vercel 프로젝트가 **Git 연동**되어 있다.
 
 - `app/` — App Router 라우트(모두 `"use client"`). 메인 5탭: `page`(홈·플레이스홀더), `assets`(자산 개요), `plan`·`ledger`(플레이스홀더), `settings`
   - `assets/{stocks,savings,pension,crypto}` — 자산별 화면, 각 `manage/`에 추가·수정 화면(주식은 `holdings/new`·`holdings/[id]` 사용)
+  - `assets/snapshots`(전체 목록)·`assets/snapshots/[id]`(상세 표+삭제) — 수동 전체 자산 스냅샷 화면
   - `api/toss/*`·`api/upbit/*` — 서버 프록시(토스·업비트)
-- `components/` — `ui/`(디자인 프리미티브·`DonutChart` 등), `portfolio/`, `holdings/`, `savings/`, `pension/`, `coin/`, `debt/`, `nav/`(탭 바), `settings/`
-- `lib/` — 자산 소스: `toss/`·`upbit/`·`sync/`(동기화). 도메인 서비스(순수 계산): `portfolio/`·`savings/`·`pension/`·`coin/`·`debt/`. 공통: `db/`(Dexie·CRUD), `sector/`, `crypto/`, `snapshot/`, `backup/`, `nav/`, `query/`(자산별 훅)
+- `components/` — `ui/`(디자인 프리미티브·`DonutChart` 등), `portfolio/`, `holdings/`, `savings/`, `pension/`, `coin/`, `debt/`, `snapshot/`(스냅샷 섹션·목록 행·추이 콤보 차트), `nav/`(탭 바), `settings/`
+- `lib/` — 자산 소스: `toss/`·`upbit/`·`sync/`(동기화). 도메인 서비스(순수 계산): `portfolio/`·`savings/`·`pension/`·`coin/`·`debt/`. 공통: `db/`(Dexie·CRUD), `sector/`, `crypto/`, `snapshot/`(수동 전체 자산 스냅샷 — 캡처·순수 빌더·추이 헬퍼), `backup/`, `nav/`, `query/`(자산별 훅, `use-asset-snapshots` 포함)
 - `stores/` — `app-store.ts`(잠금·세션 키·마지막 갱신), `nav-store.ts`(탭 복귀 지점)
 - `test/` — 모듈 구조를 미러링한 테스트
 

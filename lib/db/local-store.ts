@@ -1,7 +1,7 @@
 import { db, priceKey } from "@/lib/db/schema";
 import type {
   Connection, Holding, PriceCache, FxRate, Settings, Member, SavingsAccount, SavingsCategory,
-  PensionAccount, PensionCategory, CoinHolding, LoanAccount, LoanCategory,
+  PensionAccount, PensionCategory, CoinHolding, LoanAccount, LoanCategory, AssetSnapshot,
 } from "@/lib/types";
 
 const now = () => Date.now();
@@ -255,3 +255,18 @@ export async function pruneAutoCoins(connectionId: string, keepMarkets: string[]
     .and((x) => x.source === "AUTO" && !keep.has(x.market ?? "")).toArray();
   await db.coin.bulkDelete(rows.map((r) => r.id));
 }
+
+// ── 자산 스냅샷 (수동 전체 기록) ─────────────────────────────────────────
+export const addAssetSnapshot = (s: AssetSnapshot) => db.assetSnapshots.put(s);
+
+/** createdAt 내림차순(최신 우선). limit 지정 시 상위 N개만. */
+export function listAssetSnapshots(limit?: number): Promise<AssetSnapshot[]> {
+  const q = db.assetSnapshots.orderBy("createdAt").reverse();
+  if (limit != null) {
+    return q.limit(limit).toArray();
+  }
+  return q.toArray();
+}
+
+export const getAssetSnapshot = (id: string) => db.assetSnapshots.get(id);
+export const deleteAssetSnapshot = (id: string) => db.assetSnapshots.delete(id);
