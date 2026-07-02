@@ -83,12 +83,16 @@ export default function SnapshotDetailPage({ params }: { params: Promise<{ id: s
   const { remove } = useSnapshotMutations();
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   async function handleConfirmDelete() {
     setDeleting(true);
+    setDeleteError(null);
     try {
       await remove.mutateAsync(id);
       router.replace("/assets/snapshots");
+    } catch {
+      setDeleteError("삭제하지 못했어요. 다시 시도해 주세요.");
     } finally {
       setDeleting(false);
     }
@@ -152,7 +156,10 @@ export default function SnapshotDetailPage({ params }: { params: Promise<{ id: s
 
             <button
               type="button"
-              onClick={() => setConfirmingDelete(true)}
+              onClick={() => {
+                setDeleteError(null);
+                setConfirmingDelete(true);
+              }}
               className="self-center mt-2 px-4 py-2 text-[15px] font-semibold text-up hover:underline underline-offset-2"
             >
               이 스냅샷 삭제하기
@@ -174,6 +181,9 @@ export default function SnapshotDetailPage({ params }: { params: Promise<{ id: s
         actionVariant="primary"
       >
         삭제하면 되돌릴 수 없어요.
+        {deleteError != null && (
+          <p className="mt-2 text-[13px] leading-[1.45] text-up">{deleteError}</p>
+        )}
       </Dialog>
     </main>
   );

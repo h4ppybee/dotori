@@ -31,7 +31,7 @@ export function useAssetSnapshot(id: string) {
     queryKey: [...SNAPSHOT_KEY, "detail", id],
     enabled: !locked,
     staleTime: 30_000,
-    queryFn: () => getAssetSnapshot(id),
+    queryFn: async () => (await getAssetSnapshot(id)) ?? null,
   });
 }
 

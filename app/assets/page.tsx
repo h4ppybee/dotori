@@ -145,7 +145,7 @@ export default function AssetsOverviewPage() {
         <SnapshotSection
           takeDisabled={
             portfolio.isLoading || savings.isLoading || pension.isLoading ||
-            coin.isLoading || debt.isLoading
+            coin.isLoading || debt.isLoading || refresh.isPending
           }
         />
       </div>
