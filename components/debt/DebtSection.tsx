@@ -10,10 +10,15 @@ import { formatKrw } from "@/lib/format";
 import type { LoanAccount } from "@/lib/types";
 
 export function DebtSection() {
-  const { data: vm } = useDebt();
+  const { data: vm, isLoading } = useDebt();
   const { upsert, remove } = useDebtMutations();
   const [editing, setEditing] = useState<LoanAccount | null>(null);
   const [open, setOpen] = useState(false);
+
+  // 로딩 중에는 빈 상태가 잠깐 깜빡이지 않도록 섹션 자체를 렌더하지 않는다.
+  if (isLoading) {
+    return null;
+  }
 
   const items = vm?.items ?? [];
 
