@@ -218,4 +218,38 @@ describe("exportAll / importAll", () => {
     expect(await db.fxRates.count()).toBe(0);
     expect(await db.settings.get("app")).toBeUndefined();
   });
+
+  it("merge도 구버전 백업의 API 연결·AUTO 행·settings를 무시하고 MANUAL만 병합한다", async () => {
+    // 기존(유지되어야 할) 수동 데이터
+    await upsertManualHolding({ id: "hKeep", connectionId: "man1", market: "KOSPI", symbol: "005930",
+      name: "삼성전자", currency: "KRW", quantity: 1, avgBuyPrice: 1, sector: "반도체" });
+
+    const legacy = JSON.stringify({
+      schemaVersion: 3, exportedAt: 1,
+      data: {
+        connections: [
+          { id: "api1", memberId: "m1", type: "TOSS_API", label: "토스", clientSecretEnc: "enc",
+            createdAt: 1, updatedAt: 1 },
+          { id: "man2", memberId: "m1", type: "MANUAL", label: "미래에셋", createdAt: 1, updatedAt: 1 },
+        ],
+        holdings: [
+          { id: "hAuto", connectionId: "api1", market: "KOSPI", symbol: "000660", name: "SK하이닉스",
+            sector: "반도체", currency: "KRW", quantity: 5, avgBuyPrice: 100000, source: "AUTO", updatedAt: 1 },
+          { id: "hManual", connectionId: "man2", market: "KOSPI", symbol: "035420", name: "NAVER",
+            sector: "인터넷", currency: "KRW", quantity: 2, avgBuyPrice: 200000, source: "MANUAL", updatedAt: 1 },
+        ],
+        settings: [{ id: "app", kdfSalt: "backupSalt", verifier: "v", schemaVersion: 1 }],
+      },
+    });
+
+    await importAll(legacy, { mode: "merge" });
+
+    // 기존 수동 데이터 유지 + 새 MANUAL 병합, API/AUTO/settings 무시
+    expect(await db.holdings.get("hKeep")).toBeDefined();
+    expect(await db.holdings.get("hManual")).toBeDefined();
+    expect(await db.holdings.get("hAuto")).toBeUndefined();
+    expect(await db.connections.get("man2")).toBeDefined();
+    expect(await db.connections.get("api1")).toBeUndefined();
+    expect(await db.settings.get("app")).toBeUndefined();
+  });
 });

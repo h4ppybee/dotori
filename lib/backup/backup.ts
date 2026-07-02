@@ -1,5 +1,5 @@
 import { db } from "@/lib/db/schema";
-import type { Connection, Holding, SavingsAccount, CoinHolding } from "@/lib/types";
+import type { Connection, Holding, SavingsAccount, CoinHolding, HoldingSource } from "@/lib/types";
 
 // 백업 payload 버전(Dexie DB 버전과는 독립된 네임스페이스).
 // v2: 저축·연금·코인 포함. v3: 대출 포함.
@@ -93,8 +93,8 @@ export async function importAll(json: string, opts: { mode: "merge" | "overwrite
   const manualHoldings = ((data.holdings ?? []) as Holding[])
     .filter((h) => (h.source ?? "MANUAL") === "MANUAL");
   // savings/coin은 source 백필(v5 이전엔 필드 없음 → MANUAL) 후 MANUAL만 통과.
-  const withSource = <T extends { source?: string }>(rows: readonly T[]): T[] =>
-    rows.map((r) => ({ ...r, source: r.source ?? "MANUAL" }));
+  const withSource = <T extends { source?: HoldingSource }>(rows: readonly T[]): T[] =>
+    rows.map((r) => ({ ...r, source: (r.source ?? "MANUAL") as HoldingSource }));
   const manualSavings = withSource((data.savings ?? []) as SavingsAccount[])
     .filter((r) => r.source === "MANUAL");
   const manualCoin = withSource((data.coin ?? []) as CoinHolding[])
@@ -118,13 +118,13 @@ export async function importAll(json: string, opts: { mode: "merge" | "overwrite
       await db.debts.clear();
     }
     await db.members.bulkPut(members);
-    await db.connections.bulkPut(manualConnections as Parameters<typeof db.connections.bulkPut>[0]);
-    await db.holdings.bulkPut(manualHoldings as Parameters<typeof db.holdings.bulkPut>[0]);
+    await db.connections.bulkPut(manualConnections);
+    await db.holdings.bulkPut(manualHoldings);
     await db.snapshots.bulkPut(snapshots);
     await db.sectorOverrides.bulkPut(sectorOverrides);
-    await db.savings.bulkPut(manualSavings as Parameters<typeof db.savings.bulkPut>[0]);
+    await db.savings.bulkPut(manualSavings);
     await db.pension.bulkPut(pension);
-    await db.coin.bulkPut(manualCoin as Parameters<typeof db.coin.bulkPut>[0]);
+    await db.coin.bulkPut(manualCoin);
     await db.debts.bulkPut(debts);
   });
 }
