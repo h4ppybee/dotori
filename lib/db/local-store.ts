@@ -1,7 +1,7 @@
 import { db, priceKey } from "@/lib/db/schema";
 import type {
   Connection, Holding, PriceCache, FxRate, Settings, Member, SavingsAccount, SavingsCategory,
-  PensionAccount, PensionCategory, CoinHolding,
+  PensionAccount, PensionCategory, CoinHolding, LoanAccount, LoanCategory,
 } from "@/lib/types";
 
 const now = () => Date.now();
@@ -112,6 +112,34 @@ export async function bulkUpdateSavings(rows: SavingsAccount[]): Promise<void> {
   const stamped = rows.map((r) => ({ ...r, updatedAt: now() }));
   await db.savings.bulkPut(stamped);
 }
+
+// ── 대출/부채 (수동) ─────────────────────────────────────────────────────
+export const listDebts = () => db.debts.toArray();
+
+async function nextDebtSortOrder(): Promise<number> {
+  const rows = await db.debts.toArray();
+  const max = rows.reduce((m, r) => Math.max(m, r.sortOrder), -1);
+  return max + 1;
+}
+
+export async function upsertDebt(
+  d: Partial<LoanAccount> & { id?: string },
+): Promise<LoanAccount> {
+  const existing = d.id ? await db.debts.get(d.id) : undefined;
+  const sortOrder = d.sortOrder ?? existing?.sortOrder ?? (await nextDebtSortOrder());
+  const rec = {
+    ...existing,
+    ...d,
+    id: d.id ?? uid(),
+    category: (d.category ?? existing?.category ?? "ETC") as LoanCategory,
+    sortOrder,
+    updatedAt: now(),
+  } as LoanAccount;
+  await db.debts.put(rec);
+  return rec;
+}
+
+export const deleteDebt = (id: string) => db.debts.delete(id);
 
 // ── 저축/현금성 계좌 (업비트 AUTO 예수금) ───────────────────────────────────
 export async function upsertAutoSavings(row: { connectionId: string; amount: number }): Promise<void> {

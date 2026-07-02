@@ -10,6 +10,8 @@ import { usePortfolio } from "@/lib/query/use-portfolio";
 import { useSavings } from "@/lib/query/use-savings";
 import { usePension } from "@/lib/query/use-pension";
 import { useCoin } from "@/lib/query/use-coin";
+import { useDebt } from "@/lib/query/use-debt";
+import { DebtSection } from "@/components/debt/DebtSection";
 import { useAssetsRefresh } from "@/lib/query/use-assets-refresh";
 import { useAppStore } from "@/stores/app-store";
 import { formatKrw } from "@/lib/format";
@@ -30,6 +32,7 @@ export default function AssetsOverviewPage() {
   const savings = useSavings();
   const pension = usePension();
   const coin = useCoin();
+  const debt = useDebt();
   const refresh = useAssetsRefresh();
   const lastRefreshAt = useAppStore((s) => s.lastRefreshAt);
   const sessionKey = useAppStore((s) => s.sessionKey);
@@ -54,6 +57,8 @@ export default function AssetsOverviewPage() {
   const pensionValue = pension.data?.totalValueKrw ?? 0;
   const coinValue = coin.data?.totalValueKrw ?? 0;
   const total = stocksValue + savingsValue + pensionValue + coinValue;
+  const debtValue = debt.data?.totalKrw ?? 0;
+  const netWorth = total - debtValue;
 
   const rows: AssetRow[] = [
     { key: "stocks", label: "주식", href: "/assets/stocks", valueKrw: stocksValue, returnPct: portfolio.data?.returnPct },
@@ -73,14 +78,14 @@ export default function AssetsOverviewPage() {
         />
 
         <Card variant="hero" className="flex flex-col gap-2">
-          <span className="text-[13px] font-normal leading-[1.45] text-muted">총자산</span>
-          <PrivacyAmount revealLabel="총자산 보기">
+          <span className="text-[13px] font-normal leading-[1.45] text-muted">순자산</span>
+          <PrivacyAmount revealLabel="순자산 보기">
             <span className="text-[36px] font-bold leading-[1.2] tracking-[-0.5px] tabular-nums text-ink">
-              {formatKrw(total)}
+              {formatKrw(netWorth)}
             </span>
           </PrivacyAmount>
           <span className="text-[13px] font-normal leading-[1.45] text-muted">
-            주식·저축·연금·코인 합계
+            자산 {formatKrw(total)} · 부채 {formatKrw(debtValue)}
           </span>
         </Card>
 
@@ -113,6 +118,8 @@ export default function AssetsOverviewPage() {
             ))}
           </ul>
         )}
+
+        <DebtSection />
       </div>
     </main>
   );

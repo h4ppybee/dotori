@@ -28,13 +28,14 @@ describe("exportAll / importAll", () => {
     expect(settings?.kdfSalt).toBe("salt1");
   });
 
-  it("저축·연금·코인도 내보내고 덮어쓰기로 복원된다 (schemaVersion 2)", async () => {
+  it("저축·연금·코인도 내보내고 덮어쓰기로 복원된다 (schemaVersion 3)", async () => {
     await db.savings.put({ id: "s1", category: "DEPOSIT", name: "청약", amount: 1000, sortOrder: 0, updatedAt: 1, source: "MANUAL" });
     await db.pension.put({ id: "p1", category: "PERSONAL", name: "TIGER", symbol: "360750", quantity: 10, buyPrice: 100, currentPrice: 110, sortOrder: 0, updatedAt: 1 });
     await db.coin.put({ id: "c1", name: "비트코인", quantity: 0.02, buyPrice: 100, currentPrice: 80, sortOrder: 0, updatedAt: 1, source: "MANUAL" });
+    await db.debts.put({ id: "d1", category: "MORTGAGE", name: "주택담보대출", lender: "국민", balance: 120_000_000, interestRate: 3.5, monthlyPayment: 700_000, sortOrder: 0, updatedAt: 1 });
 
     const json = await exportAll();
-    expect(JSON.parse(json).schemaVersion).toBe(2);
+    expect(JSON.parse(json).schemaVersion).toBe(3);
 
     await db.delete();
     await db.open();
@@ -43,6 +44,8 @@ describe("exportAll / importAll", () => {
     expect(await db.savings.count()).toBe(1);
     expect((await db.pension.get("p1"))?.symbol).toBe("360750");
     expect((await db.coin.get("c1"))?.currentPrice).toBe(80);
+    expect(await db.debts.count()).toBe(1);
+    expect((await db.debts.get("d1"))?.balance).toBe(120_000_000);
   });
 
   it("저축·연금·코인이 없는 구버전(v1) 백업도 오류 없이 불러온다", async () => {

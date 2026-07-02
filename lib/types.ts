@@ -115,6 +115,24 @@ export interface CoinHolding {
   market?: string;         // AUTO 행만: "KRW-BTC"
 }
 
+export type LoanCategory = "MORTGAGE" | "CREDIT" | "JEONSE" | "CAR" | "STUDENT" | "ETC";
+// 주택담보 / 신용 / 전세자금 / 자동차 / 학자금 / 기타
+
+/** 대출(부채, 수동). 잔액은 KRW 고정·양수로 저장. 순자산 = 자산총액 − Σ balance. */
+export interface LoanAccount {
+  id: string;
+  category: LoanCategory;
+  name: string;            // 대출명 — 예: "주택담보대출"
+  lender?: string;         // 금융기관 — 예: "국민은행"
+  balance: number;         // 현재 잔액 (KRW, 양수)
+  interestRate?: number;   // 연 금리 (%)
+  monthlyPayment?: number; // 월 상환액 (KRW)
+  maturityDate?: string;   // 만기 "YYYY-MM-DD"
+  note?: string;           // 비고
+  sortOrder: number;       // 표시 순서
+  updatedAt: number;
+}
+
 export interface Settings {
   id: "app";
   kdfSalt: string;

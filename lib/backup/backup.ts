@@ -1,9 +1,10 @@
 import { db } from "@/lib/db/schema";
 
 // v2: 저축(savings)·연금(pension)·코인(coin) 테이블 포함.
+// v3: 대출(debts) 테이블 포함.
 // 구버전(v1) 백업도 계속 불러올 수 있다(없는 테이블은 빈 배열로 처리).
-export const SCHEMA_VERSION = 2;
-const SUPPORTED_VERSIONS = new Set([1, 2]);
+export const SCHEMA_VERSION = 3;
+const SUPPORTED_VERSIONS = new Set([1, 2, 3]);
 
 interface BackupData {
   members: unknown[];
@@ -17,6 +18,7 @@ interface BackupData {
   savings: unknown[];
   pension: unknown[];
   coin: unknown[];
+  debts: unknown[];
 }
 
 interface BackupPayload {
@@ -40,6 +42,7 @@ export async function exportAll(): Promise<string> {
     savings,
     pension,
     coin,
+    debts,
   ] = await Promise.all([
     db.members.toArray(),
     db.connections.toArray(),
@@ -52,6 +55,7 @@ export async function exportAll(): Promise<string> {
     db.savings.toArray(),
     db.pension.toArray(),
     db.coin.toArray(),
+    db.debts.toArray(),
   ]);
 
   const payload: BackupPayload = {
@@ -69,6 +73,7 @@ export async function exportAll(): Promise<string> {
       savings,
       pension,
       coin,
+      debts,
     },
   };
 
@@ -100,6 +105,7 @@ export async function importAll(json: string, opts: { mode: "merge" | "overwrite
   const savings = (data.savings ?? []) as Parameters<typeof db.savings.bulkPut>[0];
   const pension = (data.pension ?? []) as Parameters<typeof db.pension.bulkPut>[0];
   const coin = (data.coin ?? []) as Parameters<typeof db.coin.bulkPut>[0];
+  const debts = (data.debts ?? []) as Parameters<typeof db.debts.bulkPut>[0];
 
   // v5 이전 백업엔 coin/savings에 source 필드가 없다(Task 1에서 필수 필드가 됨).
   // 없으면 connectionId 없는 순수 수동 데이터로 간주해 MANUAL로 채운다.
@@ -123,5 +129,6 @@ export async function importAll(json: string, opts: { mode: "merge" | "overwrite
     await db.savings.bulkPut(savingsWithSource);
     await db.pension.bulkPut(pension);
     await db.coin.bulkPut(coinWithSource);
+    await db.debts.bulkPut(debts);
   });
 }
