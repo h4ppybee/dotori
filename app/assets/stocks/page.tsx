@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/Card";
@@ -11,18 +11,7 @@ import { HoldingsTable } from "@/components/portfolio/HoldingsTable";
 import { RefreshBar } from "@/components/portfolio/RefreshBar";
 import { usePortfolio, useRefresh } from "@/lib/query/use-portfolio";
 import { useAppStore } from "@/stores/app-store";
-import { listConnections, getSettings, getFx } from "@/lib/db/local-store";
-import { saveDailySnapshotIfNeeded } from "@/lib/snapshot/snapshot-service";
-import type { PortfolioVM } from "@/lib/portfolio/portfolio-service";
-
-/** YYYY-MM-DD (로컬). */
-function todayStr(): string {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
+import { listConnections, getFx } from "@/lib/db/local-store";
 
 function LoadingState() {
   return (
@@ -70,8 +59,6 @@ export default function PortfolioPage() {
   const [connectionLabels, setConnectionLabels] = useState<Record<string, string>>({});
   const [usdKrwRate, setUsdKrwRate] = useState<number | undefined>(undefined);
 
-  const snapshotDone = useRef(false);
-
   // 증권사 라벨 + 환율 로드 (1회).
   useEffect(() => {
     let cancelled = false;
@@ -91,25 +78,6 @@ export default function PortfolioPage() {
       cancelled = true;
     };
   }, []);
-
-  // 진입 시 일별 스냅샷 (ref 가드로 1회만, refetch 시 재발화 금지).
-  useEffect(() => {
-    if (snapshotDone.current) {
-      return;
-    }
-    if (vm == null || vm.rows.length === 0) {
-      return;
-    }
-    snapshotDone.current = true;
-    const today = todayStr();
-    void (async () => {
-      const settings = await getSettings();
-      if (settings?.lastSnapshotDate === today) {
-        return;
-      }
-      await saveDailySnapshotIfNeeded(vm as PortfolioVM, today);
-    })();
-  }, [vm]);
 
   if (isLoading) {
     return (
