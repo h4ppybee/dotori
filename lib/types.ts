@@ -185,4 +185,5 @@ export interface Settings {
   lastSnapshotDate?: string;
   schemaVersion: number;
   privacyAmounts?: boolean;   // 금액 숨기기 ON/OFF. undefined === OFF
+  lockType?: "pin" | "passphrase"; // 잠금 수단. undefined === passphrase(기존 데이터)
 }
