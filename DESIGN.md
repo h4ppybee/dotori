@@ -260,6 +260,19 @@ components:
   text-input-focus:
     backgroundColor: "{colors.surface-card}"
     border: "1.5px solid {colors.primary}"
+  number-pad:
+    backgroundColor: transparent
+    textColor: "{colors.ink}"
+    fontSize: 22px
+    fontWeight: 600
+    cellHeight: 56px
+    rounded: "{rounded.lg}"
+    activeBackgroundColor: "{colors.surface-soft}"
+  pin-dots:
+    size: 12px
+    gap: 12px
+    filledColor: "{colors.primary}"
+    emptyColor: "{colors.surface-strong}"
   chip:
     backgroundColor: "{colors.surface-strong}"
     textColor: "{colors.body}"
@@ -413,6 +426,8 @@ dotori는 토스(Toss)의 디자인 언어를 따른다 — 차분하고, 신뢰
   - 접근성: 가려진 상태는 `aria-label`을 가진 button으로 감싼다.
   - 한계: DOM에 실제 값이 그대로 남으므로 "어깨너머 시선 차단" 용도이며 완전한 비밀 보장은 아니다.
 - **입력 필드** (`{component.text-input}`): 연한 배경, focus 시 갈색 1.5px 테두리.
+- **넘버패드** (`{component.number-pad}`, `components/ui/NumberPad`): 잠금 화면 전용 3×4 고정 배열 키패드(1~9 / 빈칸·0·지우기). 셀은 투명 배경 + `text-ink` 22px 숫자, 높이 56px, radius `{rounded.lg}`, 탭 시 `{colors.surface-soft}` 하이라이트. 지우기 키는 단순 stroke 아이콘(24px) + `aria-label="지우기"`. 배열은 섞지 않는다(근육 기억 우선).
+- **PIN 점 인디케이터** (`{component.pin-dots}`, `components/ui/PinDots`): 6자리 PIN 진행 표시. 점 12px 원형, 입력된 자리 `{colors.primary}`, 빈 자리 `{colors.surface-strong}`, 간격 12px. 값은 렌더링하지 않고 개수만 표시하며 `role="status"` + "6자리 중 n자리 입력" aria-label로 알린다. 오류는 점이 아니라 인라인 에러 메시지로 전달한다.
 - **다이얼로그** (`{component.dialog}`): radius `{rounded.xxl}`, 왼쪽 버튼은 항상 "닫기"(아래 UX Writing).
 - **메인 탭 바** (`{component.main-tab-bar}`): 화면 하단 고정 5탭(홈·자산·계획·가계부·설정). 높이 56px, 배경 `{colors.surface-card}`, 상단 `border-hairline`. 활성 탭은 `text-ink`, 비활성은 `text-muted`. 하단은 `env(safe-area-inset-bottom)` 패딩으로 PWA 세이프에어리어를 확보한다. 활성 탭은 `aria-current="page"`. **자산(`/assets/*`) 진입 시에는 아래로 슬라이드되어 사라지고**(그 자리에 플로팅 중첩 바가 뜬다), 이탈하면 다시 올라온다. z-order `z-40`.
 - **자산 플로팅 중첩 바** (`{component.asset-sub-tab-bar}`): 자산(`/assets/*`) 진입 시 메인 바를 **대체하여** 떠오르는 둥근 플로팅 바(pill). 토스 증권의 nested 플로팅 UX와 동일하다. 구성은 ← + 자산 카테고리 서브탭(자산·주식·저축·연금·코인). 각 서브탭은 **아이콘(24px, 단순 stroke) + 라벨(`text-[11px]`)을 세로로 쌓아** 표시한다(라벨은 2글자로 통일 — "저축/현금성"은 "저축"으로 축약). 화면 좌우 16px 여백(`px-4`, `max-w-[480px]` 중앙)을 두고, 화면 하단에서 `bottom: calc(env(safe-area-inset-bottom) + 12px)`만큼 띄운다. 높이 56px, `{rounded.pill}`(100px), 배경 `{colors.surface-card}`, **테두리 없이 `{shadows.floating}`로 띄운다**(엣지투엣지 바가 아니라 떠 있는 알약 형태). ←는 좌측 원형 버튼(`{rounded.full}`, 탭 시 `surface-soft`). z-order는 메인 바 위(`z-50`)라 교차 슬라이드 시 위에 뜬다. 등장/사라짐 모션은 `{motion.nested-bar-slide}`. 활성 서브탭은 `font-bold text-ink`/`aria-current="page"`, 비활성은 `font-semibold text-muted`. ← 또는 카테고리 이탈로만 빠져나오며, 자산 안에서는 다른 메인 탭으로 직접 이동하지 않는다(메인 바가 숨겨져 있으므로).
@@ -435,7 +450,7 @@ dotori는 토스(Toss)의 디자인 언어를 따른다 — 차분하고, 신뢰
 - **에러 메시지** — 문제 + 해결 방법을 긍정형으로. 예) "토스 연동에 실패했어요. 설정에서 API 키를 다시 확인해 주세요."
 - **다이얼로그 버튼** — 왼쪽(보조) 버튼은 "취소"가 아니라 **"닫기"**로 통일.
 - **표기** — `되어요`→`돼요`. `{명사}+{명사}` 나열 구조를 피한다.
-- **용어** — 사용자에게 보이는 잠금 보안 키는 **"비밀번호"**로 쓴다. "패스프레이즈"는 UI에 노출하지 않는다(코드 식별자는 무관).
+- **용어** — 숫자 잠금은 **"PIN"**, 기존 문자 잠금은 **"비밀번호"**로 쓴다. "패스프레이즈"는 UI에 노출하지 않는다(코드 식별자는 무관).
 - **금액/숫자** — 천 단위 콤마, 통화 기호 명시(`₩`, `$`). 수익률은 `+`/`-` 부호와 색(상승=빨강/하락=파랑)으로 강조.
 
 ### 예시 카피
