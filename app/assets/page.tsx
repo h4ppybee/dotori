@@ -12,6 +12,7 @@ import { usePension } from "@/lib/query/use-pension";
 import { useCoin } from "@/lib/query/use-coin";
 import { useDebt } from "@/lib/query/use-debt";
 import { DebtSection } from "@/components/debt/DebtSection";
+import { SnapshotSection } from "@/components/snapshot/SnapshotSection";
 import { NetWorthDonut } from "@/components/portfolio/NetWorthDonut";
 import { AssetAllocationDonut } from "@/components/portfolio/AssetAllocationDonut";
 import { useAssetsRefresh } from "@/lib/query/use-assets-refresh";
@@ -140,6 +141,13 @@ export default function AssetsOverviewPage() {
         )}
 
         <DebtSection />
+
+        <SnapshotSection
+          takeDisabled={
+            portfolio.isLoading || savings.isLoading || pension.isLoading ||
+            coin.isLoading || debt.isLoading
+          }
+        />
       </div>
     </main>
   );
