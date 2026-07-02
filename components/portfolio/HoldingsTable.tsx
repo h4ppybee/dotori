@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Card } from "@/components/ui/Card";
-import { formatKrw, formatUsd, signClass } from "@/lib/format";
+import { PnlText } from "@/components/ui/PnlText";
+import { formatKrw, formatUsd } from "@/lib/format";
 import type { PortfolioRow } from "@/lib/portfolio/portfolio-service";
 
 /** 더하기 아이콘. stroke=currentColor. */
@@ -19,26 +20,6 @@ function PlusIcon() {
       <path d="M12 5v14M5 12h14" />
     </svg>
   );
-}
-
-/** 양수면 + 접두사를 붙인 원화 표기. */
-function signedKrw(n: number): string {
-  if (n > 0) {
-    return `+${formatKrw(n)}`;
-  }
-  return formatKrw(n);
-}
-
-/** 부호 클래스 → 텍스트 색 (상승/수익=빨강, 하락/손실=파랑, 보합=muted). */
-function signTextClass(n: number): string {
-  const sign = signClass(n);
-  if (sign === "up") {
-    return "text-up";
-  }
-  if (sign === "down") {
-    return "text-down";
-  }
-  return "text-muted";
 }
 
 interface HoldingsTableProps {
@@ -126,11 +107,11 @@ function HoldingItem({ row, label, usdKrwRate, onSelectHolding }: RowProps) {
             {formatUsd(nativeValue)}
           </span>
         )}
-        <span
-          className={`mt-auto pt-1 text-[13px] font-semibold leading-[1.4] tabular-nums ${signTextClass(row.pnlKrw)}`}
-        >
-          {signedKrw(row.pnlKrw)} ({Math.abs(row.returnPct).toFixed(2)}%)
-        </span>
+        <PnlText
+          amountKrw={row.pnlKrw}
+          returnPct={row.returnPct}
+          className="mt-auto pt-1 text-[13px] font-semibold leading-[1.4]"
+        />
       </div>
       </button>
     </li>

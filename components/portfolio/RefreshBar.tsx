@@ -1,8 +1,24 @@
 "use client";
 
-import { Button } from "@/components/ui/Button";
 import { Banner } from "@/components/ui/Banner";
 import type { RefreshFailure } from "@/lib/sync/refresh";
+
+/** 새로고침(회전 화살표) 아이콘. 진행 중이면 회전 애니메이션. 단순 stroke(DESIGN.md 규칙). */
+function RefreshIcon({ spinning }: { spinning: boolean }) {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+      className={spinning ? "animate-spin" : undefined}
+    >
+      <path d="M21 12a9 9 0 1 1-2.64-6.36" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M21 3v6h-6" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
 
 interface RefreshBarProps {
   onRefresh: () => void;
@@ -59,14 +75,16 @@ export function RefreshBar({
             </span>
           )}
         </div>
-        <Button
-          variant="secondary"
+        <button
+          type="button"
           onClick={onRefresh}
           disabled={pending}
-          className="h-[40px] px-4 text-[15px]"
+          aria-label={pending ? "새로고침 중…" : "새로고침"}
+          aria-busy={pending}
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-muted transition-colors hover:bg-surface-soft hover:text-body active:bg-surface-strong disabled:opacity-60"
         >
-          {pending ? "새로고침 중…" : "새로고침"}
-        </Button>
+          <RefreshIcon spinning={pending} />
+        </button>
       </div>
 
       {hasFailures && (

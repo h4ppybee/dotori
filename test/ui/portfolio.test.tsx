@@ -201,11 +201,19 @@ describe("HoldingsTable", () => {
 });
 
 describe("RefreshBar", () => {
-  it("진행 중이면 새로고침 중 문구를 보여준다", () => {
+  it("진행 중이면 새로고침 버튼이 비활성화되고 진행 상태를 알린다", () => {
     render(
       <RefreshBar onRefresh={() => {}} pending={true} lastRefreshAt={null} />,
     );
-    expect(screen.getByText("새로고침 중…")).toBeInTheDocument();
+    const btn = screen.getByRole("button", { name: "새로고침 중…" });
+    expect(btn).toBeDisabled();
+  });
+
+  it("대기 상태면 새로고침 아이콘 버튼을 보여준다", () => {
+    render(
+      <RefreshBar onRefresh={() => {}} pending={false} lastRefreshAt={null} />,
+    );
+    expect(screen.getByRole("button", { name: "새로고침" })).toBeEnabled();
   });
 
   it("마지막 갱신 시각을 HH:MM 으로 보여준다", () => {

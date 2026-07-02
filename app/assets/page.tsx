@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import Link from "next/link";
 import { Card } from "@/components/ui/Card";
 import { PrivacyAmount } from "@/components/ui/PrivacyAmount";
-import { ReturnBadge } from "@/components/ui/ReturnBadge";
+import { PnlText } from "@/components/ui/PnlText";
 import { RefreshBar } from "@/components/portfolio/RefreshBar";
 import { usePortfolio } from "@/lib/query/use-portfolio";
 import { useSavings } from "@/lib/query/use-savings";
@@ -13,6 +13,7 @@ import { useCoin } from "@/lib/query/use-coin";
 import { useDebt } from "@/lib/query/use-debt";
 import { DebtSection } from "@/components/debt/DebtSection";
 import { NetWorthDonut } from "@/components/portfolio/NetWorthDonut";
+import { AssetAllocationDonut } from "@/components/portfolio/AssetAllocationDonut";
 import { useAssetsRefresh } from "@/lib/query/use-assets-refresh";
 import { useAppStore } from "@/stores/app-store";
 import { formatKrw } from "@/lib/format";
@@ -23,6 +24,7 @@ interface AssetRow {
   href: string;
   valueKrw: number;
   returnPct?: number; // 손익 개념 있는 자산만
+  pnlKrw?: number; // 손익 금액(수익률과 함께 표기)
 }
 
 // 마지막 갱신이 이 시간을 넘겼으면 자산 탭 진입 시 자동 전체 갱신(자동 잠금과 동일한 10분).
@@ -62,10 +64,10 @@ export default function AssetsOverviewPage() {
   const netWorth = total - debtValue;
 
   const rows: AssetRow[] = [
-    { key: "stocks", label: "주식", href: "/assets/stocks", valueKrw: stocksValue, returnPct: portfolio.data?.returnPct },
+    { key: "stocks", label: "주식", href: "/assets/stocks", valueKrw: stocksValue, returnPct: portfolio.data?.returnPct, pnlKrw: portfolio.data?.totalPnlKrw },
     { key: "savings", label: "저축/현금성", href: "/assets/savings", valueKrw: savingsValue },
-    { key: "pension", label: "연금", href: "/assets/pension", valueKrw: pensionValue, returnPct: pension.data?.returnPct },
-    { key: "crypto", label: "코인", href: "/assets/crypto", valueKrw: coinValue, returnPct: coin.data?.returnPct },
+    { key: "pension", label: "연금", href: "/assets/pension", valueKrw: pensionValue, returnPct: pension.data?.returnPct, pnlKrw: pension.data?.totalPnlKrw },
+    { key: "crypto", label: "코인", href: "/assets/crypto", valueKrw: coinValue, returnPct: coin.data?.returnPct, pnlKrw: coin.data?.totalPnlKrw },
   ].filter((r) => r.valueKrw > 0);
 
   return (
@@ -92,6 +94,15 @@ export default function AssetsOverviewPage() {
 
         <NetWorthDonut totalAssets={total} debt={debtValue} />
 
+        <AssetAllocationDonut
+          items={[
+            { key: "stocks", label: "주식", valueKrw: stocksValue },
+            { key: "savings", label: "저축/현금성", valueKrw: savingsValue },
+            { key: "pension", label: "연금", valueKrw: pensionValue },
+            { key: "crypto", label: "코인", valueKrw: coinValue },
+          ]}
+        />
+
         {rows.length === 0 ? (
           <Card className="py-10 text-center text-[15px] text-muted">
             아직 등록된 자산이 없어요. 각 탭에서 추가해 보세요.
@@ -112,7 +123,13 @@ export default function AssetsOverviewPage() {
                       </span>
                     </PrivacyAmount>
                   </span>
-                  {r.returnPct != null && <ReturnBadge value={r.returnPct} />}
+                  {r.returnPct != null && r.pnlKrw != null && (
+                    <PnlText
+                      amountKrw={r.pnlKrw}
+                      returnPct={r.returnPct}
+                      className="shrink-0 text-[13px] font-semibold leading-[1.4]"
+                    />
+                  )}
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true" className="shrink-0 text-muted-soft">
                     <path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
