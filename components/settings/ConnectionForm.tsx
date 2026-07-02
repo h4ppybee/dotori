@@ -270,12 +270,12 @@ export function ConnectionForm() {
       {/* 추가/수정 폼 */}
       {editing != null && (
         <div className="flex flex-col gap-4 pt-1">
-          {/* 연동 타입 선택 — 신규 등록에서만. 기존 연동은 타입을 바꾸지 않는다. */}
-          {editing.id == null && (
-            <div className="flex flex-col gap-[6px]">
-              <span className="text-[13px] font-semibold leading-[1.45] text-body-soft">
-                연동 타입
-              </span>
+          {/* 연동 타입 — 신규 등록은 선택 가능, 수정 시엔 읽기 전용(타입은 바꾸지 않는다). */}
+          <div className="flex flex-col gap-[6px]">
+            <span className="text-[13px] font-semibold leading-[1.45] text-body-soft">
+              연동 타입
+            </span>
+            {editing.id == null ? (
               <div className="flex gap-2">
                 <Chip
                   selected={editing.type === "TOSS_API"}
@@ -290,8 +290,15 @@ export function ConnectionForm() {
                   업비트
                 </Chip>
               </div>
-            </div>
-          )}
+            ) : (
+              <div className="flex items-center gap-2">
+                <TypeBadge type={editing.type} />
+                <span className="text-[13px] text-muted leading-[1.45]">
+                  연동 타입은 바꿀 수 없어요
+                </span>
+              </div>
+            )}
+          </div>
 
           <TextInput
             inputId="conn-label"
