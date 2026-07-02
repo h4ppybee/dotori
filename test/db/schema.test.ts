@@ -22,4 +22,17 @@ describe("db schema", () => {
     const got = await db.holdings.get("h1");
     expect(got?.name).toBe("삼성전자");
   });
+  it("exposes assetSnapshots store (v7)", async () => {
+    expect(db.assetSnapshots).toBeDefined();
+    await db.assetSnapshots.put({
+      id: "s1", createdAt: 1000, netWorthKrw: 900, totalAssetsKrw: 1000, totalDebtKrw: 100,
+      stocks: { totalValueKrw: 0, totalCostKrw: 0, totalPnlKrw: 0, returnPct: 0, rows: [] },
+      pension: { totalValueKrw: 0, totalCostKrw: 0, totalPnlKrw: 0, returnPct: 0, rows: [] },
+      coin: { totalValueKrw: 0, totalCostKrw: 0, totalPnlKrw: 0, returnPct: 0, rows: [] },
+      savings: { totalKrw: 0, rows: [] },
+      debt: { totalKrw: 100, rows: [{ name: "대출", amountKrw: 100 }] },
+    });
+    const got = await db.assetSnapshots.get("s1");
+    expect(got?.netWorthKrw).toBe(900);
+  });
 });

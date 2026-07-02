@@ -1,7 +1,7 @@
 import Dexie, { type Table } from "dexie";
 import type {
   Member, Connection, TokenCache, Holding, PriceCache, FxRate, DailySnapshot, Settings, SavingsAccount,
-  PensionAccount, CoinHolding, LoanAccount,
+  PensionAccount, CoinHolding, LoanAccount, AssetSnapshot,
 } from "@/lib/types";
 
 /**
@@ -29,6 +29,7 @@ export class DotoriDB extends Dexie {
   pension!: Table<PensionAccount, string>;    // key: id (수동 연금 계좌)
   coin!: Table<CoinHolding, string>;          // key: id (수동 코인 보유)
   debts!: Table<LoanAccount, string>;         // key: id (수동 대출/부채)
+  assetSnapshots!: Table<AssetSnapshot, string>; // key: id (수동 전체 자산 스냅샷)
 
   constructor() {
     super("dotori");
@@ -64,6 +65,10 @@ export class DotoriDB extends Dexie {
     // v6: 수동 대출/부채 테이블 추가
     this.version(6).stores({
       debts: "id, category, sortOrder",
+    });
+    // v7: 수동 전체 자산 스냅샷 테이블 추가 (docs/superpowers/specs/2026-07-02-asset-snapshot-design.md)
+    this.version(7).stores({
+      assetSnapshots: "id, createdAt",
     });
   }
 }

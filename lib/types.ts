@@ -133,6 +133,51 @@ export interface LoanAccount {
   updatedAt: number;
 }
 
+/** 주식·연금·코인 공용 스냅샷 상세 행 (스냅샷 시점 값 고정, KRW). */
+export interface AssetSnapshotRow {
+  name: string;       // 종목명
+  quantity: number;   // 수량
+  costKrw: number;    // 매수금액
+  valueKrw: number;   // 스냅샷 시점 평가금액
+  pnlKrw: number;     // 손익금액
+  returnPct: number;  // 수익률 (%)
+}
+
+/** 저축·부채 공용 스냅샷 행. */
+export interface AssetSnapshotSimpleRow {
+  name: string;
+  amountKrw: number;
+}
+
+/** 손익 있는 자산군(주식·연금·코인)의 스냅샷 섹션. */
+export interface AssetSnapshotPnlSection {
+  totalValueKrw: number;
+  totalCostKrw: number;
+  totalPnlKrw: number;
+  returnPct: number;
+  rows: AssetSnapshotRow[];
+}
+
+/** 금액만 있는 자산군(저축·부채)의 스냅샷 섹션. */
+export interface AssetSnapshotAmountSection {
+  totalKrw: number;
+  rows: AssetSnapshotSimpleRow[];
+}
+
+/** 수동 전체 자산 스냅샷 1건 — 버튼 클릭 시점의 상태를 고정 저장(조회 시 재계산 없음). */
+export interface AssetSnapshot {
+  id: string;              // uuid (key)
+  createdAt: number;       // epoch ms — 목록 정렬 기준
+  netWorthKrw: number;     // 순자산 = totalAssetsKrw - totalDebtKrw
+  totalAssetsKrw: number;  // 주식+저축+연금+코인 평가금 합
+  totalDebtKrw: number;    // 부채 잔액 합
+  stocks: AssetSnapshotPnlSection;
+  pension: AssetSnapshotPnlSection;
+  coin: AssetSnapshotPnlSection;
+  savings: AssetSnapshotAmountSection;
+  debt: AssetSnapshotAmountSection;
+}
+
 export interface Settings {
   id: "app";
   kdfSalt: string;
