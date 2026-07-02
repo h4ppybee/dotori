@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import { Banner } from "@/components/ui/Banner";
 import { exportAll, importAll } from "@/lib/backup/backup";
-import { useAppStore } from "@/stores/app-store";
+import { useQueryClient } from "@tanstack/react-query";
 
 type ImportMode = "merge" | "overwrite";
 
@@ -16,7 +16,7 @@ type ImportMode = "merge" | "overwrite";
  * 불러오기: 파일 선택 → 병합/덮어쓰기 선택 다이얼로그 → importAll 실행.
  */
 export function BackupPanel() {
-  const lock = useAppStore((s) => s.lock);
+  const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [pendingJson, setPendingJson] = useState<string | null>(null);
   const [importMode, setImportMode] = useState<ImportMode>("merge");
@@ -81,10 +81,9 @@ export function BackupPanel() {
     try {
       await importAll(pendingJson, { mode: importMode });
       setPendingJson(null);
-      // 백업엔 salt/verifier가 포함돼 복원 시 볼트 키가 바뀔 수 있다. 현재 세션키는
-      // 옛 salt로 파생돼 있어 복원된 연동을 복호화하지 못하므로, 잠금 후 재로그인해
-      // 새 salt로 키를 다시 파생하게 한다(복원 데이터와 정합). 재해제 시 전 데이터가 새로 로드된다.
-      lock();
+      // salt·API 설정이 불변이라 재잠금 불필요. 불러온 수동 데이터로 UI만 갱신한다.
+      await queryClient.invalidateQueries();
+      setSuccessMsg("불러오기를 마쳤어요.");
     } catch (err) {
       const msg = err instanceof Error ? err.message : "알 수 없는 오류";
       setErrorMsg(`불러오기에 실패했어요. ${msg}`);
@@ -120,7 +119,7 @@ export function BackupPanel() {
       <div className="flex flex-col gap-3">
         <div className="flex flex-col gap-1">
           <p className="text-[15px] text-body-soft leading-[1.5]">
-            모든 데이터를 JSON 파일로 저장해요.
+            직접 입력한 데이터를 JSON 파일로 저장해요. API 연동 설정과 자동으로 불러온 자산은 제외돼요.
           </p>
           <Button
             variant="secondary"
@@ -183,7 +182,7 @@ export function BackupPanel() {
               <div>
                 <p className="text-[15px] font-semibold text-ink leading-[1.4]">병합</p>
                 <p className="text-[13px] text-muted leading-[1.45]">
-                  기존 데이터를 유지하고 백업 파일의 내용을 추가해요.
+                  직접 입력한 기존 데이터를 유지하고 백업 파일의 내용을 추가해요.
                 </p>
               </div>
             </label>
@@ -199,13 +198,13 @@ export function BackupPanel() {
               <div>
                 <p className="text-[15px] font-semibold text-ink leading-[1.4]">덮어쓰기</p>
                 <p className="text-[13px] text-muted leading-[1.45]">
-                  기존 데이터를 모두 지우고 백업 파일로 교체해요.
+                  직접 입력한 데이터를 백업 파일로 교체해요.
                 </p>
               </div>
             </label>
           </div>
           <p className="text-[13px] text-muted leading-[1.45]">
-            불러온 뒤에는 보안을 위해 다시 잠금을 해제해야 해요.
+            API 연동 설정과 자동으로 불러온 자산은 그대로 유지돼요.
           </p>
         </div>
       </Dialog>
