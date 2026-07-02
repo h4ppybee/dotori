@@ -63,7 +63,7 @@
 
 ## 내보내기 (`exportAll`)
 
-각 테이블을 `MANUAL` 필터로 읽어 payload로 직렬화해 JSON 문자열을 반환한다. `connections`는 `type === "MANUAL"`, `holdings`/`savings`/`coin`은 `source === "MANUAL"`만 담는다. `pension`·`debts`·`snapshots`·`sectorOverrides`·`members`는 전량 포함(자동 소스 개념이 없음).
+각 테이블을 `MANUAL` 필터로 읽어 payload로 직렬화해 JSON 문자열을 반환한다. `connections`는 `type === "MANUAL"`, `holdings`/`savings`/`coin`은 `source === "MANUAL"`만 담는다. `pension`·`debts`·`snapshots`·`assetSnapshots`·`sectorOverrides`·`members`는 전량 포함(자동 소스 개념이 없음).
 
 ## 불러오기 (`importAll`)
 
@@ -78,7 +78,7 @@
 2. **미지원 버전** → `"백업 버전이 호환되지 않아요"`(`SUPPORTED_VERSIONS`에 없을 때).
 3. **입력 정제**: 불러온 데이터도 다시 필터링한다. 구버전 백업이 담은 API 설정·AUTO·캐시·`settings`·`tokenCache`는 통과시키지 않는다.
    - `connections`는 `type === "MANUAL"`, `holdings`는 `source === "MANUAL"`만 통과.
-   - `savings`/`coin`은 **source 백필** 후 필터: v5 이전 백업엔 `source` 필드가 없으므로 `source ?? "MANUAL"`로 채운 뒤 `MANUAL`만 통과(`withSource` 헬퍼).
+   - `savings`/`coin`은 **source 백필** 후 필터: v4 이전 백업엔 `source` 필드가 없으므로 `source ?? "MANUAL"`로 채운 뒤 `MANUAL`만 통과(`withSource` 헬퍼).
 4. **단일 트랜잭션**: 삭제 + 삽입 전체를 `db.transaction("rw", db.tables, …)` 한 번으로 감싼다. 중간 실패 시 롤백. 선택적 삭제가 여러 테이블에 걸쳐 스코프를 전체 테이블로 잡는다.
 
 ---
