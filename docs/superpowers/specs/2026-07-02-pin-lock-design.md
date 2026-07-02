@@ -35,7 +35,8 @@ dotori의 잠금 화면은 자유 형식 문자 비밀번호를 텍스트 입력
 
 ### 2. 데이터 모델
 
-- `AppSettings`(lib/db/schema)에 `lockType?: "pin" | "passphrase"` 추가.
+- `Settings` 인터페이스(lib/types.ts, lib/db/schema 재수출)에
+  `lockType?: "pin" | "passphrase"` 추가. 비인덱스 필드라 Dexie 버전 업 불필요.
   - 기존 레코드는 필드 없음 → **passphrase로 간주** (기본값 분기).
   - 신규 설정·PIN 전환 시 `"pin"` 저장.
 - 키 파생은 기존 `deriveKey(secret, salt)`를 PIN 문자열로 그대로 호출 —
@@ -48,8 +49,11 @@ dotori의 잠금 화면은 자유 형식 문자 비밀번호를 텍스트 입력
 - **setup 모드(설정 없음)**: 도토리 아이콘 + 타이틀 + PinDots + NumberPad.
   1. PIN 6자리 입력 → 자동으로 확인 단계 전환("한 번 더 입력해요")
   2. 두 입력이 일치하면 **자동 제출**(별도 버튼 없음) — salt/verifier 생성,
-     `lockType: "pin"` 저장, 잠금 해제.
-  3. 불일치 시 에러 메시지 + 처음부터 다시 입력.
+     `lockType: "pin"` 저장, 잠금 해제. 기존 setup과 동일하게 **최초 멤버("나")
+     생성(`upsertMember`)을 유지**한다(회귀 금지).
+  3. 불일치 시 에러 메시지 + **두 입력 모두 초기화하고 1단계부터 재시작**.
+  - 백스페이스는 현재 단계의 마지막 자리만 지운다(확인 단계에서 1단계로 되돌아가지
+    않음).
 - **unlock 모드(설정 있음)**:
   - `lockType === "pin"`: PinDots + NumberPad, 6자리가 차면 자동 검증.
     실패 시 에러 메시지 + 입력 초기화.
