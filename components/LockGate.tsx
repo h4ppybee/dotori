@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode, type FormEvent } from "react";
+import Image from "next/image";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { TextInput } from "@/components/ui/TextInput";
@@ -160,14 +161,22 @@ export function LockGate({ children }: LockGateProps) {
         <Card variant="hero" className="flex flex-col gap-6">
           {/* 타이틀 */}
           <div className="flex flex-col gap-2">
+            <Image
+              src="/web-app-manifest-192x192.png"
+              alt=""
+              width={64}
+              height={64}
+              priority
+              className="-ml-2"
+            />
             <h1 className="text-[24px] font-bold leading-[1.35] tracking-[-0.3px] text-ink">
               {isSetup ? "dotori에 오신 걸 환영해요" : "dotori"}
             </h1>
-            <p className="text-[15px] font-normal leading-[1.5] text-body">
-              {isSetup
-                ? "데이터를 안전하게 보호할 비밀번호를 설정해요."
-                : "비밀번호를 입력하면 포트폴리오를 볼 수 있어요."}
-            </p>
+            {isSetup && (
+              <p className="text-[15px] font-normal leading-[1.5] text-body">
+                데이터를 안전하게 보호할 비밀번호를 설정해요.
+              </p>
+            )}
           </div>
 
           {/* 폼 */}
