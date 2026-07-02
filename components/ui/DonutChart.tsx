@@ -7,6 +7,8 @@ export interface DonutSegment {
   value: number;
   /** 비율 0~100. 호 길이와 범례 비율 표시에 쓴다. */
   pct: number;
+  /** 조각 색 지정(미지정 시 팔레트 순번). 순자산/부채처럼 의미색이 필요한 도넛에서 쓴다. */
+  color?: string;
 }
 
 interface DonutChartProps {
@@ -39,8 +41,9 @@ function formatShare(pct: number): string {
   return `${pct.toFixed(1)}%`;
 }
 
-function colorFor(index: number): string {
-  return PALETTE[index % PALETTE.length];
+/** 조각 지정색 우선, 없으면 팔레트 순번. */
+function colorFor(segment: DonutSegment, index: number): string {
+  return segment.color ?? PALETTE[index % PALETTE.length];
 }
 
 /**
@@ -77,7 +80,7 @@ export function DonutChart({
     const startFraction = i === 0 ? 0 : prefix[i - 1];
     return {
       key: s.label,
-      color: colorFor(i),
+      color: colorFor(s, i),
       dash,
       gap: circum - dash,
       offset: -(startFraction * circum) - SEGMENT_GAP / 2,
@@ -144,7 +147,7 @@ export function DonutChart({
           <li key={s.label} className="flex items-center gap-2.5">
             <span
               className="size-[10px] rounded-full shrink-0"
-              style={{ backgroundColor: colorFor(i) }}
+              style={{ backgroundColor: colorFor(s, i) }}
               aria-hidden="true"
             />
             <span className="flex-1 min-w-0 text-[15px] font-normal leading-[1.4] text-body truncate">

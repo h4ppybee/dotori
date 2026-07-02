@@ -397,7 +397,8 @@ dotori는 토스(Toss)의 디자인 언어를 따른다 — 차분하고, 신뢰
 - **요약 히어로 카드** (`{component.summary-hero-card}`): 총평가금(`{typography.number-hero}`) + 총수익률 배지 + 일간손익. 화면 최상단 시선 집중점.
 - **보유 종목 리스트** (`{component.list-row}`): 종목명(`{component.holding-row-name}`) + 시장·증권사 서브(`{component.holding-row-sub}`), 우측에 평가금(`{component.amount-cell}`) + 수익률(`{component.return-up-cell}` / `{component.return-down-cell}`).
 - **수익률 배지** (`{component.return-badge-up}` / `down`): 연한 surface 배경 + 부호(+/-) + 색.
-- **도넛 차트** (`{component.donut-chart}`): 섹터/종목/저축 카테고리 비율. palette 순서대로 배정, track은 hairline. 공용 표현형 프리미티브 `components/ui/DonutChart`로 구현하고(도넛+범례+가운데 라벨/값), 카드·헤딩은 소비자(`SectorDonut`/`SavingsDonut` 등)가 감싼다. 여러 자산 탭에서 재사용한다.
+- **도넛 차트** (`{component.donut-chart}`): 섹터/종목/저축 카테고리 비율. 기본은 palette 순서대로 배정, track은 hairline. 공용 표현형 프리미티브 `components/ui/DonutChart`로 구현하고(도넛+범례+가운데 라벨/값), 카드·헤딩은 소비자(`SectorDonut`/`SavingsDonut`/`NetWorthDonut` 등)가 감싼다. 여러 자산 탭에서 재사용한다.
+  - **의미색이 필요할 때**: `DonutSegment.color`로 조각별 색을 직접 지정한다(미지정 시 palette 순번). **순자산 vs 부채**(`NetWorthDonut`)는 순자산 = `{colors.primary}`(#A87342), 부채 = 뉴트럴 #6B7684로 배정한다. 순자산·부채는 손익이 아니므로 손익 색(up=빨강/down=파랑)을 쓰지 않는다.
 - **버튼**: primary(갈색) / secondary(brown-surface) / weak(grey) / text. radius `{rounded.md}`, height 52px.
 - **스위치(Switch)**: on/off 환경설정 토글.
   - 크기: 트랙 48×28, 노브 22, radius `{rounded.full}`.

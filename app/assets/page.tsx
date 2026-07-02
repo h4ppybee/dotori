@@ -12,6 +12,7 @@ import { usePension } from "@/lib/query/use-pension";
 import { useCoin } from "@/lib/query/use-coin";
 import { useDebt } from "@/lib/query/use-debt";
 import { DebtSection } from "@/components/debt/DebtSection";
+import { NetWorthDonut } from "@/components/portfolio/NetWorthDonut";
 import { useAssetsRefresh } from "@/lib/query/use-assets-refresh";
 import { useAppStore } from "@/stores/app-store";
 import { formatKrw } from "@/lib/format";
@@ -88,6 +89,8 @@ export default function AssetsOverviewPage() {
             자산 {formatKrw(total)} · 부채 {formatKrw(debtValue)}
           </span>
         </Card>
+
+        <NetWorthDonut totalAssets={total} debt={debtValue} />
 
         {rows.length === 0 ? (
           <Card className="py-10 text-center text-[15px] text-muted">
