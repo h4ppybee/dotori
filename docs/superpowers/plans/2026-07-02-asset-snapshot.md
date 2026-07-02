@@ -167,7 +167,7 @@ const holding: Holding = {
   sector: "반도체", currency: "KRW", quantity: 10, avgBuyPrice: 70_000,
   source: "MANUAL", updatedAt: 1,
 };
-const price: PriceCache = { key: "005930|KRW", symbol: "005930", currency: "KRW", lastPrice: 80_000 };
+const price: PriceCache = { key: "005930|KRW", symbol: "005930", currency: "KRW", lastPrice: 80_000, asOf: 1 };
 const saving: SavingsAccount = {
   id: "s1", category: "DEPOSIT", name: "청년도약", amount: 1_000_000,
   sortOrder: 0, updatedAt: 1, source: "MANUAL",
@@ -373,7 +373,7 @@ export function buildAssetSnapshot(input: {
 - Modify: `lib/db/local-store.ts` (파일 끝에 섹션 추가)
 - Test: `test/db/local-store.test.ts`
 
-- [ ] **Step 1: 실패하는 테스트 추가** — `test/db/local-store.test.ts`에 (기존 import에 `addAssetSnapshot, listAssetSnapshots, getAssetSnapshot, deleteAssetSnapshot` 추가; 기존 파일의 afterEach/db 초기화 패턴을 그대로 따른다):
+- [ ] **Step 1: 실패하는 테스트 추가** — `test/db/local-store.test.ts`에 추가. 주의: 기존 파일은 `import * as store` 네임스페이스 패턴을 쓰므로 아래 스니펫의 bare 호출을 `store.addAssetSnapshot(...)` 형태로 맞춘다(afterEach/db 초기화 패턴도 기존 그대로):
 
 ```typescript
 import type { AssetSnapshot } from "@/lib/types";
