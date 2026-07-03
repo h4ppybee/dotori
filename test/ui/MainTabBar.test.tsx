@@ -43,4 +43,21 @@ describe("MainTabBar", () => {
     await user.click(screen.getByText("자산"));
     expect(useNavStore.getState().lastMainTabPath).toBe("/plan");
   });
+  it("탭을 누르면 경로가 바뀌기 전에도 활성 표시가 즉시 옮겨간다", async () => {
+    const user = userEvent.setup();
+    render(<MainTabBar />);
+    await user.click(screen.getByText("설정"));
+    expect(screen.getByText("설정").closest("a")).toHaveAttribute("aria-current", "page");
+    expect(screen.getByText("계획").closest("a")).not.toHaveAttribute("aria-current");
+  });
+  it("경로가 실제로 바뀌면 낙관적 표시를 버리고 경로 기준으로 돌아간다", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(<MainTabBar />);
+    await user.click(screen.getByText("설정"));
+    // 뒤로가기 등으로 다른 경로로 이동이 완료된 상황
+    pathname = "/ledger";
+    rerender(<MainTabBar />);
+    expect(screen.getByText("가계부").closest("a")).toHaveAttribute("aria-current", "page");
+    expect(screen.getByText("설정").closest("a")).not.toHaveAttribute("aria-current");
+  });
 });

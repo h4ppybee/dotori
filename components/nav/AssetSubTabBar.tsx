@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { assetSubTabs } from "@/lib/nav/nav-config";
@@ -12,12 +13,23 @@ import { useNavStore } from "@/stores/nav-store";
  * 하단에 살짝 띄워 표시된다(좌우 여백 + shadow-floating). ←로 직전 메인 탭에 복귀한다.
  * 항상 마운트하고 transform/opacity만 토글해 등장·사라짐 양방향 애니메이션을 만든다.
  * visible=false면 아래로 슬라이드되어 숨겨진다(inert로 포커스/상호작용 차단).
+ * 활성 표시는 낙관적: 탭을 누르는 즉시 옮기고, 실제 경로가 바뀌면 경로 기준으로 되돌린다.
  */
 export function AssetSubTabBar({ visible }: { visible: boolean }) {
   const pathname = usePathname();
   const router = useRouter();
-  const activeKey = resolveActiveSub(pathname);
   const lastMainTabPath = useNavStore((s) => s.lastMainTabPath);
+
+  // 탭을 누른 직후 ~ 경로 변경 완료 사이에만 유효한 낙관적 활성 키.
+  // 경로가 실제로 바뀌면 렌더 중 상태 보정 패턴으로 폐기한다.
+  const [pendingKey, setPendingKey] = useState<string | null>(null);
+  const [prevPathname, setPrevPathname] = useState(pathname);
+  if (pathname !== prevPathname) {
+    setPrevPathname(pathname);
+    setPendingKey(null);
+  }
+
+  const activeKey = pendingKey ?? resolveActiveSub(pathname);
 
   return (
     <div
@@ -50,6 +62,7 @@ export function AssetSubTabBar({ visible }: { visible: boolean }) {
                 <Link
                   href={tab.href}
                   tabIndex={visible ? 0 : -1}
+                  onClick={() => setPendingKey(tab.key)}
                   aria-current={active ? "page" : undefined}
                   className={`flex h-[52px] flex-col items-center justify-center gap-[2px] rounded-full transition-colors ${
                     active ? "font-bold text-ink" : "font-semibold text-muted"

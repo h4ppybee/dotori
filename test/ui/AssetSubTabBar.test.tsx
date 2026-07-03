@@ -31,4 +31,11 @@ describe("AssetSubTabBar", () => {
     await user.click(screen.getByRole("button", { name: "이전" }));
     expect(push).toHaveBeenCalledWith("/plan");
   });
+  it("서브탭을 누르면 경로가 바뀌기 전에도 활성 표시가 즉시 옮겨간다", async () => {
+    const user = userEvent.setup();
+    render(<AssetSubTabBar visible />);
+    await user.click(screen.getByText("연금"));
+    expect(screen.getByText("연금").closest("a")).toHaveAttribute("aria-current", "page");
+    expect(screen.getByText("주식").closest("a")).not.toHaveAttribute("aria-current");
+  });
 });
