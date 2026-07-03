@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { mainTabs } from "@/lib/nav/nav-config";
@@ -11,11 +12,23 @@ import { useNavStore } from "@/stores/nav-store";
  * 자산 탭 진입 시 직전 메인 탭 경로를 저장해 중첩 바 ← 복귀에 사용한다.
  * visible=false(자산 경로)면 아래로 슬라이드되어 사라지고, 그 자리에 플로팅 중첩 바가 뜬다.
  * 항상 마운트하고 transform/opacity만 토글해 양방향 애니메이션을 만든다(inert로 차단).
+ * 활성 표시는 낙관적: 탭을 누르는 즉시 옮기고, 실제 경로가 바뀌면 경로 기준으로 되돌린다.
+ * (라우트 전환이 끝나야 usePathname이 바뀌므로, 그동안의 무반응 구간을 없앤다.)
  */
 export function MainTabBar({ visible = true }: { visible?: boolean }) {
   const pathname = usePathname();
-  const activeKey = resolveActiveMain(pathname);
   const setLastMainTab = useNavStore((s) => s.setLastMainTab);
+
+  // 탭을 누른 직후 ~ 경로 변경 완료 사이에만 유효한 낙관적 활성 키.
+  // 경로가 실제로 바뀌면 렌더 중 상태 보정 패턴으로 폐기한다.
+  const [pendingKey, setPendingKey] = useState<string | null>(null);
+  const [prevPathname, setPrevPathname] = useState(pathname);
+  if (pathname !== prevPathname) {
+    setPrevPathname(pathname);
+    setPendingKey(null);
+  }
+
+  const activeKey = pendingKey ?? resolveActiveMain(pathname);
 
   return (
     <nav
@@ -31,6 +44,8 @@ export function MainTabBar({ visible = true }: { visible?: boolean }) {
         {mainTabs.map((tab) => {
           const active = tab.key === activeKey;
           const onClick = () => {
+            // 누르는 즉시 활성 표시를 옮긴다 (경로 변경 완료를 기다리지 않음)
+            setPendingKey(tab.key);
             // 자산 탭으로 진입할 때, 현재가 자산 경로가 아니면 복귀 지점으로 기록
             if (tab.key === "assets" && !isAssetsRoute(pathname)) {
               setLastMainTab(pathname);
