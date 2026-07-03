@@ -32,50 +32,61 @@ export function AssetSubTabBar({ visible }: { visible: boolean }) {
   const activeKey = pendingKey ?? resolveActiveSub(pathname);
 
   return (
-    <div
-      aria-hidden={visible ? undefined : true}
-      inert={!visible ? true : undefined}
-      className={`fixed inset-x-0 z-50 transition-[transform,opacity] duration-[250ms] ease-out ${
-        visible ? "translate-y-0 opacity-100" : "translate-y-[150%] opacity-0 pointer-events-none"
-      }`}
-      style={{ bottom: "calc(env(safe-area-inset-bottom) + 12px)" }}
-    >
-      <div className="mx-auto w-full max-w-[480px] px-4">
-        <ul className="flex h-[56px] items-center gap-1 rounded-pill bg-surface-card pl-2 pr-3 shadow-floating">
-          <li className="shrink-0">
-            <button
-              type="button"
-              aria-label="이전"
-              tabIndex={visible ? 0 : -1}
-              onClick={() => router.push(lastMainTabPath || "/")}
-              className="flex h-11 w-11 items-center justify-center rounded-full text-muted transition-colors active:bg-surface-soft"
-            >
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <path d="M15 5l-7 7 7 7" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </button>
-          </li>
-          {assetSubTabs.map((tab) => {
-            const active = tab.key === activeKey;
-            return (
-              <li key={tab.key} className="flex-1">
-                <Link
-                  href={tab.href}
-                  tabIndex={visible ? 0 : -1}
-                  onClick={() => setPendingKey(tab.key)}
-                  aria-current={active ? "page" : undefined}
-                  className={`flex h-[52px] flex-col items-center justify-center gap-[2px] rounded-full transition-colors ${
-                    active ? "font-bold text-ink" : "font-semibold text-muted"
-                  }`}
-                >
-                  {tab.icon?.(active)}
-                  <span className="text-[11px] leading-none whitespace-nowrap">{tab.label}</span>
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
+    <>
+      {/* 하단 페이드 — 플로팅 pill 뒤로 비치는 스크롤 컨텐츠를 캔버스 색으로 자연스럽게 가린다.
+          높이는 pill 상단(safe-area + 12px 띄움 + 56px 높이)까지만 덮도록 safe-area를 반영한다. */}
+      <div
+        aria-hidden
+        className={`pointer-events-none fixed inset-x-0 bottom-0 z-40 bg-gradient-to-t from-canvas via-canvas/85 to-transparent transition-opacity duration-[250ms] ease-out ${
+          visible ? "opacity-100" : "opacity-0"
+        }`}
+        style={{ height: "calc(env(safe-area-inset-bottom) + 72px)" }}
+      />
+      <div
+        aria-hidden={visible ? undefined : true}
+        inert={!visible ? true : undefined}
+        className={`fixed inset-x-0 z-50 transition-[transform,opacity] duration-[250ms] ease-out ${
+          visible ? "translate-y-0 opacity-100" : "translate-y-[150%] opacity-0 pointer-events-none"
+        }`}
+        style={{ bottom: "calc(env(safe-area-inset-bottom) + 12px)" }}
+      >
+        <div className="mx-auto w-full max-w-[480px] px-4">
+          <ul className="flex h-[56px] items-center gap-1 rounded-pill bg-surface-card pl-2 pr-3 shadow-floating">
+            <li className="shrink-0">
+              <button
+                type="button"
+                aria-label="이전"
+                tabIndex={visible ? 0 : -1}
+                onClick={() => router.push(lastMainTabPath || "/")}
+                className="flex h-11 w-11 items-center justify-center rounded-full text-muted transition-colors active:bg-surface-soft"
+              >
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M15 5l-7 7 7 7" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+            </li>
+            {assetSubTabs.map((tab) => {
+              const active = tab.key === activeKey;
+              return (
+                <li key={tab.key} className="flex-1">
+                  <Link
+                    href={tab.href}
+                    tabIndex={visible ? 0 : -1}
+                    onClick={() => setPendingKey(tab.key)}
+                    aria-current={active ? "page" : undefined}
+                    className={`flex h-[52px] flex-col items-center justify-center gap-[2px] rounded-full transition-colors ${
+                      active ? "font-bold text-ink" : "font-semibold text-muted"
+                    }`}
+                  >
+                    {tab.icon?.(active)}
+                    <span className="text-[11px] leading-none whitespace-nowrap">{tab.label}</span>
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
       </div>
-    </div>
+    </>
   );
 }
