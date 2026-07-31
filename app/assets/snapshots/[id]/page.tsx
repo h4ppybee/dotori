@@ -18,9 +18,12 @@ function PnlTable({ title, section }: { title: string; section: AssetSnapshotPnl
   }
   return (
     <Card className="flex flex-col gap-3">
-      <div className="flex items-center justify-between">
+      <div className="flex items-start justify-between">
         <h3 className="text-[15px] font-semibold leading-[1.4] text-ink">{title}</h3>
-        <PnlText amountKrw={section.totalPnlKrw} returnPct={section.returnPct} className="text-[13px] font-semibold" />
+        <div className="flex flex-col items-end gap-0.5">
+          <span className="text-[13px] font-semibold tabular-nums text-ink">{formatKrw(section.totalValueKrw)}</span>
+          <PnlText amountKrw={section.totalPnlKrw} returnPct={section.returnPct} className="text-[12px] font-semibold" />
+        </div>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full min-w-[420px] text-[12px] tabular-nums">
