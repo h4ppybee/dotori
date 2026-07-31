@@ -2,7 +2,7 @@
 
 토스 스타일의 **로컬 퍼스트(local-first) PWA 개인 자산 관리 앱**. 주식·저축/현금성·연금·코인 자산과 부채를 한데 모아 **순자산**을 보여준다. 토스인베스트 Open API(주식·연금 시세·환율)와 업비트 API(코인·예수금)로 시세를 가져오고, 직접 입력한 자산과 합친다. 모든 데이터는 브라우저 IndexedDB에 저장되며, 민감정보는 비밀번호 파생 키로 암호화한다. **서버 DB가 없다.**
 
-> 패키지명은 `dotori`. 홈 탭(`app/page.tsx`)은 **순자산 + 목표 자산** 섹션을 보여준다(목표 금액·목표일 설정 → 월 필요 저축액·달성률 진행 링). 가계부(`ledger`)·계획(`plan`) 탭은 아직 플레이스홀더(`components/nav/DummyPage`)다.
+> 패키지명은 `dotori`. 홈 탭(`app/page.tsx`)은 **순자산 + 목표 자산** 섹션을 보여준다(목표 금액·목표일 설정 → 월 필요 저축액·달성률 진행 링). 계획(`plan`) 탭은 **통장 쪼개기** 화면(하위 부동산 탭은 플레이스홀더). 가계부(`ledger`) 탭은 아직 플레이스홀더(`components/nav/DummyPage`)다.
 
 > 📄 **문서를 코드와 일치시킨다.** 라우트·`lib` 모듈·`components` 디렉토리·자산 종류·외부 API·Dexie 테이블·데이터 흐름을 추가/변경할 때는 이 문서와 [AGENTS.md](../AGENTS.md)를 **같은 작업에서 함께 갱신**한다. 주제별 상세는 분리 문서로 관리한다 — 백업 [backup.md](backup.md), 외부 연동 [external-api.md](external-api.md). 전체 목록은 [docs/README.md](README.md).
 
@@ -49,7 +49,9 @@ app/                       App Router 라우트 (모두 "use client")
   assets/crypto/page.tsx   코인 (+ crypto/manage)
   assets/snapshots         자산 스냅샷 전체 목록 (+ snapshots/[id] 상세 표+삭제)
   holdings/new, holdings/[id]  주식 직접 추가 / 상세·섹터 편집·MANUAL 수정·삭제
-  plan, ledger             계획·가계부 (플레이스홀더 DummyPage)
+  plan/page.tsx            통장 쪼개기 — 프로필(통합/아내/남편) · 태그·은행별 롤업 · 항목 관리
+  plan/realty/page.tsx     부동산 조달계획 (플레이스홀더 DummyPage)
+  ledger                   가계부 (플레이스홀더 DummyPage)
   settings/page.tsx        연동(토스·업비트) / 백업 / PIN 설정·변경
   api/toss/*/route.ts      토스 프록시 (token·holdings·prices·exchange-rate·accounts)
   api/upbit/*/route.ts     업비트 프록시 (accounts·markets·tickers)
@@ -64,8 +66,9 @@ components/
   savings/, pension/, coin/, debt/   자산별 위젯·관리 목록·입력 다이얼로그
   snapshot/                SnapshotSection(기록 버튼+차트+최근 목록), SnapshotListItem, SnapshotTrendChart(추이 콤보 차트)
   goal/                    GoalCard, GoalForm, GoalEmptyState, GoalProgressRing (목표 자산 섹션)
+  envelope/                ProfileSegment, RollupCard, EnvelopeItemRow, EnvelopeItemDialog (통장 쪼개기)
   holdings/HoldingForm.tsx 종목 추가/편집 폼
-  nav/                     AppNav, MainTabBar, AssetSubTabBar, DummyPage
+  nav/                     AppNav, MainTabBar, NestedTabBar(자산·계획 공용 플로팅 서브탭), DummyPage
   settings/                ConnectionForm, BackupPanel
   LockGate, ServiceWorkerRegister
 
@@ -77,12 +80,13 @@ lib/
   portfolio/               순수 계산: portfolio-service(buildPortfolio), pnl, fx, merge, ratios, net-worth
   savings/, pension/, coin/, debt/   자산별 순수 서비스(VM 빌드·집계·카테고리 라벨)
   goal/                    순수 계산: goal-service(buildGoalProgress) — 순자산 목표 진척(월 필요 저축액·달성률)
+  envelope/                순수 계산: envelope-service(태그·은행·프로필별 롤업 집계), presets(태그·은행 기본 목록), tag-color(태그 팔레트 매핑)
   sector/                  seed(종목→섹터 시드), sector-map(resolveSector + KNOWN_SECTORS)
   crypto/                  crypto(PBKDF2/AES-GCM), rekey(비밀번호 변경 재암호화)
   snapshot/                수동 전체 자산 스냅샷 — capture(DB 상태→VM 5종→저장), asset-snapshot(순수 빌더), trend(추이 차트 데이터 헬퍼)
   backup/                  수동 데이터 export/import (JSON) — 상세 docs/backup.md
   nav/                     nav-config(탭 정의), active(활성 탭 판정)
-  query/                   client(QueryProvider), use-portfolio·use-savings·use-pension·use-coin·use-debt·use-settings, use-assets-refresh, use-asset-snapshots(목록/단건/기록·삭제 뮤테이션), use-goal(목표 조회·저장·삭제 뮤테이션), use-net-worth(순자산 합산 훅)
+  query/                   client(QueryProvider), use-portfolio·use-savings·use-pension·use-coin·use-debt·use-settings, use-assets-refresh, use-asset-snapshots(목록/단건/기록·삭제 뮤테이션), use-goal(목표 조회·저장·삭제 뮤테이션), use-net-worth(순자산 합산 훅), use-envelope(항목·설정 CRUD 뮤테이션)
   format.ts, types.ts
 
 stores/
@@ -107,6 +111,7 @@ docs/                      본 문서 + superpowers/(스펙·플랜)
      ▼
 [IndexedDB]  holdings · priceCache · fxRates · sectorOverrides · snapshots · settings
              · savings · pension · coin · debts · assetSnapshots · goal · session
+             · envelopeItems · envelopeConfig
      │
 [use-* 훅]   DB 로드 → 자산별 순수 서비스로 VM 빌드
      │   주식: buildPortfolio(merge+pnl+fx+ratios+resolveSector)
@@ -115,7 +120,7 @@ docs/                      본 문서 + superpowers/(스펙·플랜)
 [assets/page]  자산별 값 합산 → 순자산 = 자산 합계 − 부채, 각 화면에서 렌더링
 ```
 
-- **순수 계산 레이어**: `lib/portfolio/`(및 `savings/`·`pension/`·`coin/`·`debt/`)의 서비스 함수들은 DB·비동기·`Date` 없이 입력만으로 결과를 낸다 ([portfolio-service.ts](../lib/portfolio/portfolio-service.ts) 헤더 주석 참고). 테스트가 쉽고 결정적이다.
+- **순수 계산 레이어**: `lib/portfolio/`(및 `savings/`·`pension/`·`coin/`·`debt/`·`envelope/`)의 서비스 함수들은 DB·비동기·`Date` 없이 입력만으로 결과를 낸다 ([portfolio-service.ts](../lib/portfolio/portfolio-service.ts) 헤더 주석 참고). 테스트가 쉽고 결정적이다.
 - **직접 추가(MANUAL)**: 주식은 [HoldingForm](../components/holdings/HoldingForm.tsx)이 `upsertManualHolding` + `sectorOverride`를 기록한다(추가는 `holdings/new`, 수정·삭제는 `holdings/[id]`). 저축·연금·코인·부채는 각 자산 화면의 `manage`/다이얼로그에서 직접 입력·수정한다.
 - **자산 소스**: AUTO(연동)는 토스(주식·연금 시세·환율)와 업비트(코인·예수금), MANUAL(직접 입력)은 저축·부채 및 직접 추가분. 연동·수동을 합쳐 보여준다.
 - **갱신 트리거**: 자산 화면의 `RefreshBar` → `useAssetsRefresh` 뮤테이션 → 성공 시 `portfolio`·`pension`·`coin`·`savings` 쿼리 무효화. 각 자산 추가/수정/삭제 후에도 해당 쿼리를 무효화해 화면을 갱신한다.
