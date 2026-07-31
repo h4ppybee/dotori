@@ -187,3 +187,11 @@ export interface Settings {
   privacyAmounts?: boolean;   // 금액 숨기기 ON/OFF. undefined === OFF
   lockType?: "pin" | "passphrase"; // 잠금 수단. undefined === passphrase(기존 데이터)
 }
+
+/** 순자산 목표(단일 행). 사용자가 직접 입력 → 백업 대상. */
+export interface Goal {
+  id: "goal";                 // 고정 키
+  targetNetWorthKrw: number;  // 목표 순자산(원, > 0)
+  targetDate: string;         // "YYYY-MM-DD"
+  createdAt: number;          // epoch ms
+}
