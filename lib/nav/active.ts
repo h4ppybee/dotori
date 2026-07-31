@@ -8,6 +8,15 @@ export function isDetailRoute(pathname: string): boolean {
   return pathname === "/holdings" || pathname.startsWith("/holdings/");
 }
 
+export function isPlanRoute(pathname: string): boolean {
+  return pathname === "/plan" || pathname.startsWith("/plan/");
+}
+
+/** 중첩 서브 네비(플로팅 pill)를 쓰는 라우트 = 자산 ∪ 계획. */
+export function isNestedRoute(pathname: string): boolean {
+  return isAssetsRoute(pathname) || isPlanRoute(pathname);
+}
+
 /** 활성 메인 탭 key. 홈은 정확히 "/", 자산은 /assets 이하 전체, 나머지는 정확 매칭. */
 export function resolveActiveMain(pathname: string): string | null {
   if (pathname === "/") {
@@ -46,4 +55,15 @@ export function resolveActiveSub(pathname: string): string | null {
     return "crypto";
   }
   return "overview";
+}
+
+/** 활성 계획 서브탭 key. 자산의 "overview"와 달리 계획은 "envelope"가 곧 기본 탭이라 catch-all과 동일(의도된 차이). */
+export function resolveActivePlanSub(pathname: string): string | null {
+  if (!isPlanRoute(pathname)) {
+    return null;
+  }
+  if (pathname === "/plan/realty" || pathname.startsWith("/plan/realty/")) {
+    return "realty";
+  }
+  return "envelope";
 }

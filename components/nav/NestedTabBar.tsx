@@ -3,19 +3,27 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { assetSubTabs } from "@/lib/nav/nav-config";
-import { resolveActiveSub } from "@/lib/nav/active";
+import type { TabDef } from "@/lib/nav/nav-config";
 import { useNavStore } from "@/stores/nav-store";
 
 /**
- * 자산 중첩 네비게이션 — 둥근 플로팅 바(pill). 자산 경로(/assets/*)에서만 떠오른다.
+ * 중첩 네비게이션 — 둥근 플로팅 바(pill). 자산·계획 공용(중첩 경로에서만 떠오른다).
  * 토스 증권의 플로팅 nested 바와 동일한 UX: 진입하면 메인 탭 바는 사라지고 이 pill만
  * 하단에 살짝 띄워 표시된다(좌우 여백 + shadow-floating). ←로 직전 메인 탭에 복귀한다.
+ * 표시할 서브탭(tabs)과 활성 키(activeKey)는 부모(AppNav)가 경로에 맞춰 주입한다.
  * 항상 마운트하고 transform/opacity만 토글해 등장·사라짐 양방향 애니메이션을 만든다.
  * visible=false면 아래로 슬라이드되어 숨겨진다(inert로 포커스/상호작용 차단).
  * 활성 표시는 낙관적: 탭을 누르는 즉시 옮기고, 실제 경로가 바뀌면 경로 기준으로 되돌린다.
  */
-export function AssetSubTabBar({ visible }: { visible: boolean }) {
+export function NestedTabBar({
+  visible,
+  tabs,
+  activeKey: activeKeyProp,
+}: {
+  visible: boolean;
+  tabs: TabDef[];
+  activeKey: string | null;
+}) {
   const pathname = usePathname();
   const router = useRouter();
   const lastMainTabPath = useNavStore((s) => s.lastMainTabPath);
@@ -29,7 +37,7 @@ export function AssetSubTabBar({ visible }: { visible: boolean }) {
     setPendingKey(null);
   }
 
-  const activeKey = pendingKey ?? resolveActiveSub(pathname);
+  const activeKey = pendingKey ?? activeKeyProp;
 
   return (
     <>
@@ -65,7 +73,7 @@ export function AssetSubTabBar({ visible }: { visible: boolean }) {
                 </svg>
               </button>
             </li>
-            {assetSubTabs.map((tab) => {
+            {tabs.map((tab) => {
               const active = tab.key === activeKey;
               return (
                 <li key={tab.key} className="flex-1">

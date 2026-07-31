@@ -4,6 +4,9 @@ import {
   resolveActiveSub,
   isAssetsRoute,
   isDetailRoute,
+  isPlanRoute,
+  isNestedRoute,
+  resolveActivePlanSub,
 } from "@/lib/nav/active";
 
 describe("resolveActiveMain", () => {
@@ -55,5 +58,23 @@ describe("경로 분류", () => {
   });
   it("isDetailRoute는 세그먼트 경계를 지킨다(/holdingsX는 false)", () => {
     expect(isDetailRoute("/holdingsX")).toBe(false);
+  });
+});
+
+describe("plan nav", () => {
+  it("isPlanRoute", () => {
+    expect(isPlanRoute("/plan")).toBe(true);
+    expect(isPlanRoute("/plan/realty")).toBe(true);
+    expect(isPlanRoute("/assets")).toBe(false);
+  });
+  it("isNestedRoute = assets ∪ plan", () => {
+    expect(isNestedRoute("/assets/stocks")).toBe(true);
+    expect(isNestedRoute("/plan")).toBe(true);
+    expect(isNestedRoute("/")).toBe(false);
+  });
+  it("resolveActivePlanSub", () => {
+    expect(resolveActivePlanSub("/plan")).toBe("envelope");
+    expect(resolveActivePlanSub("/plan/realty")).toBe("realty");
+    expect(resolveActivePlanSub("/plan/anything")).toBe("envelope");
   });
 });

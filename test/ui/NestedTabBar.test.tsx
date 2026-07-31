@@ -9,7 +9,8 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push }),
 }));
 
-import { AssetSubTabBar } from "@/components/nav/AssetSubTabBar";
+import { NestedTabBar } from "@/components/nav/NestedTabBar";
+import { assetSubTabs } from "@/lib/nav/nav-config";
 import { useNavStore } from "@/stores/nav-store";
 
 beforeEach(() => {
@@ -18,22 +19,22 @@ beforeEach(() => {
   useNavStore.setState({ lastMainTabPath: "/plan" });
 });
 
-describe("AssetSubTabBar", () => {
-  it("자산 서브탭들을 렌더한다", () => {
-    render(<AssetSubTabBar visible />);
+describe("NestedTabBar", () => {
+  it("주입된 서브탭들을 렌더한다", () => {
+    render(<NestedTabBar visible tabs={assetSubTabs} activeKey="stocks" />);
     ["자산", "주식", "저축", "연금", "코인"].forEach((t) =>
       expect(screen.getByText(t)).toBeInTheDocument()
     );
   });
   it("← 버튼은 lastMainTabPath로 push한다", async () => {
     const user = userEvent.setup();
-    render(<AssetSubTabBar visible />);
+    render(<NestedTabBar visible tabs={assetSubTabs} activeKey="stocks" />);
     await user.click(screen.getByRole("button", { name: "이전" }));
     expect(push).toHaveBeenCalledWith("/plan");
   });
-  it("서브탭을 누르면 경로가 바뀌기 전에도 활성 표시가 즉시 옮겨간다", async () => {
+  it("서브탭을 누르면 경로가 바뀌기 전에도 활성 표시가 즉시 옮겨간다(activeKey prop보다 우선)", async () => {
     const user = userEvent.setup();
-    render(<AssetSubTabBar visible />);
+    render(<NestedTabBar visible tabs={assetSubTabs} activeKey="stocks" />);
     await user.click(screen.getByText("연금"));
     expect(screen.getByText("연금").closest("a")).toHaveAttribute("aria-current", "page");
     expect(screen.getByText("주식").closest("a")).not.toHaveAttribute("aria-current");

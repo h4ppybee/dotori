@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { mainTabs } from "@/lib/nav/nav-config";
-import { resolveActiveMain, isAssetsRoute } from "@/lib/nav/active";
+import { resolveActiveMain, isAssetsRoute, isPlanRoute } from "@/lib/nav/active";
 import { useNavStore } from "@/stores/nav-store";
 
 /**
@@ -46,8 +46,10 @@ export function MainTabBar({ visible = true }: { visible?: boolean }) {
           const onClick = () => {
             // 누르는 즉시 활성 표시를 옮긴다 (경로 변경 완료를 기다리지 않음)
             setPendingKey(tab.key);
-            // 자산 탭으로 진입할 때, 현재가 자산 경로가 아니면 복귀 지점으로 기록
-            if (tab.key === "assets" && !isAssetsRoute(pathname)) {
+            // 중첩 탭(자산·계획)으로 진입할 때, 현재가 해당 중첩 경로가 아니면 복귀 지점으로 기록
+            const enteringAssets = tab.key === "assets" && !isAssetsRoute(pathname);
+            const enteringPlan = tab.key === "plan" && !isPlanRoute(pathname);
+            if (enteringAssets || enteringPlan) {
               setLastMainTab(pathname);
             }
           };

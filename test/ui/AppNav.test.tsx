@@ -18,7 +18,7 @@ describe("AppNav", () => {
     expect(screen.queryByRole("navigation", { name: "주요 화면" })).not.toBeInTheDocument();
   });
   it("일반 경로에서는 메인 바를 표시한다", () => {
-    setPath("/plan");
+    setPath("/settings");
     render(<AppNav><div>본문</div></AppNav>);
     expect(screen.getByRole("navigation", { name: "주요 화면" })).toBeInTheDocument();
   });
@@ -28,5 +28,13 @@ describe("AppNav", () => {
     // 중첩 바의 ← 버튼이 보이고 pointer-events가 살아있는지(visible)로 판단
     const back = screen.getByRole("button", { name: "이전" });
     expect(back).toBeInTheDocument();
+  });
+  it("계획 경로에서도 중첩 바(계획 서브탭)가 노출된다", () => {
+    setPath("/plan");
+    render(<AppNav><div>본문</div></AppNav>);
+    // 계획 서브탭이 뜨고, 메인 바는 숨겨진다(중첩 경로)
+    expect(screen.getByText("통장 쪼개기")).toBeInTheDocument();
+    expect(screen.getByText("부동산")).toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "주요 화면" })).not.toBeInTheDocument();
   });
 });
