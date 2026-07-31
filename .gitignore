@@ -42,3 +42,8 @@ next-env.d.ts
 
 # worktrees
 .worktrees/
+
+# playwright mcp / 작업용 스크린샷
+.playwright-mcp/
+tablediff-*.png
+kotable-*.png
