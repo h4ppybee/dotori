@@ -2,6 +2,7 @@ import { db, priceKey } from "@/lib/db/schema";
 import type {
   Connection, Holding, PriceCache, FxRate, Settings, Member, SavingsAccount, SavingsCategory,
   PensionAccount, PensionCategory, CoinHolding, LoanAccount, LoanCategory, AssetSnapshot, Goal,
+  EnvelopeItem, EnvelopeConfig, EnvelopeProfile,
 } from "@/lib/types";
 
 const now = () => Date.now();
@@ -274,3 +275,37 @@ export function listAssetSnapshots(limit?: number): Promise<AssetSnapshot[]> {
 
 export const getAssetSnapshot = (id: string) => db.assetSnapshots.get(id);
 export const deleteAssetSnapshot = (id: string) => db.assetSnapshots.delete(id);
+
+// ── 통장 쪼개기 항목 (수동) ──────────────────────────────────────────────
+export const listEnvelopeItems = () => db.envelopeItems.toArray();
+export const getEnvelopeItem = (id: string) => db.envelopeItems.get(id);
+
+/** 새 항목 sortOrder = 해당 프로필 최대값 + 1. */
+async function nextEnvelopeSortOrder(profile: EnvelopeProfile): Promise<number> {
+  const rows = await db.envelopeItems.where("profile").equals(profile).toArray();
+  return rows.reduce((m, r) => Math.max(m, r.sortOrder), -1) + 1;
+}
+
+export async function upsertEnvelopeItem(
+  s: Partial<EnvelopeItem> & { id?: string; profile: EnvelopeProfile },
+): Promise<EnvelopeItem> {
+  const existing = s.id ? await db.envelopeItems.get(s.id) : undefined;
+  const sortOrder = s.sortOrder ?? existing?.sortOrder ?? (await nextEnvelopeSortOrder(s.profile));
+  const rec = {
+    ...existing,
+    ...s,
+    id: s.id ?? uid(),
+    sortOrder,
+    createdAt: existing?.createdAt ?? now(),
+  } as EnvelopeItem;
+  await db.envelopeItems.put(rec);
+  return rec;
+}
+
+export const deleteEnvelopeItem = (id: string) => db.envelopeItems.delete(id);
+
+// ── 통장 쪼개기 설정 (커스텀 태그·은행, 단일 행) ─────────────────────────
+const DEFAULT_ENVELOPE_CONFIG: EnvelopeConfig = { id: "envelope", customTags: [], customAccounts: [] };
+export const getEnvelopeConfig = async (): Promise<EnvelopeConfig> =>
+  (await db.envelopeConfig.get("envelope")) ?? DEFAULT_ENVELOPE_CONFIG;
+export const putEnvelopeConfig = (c: EnvelopeConfig) => db.envelopeConfig.put(c);

@@ -195,3 +195,25 @@ export interface Goal {
   targetDate: string;         // "YYYY-MM-DD"
   createdAt: number;          // epoch ms
 }
+
+export type EnvelopeProfile = "wife" | "husband";
+
+/** 통장 쪼개기 라인 항목. 사용자가 직접 입력 → 백업 대상. */
+export interface EnvelopeItem {
+  id: string;
+  profile: EnvelopeProfile;
+  tag: string;
+  account: string;
+  name: string;
+  amountKrw: number;   // ≥ 0
+  note?: string;
+  sortOrder: number;
+  createdAt: number;
+}
+
+/** 통장 쪼개기 커스텀 태그·은행(단일 행). */
+export interface EnvelopeConfig {
+  id: "envelope";
+  customTags: string[];
+  customAccounts: string[];
+}
