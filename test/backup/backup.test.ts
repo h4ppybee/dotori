@@ -65,7 +65,7 @@ describe("exportAll / importAll", () => {
       data: Record<string, unknown[] | undefined>;
     };
 
-    expect(parsed.schemaVersion).toBe(5);
+    expect(parsed.schemaVersion).toBe(6);
     expect((parsed.data.connections as { id: string }[]).map((c) => c.id)).toEqual(["man1"]);
     expect((parsed.data.holdings as { id: string }[]).map((h) => h.id)).toEqual(["h1"]);
     expect(parsed.data.savings).toEqual([]);
@@ -82,7 +82,7 @@ describe("exportAll / importAll", () => {
     await db.debts.put({ id: "d1", category: "MORTGAGE", name: "주택담보대출", lender: "국민", balance: 120_000_000, interestRate: 3.5, monthlyPayment: 700_000, sortOrder: 0, updatedAt: 1 });
 
     const json = await exportAll();
-    expect(JSON.parse(json).schemaVersion).toBe(5);
+    expect(JSON.parse(json).schemaVersion).toBe(6);
 
     await db.delete();
     await db.open();
@@ -285,5 +285,14 @@ describe("exportAll / importAll", () => {
   it("assetSnapshots 없는 v4 백업도 불러온다", async () => {
     const json = JSON.stringify({ schemaVersion: 4, exportedAt: 1, data: {} });
     await expect(importAll(json, { mode: "merge" })).resolves.toBeUndefined();
+  });
+
+  it("goal을 export/import 라운드트립한다", async () => {
+    await db.goal.put({ id: "goal", targetNetWorthKrw: 100_000_000, targetDate: "2027-01-01", createdAt: 1 });
+    const json = await exportAll();
+    await db.goal.clear();
+    await importAll(json, { mode: "overwrite" });
+    const restored = await db.goal.get("goal");
+    expect(restored?.targetNetWorthKrw).toBe(100_000_000);
   });
 });

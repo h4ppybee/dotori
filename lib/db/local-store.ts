@@ -1,7 +1,7 @@
 import { db, priceKey } from "@/lib/db/schema";
 import type {
   Connection, Holding, PriceCache, FxRate, Settings, Member, SavingsAccount, SavingsCategory,
-  PensionAccount, PensionCategory, CoinHolding, LoanAccount, LoanCategory, AssetSnapshot,
+  PensionAccount, PensionCategory, CoinHolding, LoanAccount, LoanCategory, AssetSnapshot, Goal,
 } from "@/lib/types";
 
 const now = () => Date.now();
@@ -60,6 +60,10 @@ export const getFx = () => db.fxRates.get("USDKRW");
 
 export const getSettings = () => db.settings.get("app");
 export const putSettings = (s: Settings) => db.settings.put(s);
+
+export const getGoal = () => db.goal.get("goal");
+export const putGoal = (g: Goal) => db.goal.put(g);
+export const deleteGoal = () => db.goal.delete("goal");
 
 export const upsertMember = (m: Member) => db.members.put(m);
 export const listMembers = () => db.members.toArray();

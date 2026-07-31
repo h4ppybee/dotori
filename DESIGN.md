@@ -412,6 +412,7 @@ dotori는 토스(Toss)의 디자인 언어를 따른다 — 차분하고, 신뢰
 - **수익률 배지** (`{component.return-badge-up}` / `down`): 연한 surface 배경 + 부호(+/-) + 색.
 - **도넛 차트** (`{component.donut-chart}`): 섹터/종목/저축 카테고리 비율. 기본은 palette 순서대로 배정, track은 hairline. 공용 표현형 프리미티브 `components/ui/DonutChart`로 구현하고(도넛+범례+가운데 라벨/값), 카드·헤딩은 소비자(`SectorDonut`/`SavingsDonut`/`NetWorthDonut` 등)가 감싼다. 여러 자산 탭에서 재사용한다.
   - **의미색이 필요할 때**: `DonutSegment.color`로 조각별 색을 직접 지정한다(미지정 시 palette 순번). **순자산 vs 부채**(`NetWorthDonut`)는 순자산 = `{colors.primary}`(#A87342), 부채 = 뉴트럴 #6B7684로 배정한다. 순자산·부채는 손익이 아니므로 손익 색(up=빨강/down=파랑)을 쓰지 않는다.
+- **진행률 링** (`components/goal/GoalProgressRing`): 목표 순자산 대비 진행률을 나타내는 단일 호 SVG 링. 지름 168px 기본, stroke 16px. 진행 호는 `{colors.primary}`(`stroke-primary`, `strokeLinecap="round"`), 트랙은 `{colors.hairline}`(`stroke-hairline`). 12시 방향에서 시작하도록 -90도 회전, 진행률은 0~100으로 클램프한다. 가운데에 작은 라벨(`{colors.muted}`)/큰 값(`{colors.ink}`, `{typography.number-lg}` 계열, tabular-nums)을 오버레이한다. 다중 세그먼트+범례가 필요하면 `DonutChart`를 쓴다(이건 단일 호 전용).
 - **버튼**: primary(갈색) / secondary(brown-surface) / weak(grey) / text. radius `{rounded.md}`, height 52px.
 - **아이콘 버튼**: 부가 동작은 라벨 없는 원형 아이콘 버튼으로 심플하게 둔다. 규격: `h-9~10 w-9~10`, `{rounded.full}`, 아이콘 20~24px 단순 stroke, 평상시 `text-muted`, hover `bg-surface-soft`/`text-body`, active `surface-strong`, disabled opacity 60%. 반드시 `aria-label`을 준다. 예: 보유 종목 "종목 추가"(+), 갱신 바 **새로고침**(회전 화살표 — 진행 중이면 `animate-spin` + `aria-busy`, `aria-label`은 "새로고침"/"새로고침 중…").
 - **스위치(Switch)**: on/off 환경설정 토글.

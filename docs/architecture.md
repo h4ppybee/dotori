@@ -2,7 +2,7 @@
 
 토스 스타일의 **로컬 퍼스트(local-first) PWA 개인 자산 관리 앱**. 주식·저축/현금성·연금·코인 자산과 부채를 한데 모아 **순자산**을 보여준다. 토스인베스트 Open API(주식·연금 시세·환율)와 업비트 API(코인·예수금)로 시세를 가져오고, 직접 입력한 자산과 합친다. 모든 데이터는 브라우저 IndexedDB에 저장되며, 민감정보는 비밀번호 파생 키로 암호화한다. **서버 DB가 없다.**
 
-> 패키지명은 `dotori`. 가계부(`ledger`)·계획(`plan`) 탭은 아직 플레이스홀더(`components/nav/DummyPage`)다.
+> 패키지명은 `dotori`. 홈 탭(`app/page.tsx`)은 **순자산 + 목표 자산** 섹션을 보여준다(목표 금액·목표일 설정 → 월 필요 저축액·달성률 진행 링). 가계부(`ledger`)·계획(`plan`) 탭은 아직 플레이스홀더(`components/nav/DummyPage`)다.
 
 > 📄 **문서를 코드와 일치시킨다.** 라우트·`lib` 모듈·`components` 디렉토리·자산 종류·외부 API·Dexie 테이블·데이터 흐름을 추가/변경할 때는 이 문서와 [AGENTS.md](../AGENTS.md)를 **같은 작업에서 함께 갱신**한다. 주제별 상세는 분리 문서로 관리한다 — 백업 [backup.md](backup.md), 외부 연동 [external-api.md](external-api.md). 전체 목록은 [docs/README.md](README.md).
 
@@ -41,7 +41,7 @@ npm run test:watch # vitest watch
 ```
 app/                       App Router 라우트 (모두 "use client")
   layout.tsx               QueryProvider + LockGate + AppNav + ServiceWorker 등록
-  page.tsx                 홈 (플레이스홀더 DummyPage)
+  page.tsx                 홈 — 순자산 요약 + 목표 자산(GoalCard/GoalForm/GoalProgressRing)
   assets/page.tsx          자산 개요 — 순자산 = 자산 합계 − 부채, 자산별 카드 + DebtSection + SnapshotSection
   assets/stocks/page.tsx   주식 대시보드 (구 홈 — 포트폴리오/섹터/보유)
   assets/savings/page.tsx  저축/현금성 (+ savings/manage 추가·수정)
@@ -63,6 +63,7 @@ components/
                            (SummaryHero, SectorDonut, HoldingWeightBars, HoldingsTable, RefreshBar, SectorDialog)
   savings/, pension/, coin/, debt/   자산별 위젯·관리 목록·입력 다이얼로그
   snapshot/                SnapshotSection(기록 버튼+차트+최근 목록), SnapshotListItem, SnapshotTrendChart(추이 콤보 차트)
+  goal/                    GoalCard, GoalForm, GoalEmptyState, GoalProgressRing (목표 자산 섹션)
   holdings/HoldingForm.tsx 종목 추가/편집 폼
   nav/                     AppNav, MainTabBar, AssetSubTabBar, DummyPage
   settings/                ConnectionForm, BackupPanel
@@ -75,12 +76,13 @@ lib/
   db/                      schema(Dexie 정의), local-store(CRUD 헬퍼), session-vault
   portfolio/               순수 계산: portfolio-service(buildPortfolio), pnl, fx, merge, ratios, net-worth
   savings/, pension/, coin/, debt/   자산별 순수 서비스(VM 빌드·집계·카테고리 라벨)
+  goal/                    순수 계산: goal-service(buildGoalProgress) — 순자산 목표 진척(월 필요 저축액·달성률)
   sector/                  seed(종목→섹터 시드), sector-map(resolveSector + KNOWN_SECTORS)
   crypto/                  crypto(PBKDF2/AES-GCM), rekey(비밀번호 변경 재암호화)
   snapshot/                수동 전체 자산 스냅샷 — capture(DB 상태→VM 5종→저장), asset-snapshot(순수 빌더), trend(추이 차트 데이터 헬퍼)
   backup/                  수동 데이터 export/import (JSON) — 상세 docs/backup.md
   nav/                     nav-config(탭 정의), active(활성 탭 판정)
-  query/                   client(QueryProvider), use-portfolio·use-savings·use-pension·use-coin·use-debt·use-settings, use-assets-refresh, use-asset-snapshots(목록/단건/기록·삭제 뮤테이션)
+  query/                   client(QueryProvider), use-portfolio·use-savings·use-pension·use-coin·use-debt·use-settings, use-assets-refresh, use-asset-snapshots(목록/단건/기록·삭제 뮤테이션), use-goal(목표 조회·저장·삭제 뮤테이션), use-net-worth(순자산 합산 훅)
   format.ts, types.ts
 
 stores/
@@ -104,7 +106,7 @@ docs/                      본 문서 + superpowers/(스펙·플랜)
      │   (저축 수동 입력분은 갱신 대상 아님)
      ▼
 [IndexedDB]  holdings · priceCache · fxRates · sectorOverrides · snapshots · settings
-             · savings · pension · coin · debts · assetSnapshots · session
+             · savings · pension · coin · debts · assetSnapshots · goal · session
      │
 [use-* 훅]   DB 로드 → 자산별 순수 서비스로 VM 빌드
      │   주식: buildPortfolio(merge+pnl+fx+ratios+resolveSector)
