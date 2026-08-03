@@ -49,7 +49,7 @@ app/                       App Router 라우트 (모두 "use client")
   assets/crypto/page.tsx   코인 (+ crypto/manage)
   assets/snapshots         자산 스냅샷 전체 목록 (+ snapshots/[id] 상세 표+삭제)
   holdings/new, holdings/[id]  주식 직접 추가 / 상세·섹터 편집·MANUAL 수정·삭제
-  plan/page.tsx            통장 쪼개기 — 프로필(통합/아내/남편) · 태그·은행별 롤업 · 항목 관리
+  plan/page.tsx            통장 쪼개기 — 프로필(통합/아내/남편) · 태그·은행별 롤업 · 항목 관리(일괄 편집 모드 지원). 통합 뷰는 전체 항목을 아내/남편 섹션으로 나눠 리스트하며 항목 추가는 프로필 뷰에서만.
   plan/realty/page.tsx     부동산 조달계획 (플레이스홀더 DummyPage)
   ledger                   가계부 (플레이스홀더 DummyPage)
   settings/page.tsx        연동(토스·업비트) / 백업 / PIN 설정·변경
@@ -86,7 +86,7 @@ lib/
   snapshot/                수동 전체 자산 스냅샷 — capture(DB 상태→VM 5종→저장), asset-snapshot(순수 빌더), trend(추이 차트 데이터 헬퍼)
   backup/                  수동 데이터 export/import (JSON) — 상세 docs/backup.md
   nav/                     nav-config(탭 정의), active(활성 탭 판정)
-  query/                   client(QueryProvider), use-portfolio·use-savings·use-pension·use-coin·use-debt·use-settings, use-assets-refresh, use-asset-snapshots(목록/단건/기록·삭제 뮤테이션), use-goal(목표 조회·저장·삭제 뮤테이션), use-net-worth(순자산 합산 훅), use-envelope(항목·설정 CRUD 뮤테이션)
+  query/                   client(QueryProvider), use-portfolio·use-savings·use-pension·use-coin·use-debt·use-settings, use-assets-refresh, use-asset-snapshots(목록/단건/기록·삭제 뮤테이션), use-goal(목표 조회·저장·삭제 뮤테이션), use-net-worth(순자산 합산 훅), use-envelope(항목·설정 CRUD + bulkUpdate 뮤테이션)
   format.ts, types.ts
 
 stores/

@@ -443,6 +443,12 @@ dotori는 토스(Toss)의 디자인 언어를 따른다 — 차분하고, 신뢰
   - 프리셋 태그(고정 목록)는 `{component.donut-chart}` palette와 동일한 순서로 고정 색을 배정한다(`["#A87342", "#F04452", "#15803D", "#FF9800", "#8B5CF6", "#6B7684"]`).
   - 사용자 추가 커스텀 태그는 동일 palette를 인덱스 해시(`name.length % palette.length` 등)로 순환 배정한다.
   - 새 palette 색을 추가하거나 순서를 바꾸면 이 문서와 `tag-color.ts`를 함께 수정한다.
+- **통장 쪼개기 도넛 위치**: 태그별 `DonutChart`는 **통합 뷰에만** 표시한다(중앙에 combined 총액). 아내/남편 프로필 뷰에는 도넛 없음.
+- **EnvelopeItemRow 편집 변형**: 일괄 편집 모드(저축 탭 `SavingsManageList` 패턴 동일) 진입 시 행이 편집 변형으로 전환된다.
+  - 금액: `TextInput`(numeric) 인라인 표시(`bg-surface-soft`, radius 10px, 우측 정렬, `tabular-nums`).
+  - 우측: X 삭제 버튼(`{colors.semantic-down}` 또는 `text-muted`, `aria-label="삭제"`).
+  - 편집 확정: "저장하기" 버튼 탭 → `bulkUpdateEnvelope`로 일괄 반영.
+  - 항목명·태그·통장은 편집 모드에서 읽기 전용(변경은 개별 Dialog에서).
 - **스냅샷 추이 콤보 차트** (`{component.snapshot-trend-chart}`, `components/snapshot/SnapshotTrendChart`): 자산 탭 스냅샷 섹션에서 최신 20건을 보여주는 SVG 콤보 차트. 축 라벨 없는 **상대 스케일**(구간 내 min~max로 정규화)이며 절대 수치는 옆의 목록·상세에서 확인한다.
   - **두 밴드 구성**: 하나의 `viewBox` 안에서 상단 밴드(순자산 선)와 하단 밴드(변화량 막대)가 겹치지 않게 x좌표만 공유한다.
   - **상단 밴드 — 순자산 선**: `stroke = {colors.primary}`(#A87342), 두께 2px, 각 지점에 반지름 3px 포인트 마커(같은 색 채움). 전 구간 값이 동일하면 밴드 세로 중앙 수평선으로 표시한다.

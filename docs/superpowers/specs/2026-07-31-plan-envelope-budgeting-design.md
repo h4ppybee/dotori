@@ -96,6 +96,7 @@ this.version(9).stores({
   envelopeConfig: "id",
 });
 ```
+
 필드 선언: `envelopeItems!: Table<EnvelopeItem, string>;`, `envelopeConfig!: Table<EnvelopeConfig, string>;`.
 
 ### 프리셋 상수 (`lib/envelope/presets.ts`)
@@ -104,11 +105,13 @@ this.version(9).stores({
 export const TAG_PRESETS = ["고정지출", "저축", "투자", "생활비", "비상금"] as const;
 export const ACCOUNT_PRESETS = ["신한", "토스", "케이뱅크", "하나당근", "국민", "신용카드(현대)", "신용카드(삼성)"] as const;
 ```
+
 사용 가능한 태그/은행 = 프리셋 ∪ `EnvelopeConfig`의 커스텀(중복 제거, 프리셋 우선 순서).
 
 ### CRUD (`lib/db/local-store.ts`)
 
 - `listEnvelopeItems()`, `getEnvelopeItem(id)`, `upsertEnvelopeItem(...)`(savings의 `upsert` + `nextSortOrder` 패턴 차용, sortOrder는 프로필별 최대+1), `deleteEnvelopeItem(id)`.
+- `bulkUpdateEnvelope(rows)`: 일괄 편집 모드 저장 전용 — 변경된 금액 일괄 upsert + 삭제 대상 일괄 delete를 단일 트랜잭션으로 처리.
 - `getEnvelopeConfig()`(없으면 `{ id:"envelope", customTags:[], customAccounts:[] }` 기본), `putEnvelopeConfig(c)`. 태그/은행 추가 헬퍼(중복이면 무시).
 
 ## 순수 계산 `lib/envelope/envelope-service.ts`
@@ -122,7 +125,7 @@ export interface EnvelopeItemRow { item: EnvelopeItem; ratioPct: number; }
 export interface EnvelopeView {
   scope: "combined" | EnvelopeProfile;
   totalKrw: number;
-  rows: EnvelopeItemRow[];              // combined에서는 빈 배열(개별 항목은 프로필 뷰에서만 노출)
+  rows: EnvelopeItemRow[];              // 개별 프로필 뷰: sortOrder 순. combined: 전체 항목(아내→남편 순), 비율은 combined 총액 기준
   byTag: EnvelopeRollupEntry[];         // 태그별 합·비율(금액 내림차순)
   byAccount: EnvelopeRollupEntry[];     // 통장별 합·비율
   byProfile: EnvelopeRollupEntry[];     // combined에서만 채움(아내/남편 합), 그 외 빈 배열
@@ -135,12 +138,13 @@ export function buildEnvelopeView(input: {
 ```
 
 규칙:
+
 - 대상 항목: `scope==="combined"`면 전체, 아니면 `item.profile===scope`.
 - `totalKrw` = 대상 항목 `amountKrw` 합.
 - `ratioPct` = `total>0 ? amount/total*100 : 0`.
 - `byTag`/`byAccount`: 대상 항목을 키로 그룹핑해 합·비율, **금액 내림차순** 정렬. 동점이면 **키 문자열 오름차순**을 2차 기준으로(결정적 정렬 → 테스트·도넛 순서 안정). 0원 항목만 있는 그룹도 실재 항목이므로 **표시**한다(금액 0·비율 0). 항목이 하나도 없는 그룹만 제외.
 - `byProfile`: combined일 때만 `wife`/`husband` 합(없는 프로필은 0으로 표기하지 않고 항목 있을 때만). 개별 뷰에선 빈 배열.
-- `rows`: 개별 프로필 뷰에서만 `sortOrder` 순으로 채움. combined에선 빈 배열.
+- `rows`: 개별 프로필 뷰에서는 `sortOrder` 순으로 채움. combined에서는 **전체 항목을 아내→남편 순으로 채움**(비율은 combined 총액 기준).
 - 빈 목록: total 0, 모든 배열 빈 배열, ratio 0.
 
 ## UI
@@ -152,11 +156,12 @@ export function buildEnvelopeView(input: {
 - 잠금 시 자산 훅처럼 쿼리 비활성.
 - **아내/남편 뷰**:
   - 총액 카드(`formatKrw(totalKrw)`, 중립 `text-ink`).
-  - 태그별 `DonutChart`(중앙 총액, 태그색 매핑).
+  - 롤업: `RollupCard` 통장별 / 태그별(항목·금액·비율) — **항목 목록 및 "+ 항목 추가" 버튼 위에** 배치.
   - 라인 항목 리스트: 각 행 `EnvelopeItemRow`(항목명 + 태그 칩 + 통장 + 금액 + 비율%). 탭 → 수정 Dialog.
   - "+ 항목 추가" 버튼 → 추가 Dialog.
-  - 롤업: `RollupCard` 통장별 / 태그별(항목·금액·비율).
-- **통합 뷰**: 합산 총액 + `RollupCard` 태그별·통장별·인물별(읽기 전용, 추가 버튼 없음).
+  - 도넛 차트 없음(통합 뷰로 이동됨).
+- **통합 뷰**: 합산 총액 + 태그별 `DonutChart`(중앙 총액, 태그색 매핑) + `RollupCard` 통장별·인물별. 아래에 아내/남편 섹션별로 전체 항목 리스트(인물별 소계 표시). 추가 버튼 없음(항목 추가는 프로필 뷰에서).
+- **일괄 편집 모드(모든 뷰 공통)**: 상단 우측 "편집" 버튼 진입 → 각 행에 금액 인라인 입력(`bg-surface-soft`, 우측 정렬, `tabular-nums`) + X 삭제 버튼 표시. "저장하기" 확정 시 `bulkUpdateEnvelope`로 변경분 일괄 반영. 저축 탭 `SavingsManageList` 편집 모드와 동일 UX 패턴. AUTO 행은 편집 잠금(연동 출처 배지 규칙과 동일).
 - 금액은 손익이 아니므로 **중립 `text-ink`**(증시 up/down 색 금지, DESIGN 규칙).
 
 ### 항목 Dialog `components/envelope/EnvelopeItemDialog.tsx`
@@ -177,11 +182,12 @@ export function buildEnvelopeView(input: {
 
 ### 쿼리 훅 `lib/query/use-envelope.ts`
 
-- `useEnvelopeItems()`(잠금 시 비활성), `useEnvelopeConfig()`, `useEnvelopeMutations()`(항목 upsert/delete + 태그/은행 추가, 성공 시 무효화).
+- `useEnvelopeItems()`(잠금 시 비활성), `useEnvelopeConfig()`, `useEnvelopeMutations()`(항목 upsert/delete + `bulkUpdate`(일괄 편집 저장) + 태그/은행 추가, 성공 시 무효화).
 
 ## 백업
 
 `lib/backup/backup.ts`: `envelopeItems`·`envelopeConfig`를 수동 데이터로 포함.
+
 - `BackupData`에 `envelopeItems: unknown[]; envelopeConfig: unknown[];` 추가.
 - `exportAll`: 두 테이블 `toArray()` 추가.
 - `importAll`: `?? []` 하위호환, overwrite 시 `clear()`, `bulkPut`.
@@ -205,4 +211,5 @@ export function buildEnvelopeView(input: {
 
 - `AssetSubTabBar` → `NestedTabBar` 일반화 시 import 경로 변경 파급(AppNav만 사용). 자산 동작 회귀 없어야 함 — nav active 테스트로 방어.
 - 프로필 상태는 URL이 아닌 컴포넌트 로컬 상태(v1). 새로고침 시 통합으로 초기화 — 허용.
-- 통합 뷰는 읽기 전용(항목 편집은 프로필 뷰에서). 명시적 결정.
+- 통합 뷰는 **항목 리스트 표시 및 일괄 편집 가능**. 단, 항목 추가("+항목 추가" 버튼)는 프로필 뷰(아내/남편)에서만 — 새 항목의 `profile` 귀속을 명확히 하기 위함. 명시적 결정.
+
