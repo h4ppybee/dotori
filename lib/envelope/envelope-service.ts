@@ -41,7 +41,14 @@ function rollup(
     .sort((a, b) => b.amountKrw - a.amountKrw || a.key.localeCompare(b.key));
 }
 
-/** 통장 쪼개기 집계. DB·Date·비동기 없이 입력만으로 결과를 낸다. */
+/**
+ * 통장 쪼개기 집계. DB·Date·비동기 없이 입력만으로 결과를 낸다.
+ *
+ * `rows`:
+ * - 프로필 뷰(wife/husband): 해당 프로필 항목만, sortOrder 오름차순.
+ * - 통합 뷰(combined): 전체 항목, 아내 항목 먼저 → 남편 항목 순, 각 프로필 내 sortOrder 오름차순.
+ *   ratioPct는 combined 총액 기준.
+ */
 export function buildEnvelopeView(input: {
   items: EnvelopeItem[];
   scope: "combined" | EnvelopeProfile;
@@ -54,10 +61,19 @@ export function buildEnvelopeView(input: {
 
   const totalKrw = target.reduce((s, i) => s + i.amountKrw, 0);
 
-  // combined 뷰는 행 목록 없음(byProfile 롤업으로 대체)
+  // combined 뷰: 아내 항목 먼저, 그 다음 남편 항목. 각 프로필 내 sortOrder 오름차순.
+  // 프로필 뷰: 해당 프로필 항목을 sortOrder 오름차순으로.
   const rows: EnvelopeItemRow[] =
     scope === "combined"
-      ? []
+      ? [...target]
+          .sort((a, b) =>
+            a.profile === b.profile
+              ? a.sortOrder - b.sortOrder
+              : a.profile === "wife"
+                ? -1
+                : 1,
+          )
+          .map((item) => ({ item, ratioPct: ratio(item.amountKrw, totalKrw) }))
       : [...target]
           .sort((a, b) => a.sortOrder - b.sortOrder)
           .map((item) => ({ item, ratioPct: ratio(item.amountKrw, totalKrw) }));

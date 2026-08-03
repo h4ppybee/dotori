@@ -6,6 +6,7 @@ import {
   listEnvelopeItems,
   upsertEnvelopeItem,
   deleteEnvelopeItem,
+  bulkUpdateEnvelope,
   getEnvelopeConfig,
   putEnvelopeConfig,
 } from "@/lib/db/local-store";
@@ -54,6 +55,11 @@ export function useEnvelopeMutations() {
     onSuccess: invalidateItems,
   });
 
+  const bulkUpdate = useMutation({
+    mutationFn: (rows: EnvelopeItem[]) => bulkUpdateEnvelope(rows),
+    onSuccess: invalidateItems,
+  });
+
   // 커스텀 태그/은행 추가(중복 무시). config만 갱신.
   const addCustom = useMutation({
     mutationFn: async (v: { kind: "tag" | "account"; value: string }) => {
@@ -72,5 +78,5 @@ export function useEnvelopeMutations() {
     onSuccess: invalidateConfig,
   });
 
-  return { save, remove, addCustom };
+  return { save, remove, addCustom, bulkUpdate };
 }

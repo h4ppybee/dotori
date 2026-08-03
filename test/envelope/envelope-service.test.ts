@@ -36,12 +36,24 @@ describe("buildEnvelopeView", () => {
     expect(v.byAccount.map((e) => e.key)).toEqual(["신한", "하나당근"]);
   });
 
-  it("통합: 전체 합산 + byProfile, rows는 빈 배열", () => {
+  it("통합: 전체 합산 + byProfile, rows는 아내→남편 순 전체 항목", () => {
     const v = buildEnvelopeView({ items, scope: "combined" });
     expect(v.totalKrw).toBe(2_200_000);
-    expect(v.rows).toEqual([]);
     expect(v.byProfile.find((e) => e.key === "husband")?.amountKrw).toBe(1_200_000);
     expect(v.byTag.map((e) => e.key)).toEqual(["투자", "저축", "생활비"]);
+    // 아내 항목 먼저(sortOrder 순), 그 다음 남편 항목
+    expect(v.rows.map((r) => r.item.profile)).toEqual(["wife", "wife", "husband"]);
+    expect(v.rows.map((r) => r.item.tag)).toEqual(["저축", "생활비", "투자"]);
+    // ratioPct는 combined 총액 2,200,000 기준
+    expect(v.rows.find((r) => r.item.tag === "투자")!.ratioPct).toBeCloseTo(
+      (1_200_000 / 2_200_000) * 100,
+    );
+  });
+
+  it("프로필 뷰 rows는 해당 프로필 항목만 sortOrder 순", () => {
+    const v = buildEnvelopeView({ items, scope: "wife" });
+    expect(v.rows).toHaveLength(2);
+    expect(v.rows.map((r) => r.item.tag)).toEqual(["저축", "생활비"]);
   });
 
   it("빈 목록: total 0, 배열 비고 ratio 0", () => {

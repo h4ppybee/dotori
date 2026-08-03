@@ -304,6 +304,11 @@ export async function upsertEnvelopeItem(
 
 export const deleteEnvelopeItem = (id: string) => db.envelopeItems.delete(id);
 
+/** 편집 모드 일괄 저장. */
+export async function bulkUpdateEnvelope(rows: EnvelopeItem[]): Promise<void> {
+  await db.envelopeItems.bulkPut(rows);
+}
+
 // ── 통장 쪼개기 설정 (커스텀 태그·은행, 단일 행) ─────────────────────────
 const DEFAULT_ENVELOPE_CONFIG: EnvelopeConfig = { id: "envelope", customTags: [], customAccounts: [] };
 export const getEnvelopeConfig = async (): Promise<EnvelopeConfig> =>
