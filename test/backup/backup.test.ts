@@ -65,7 +65,7 @@ describe("exportAll / importAll", () => {
       data: Record<string, unknown[] | undefined>;
     };
 
-    expect(parsed.schemaVersion).toBe(6);
+    expect(parsed.schemaVersion).toBe(7);
     expect((parsed.data.connections as { id: string }[]).map((c) => c.id)).toEqual(["man1"]);
     expect((parsed.data.holdings as { id: string }[]).map((h) => h.id)).toEqual(["h1"]);
     expect(parsed.data.savings).toEqual([]);
@@ -82,7 +82,7 @@ describe("exportAll / importAll", () => {
     await db.debts.put({ id: "d1", category: "MORTGAGE", name: "주택담보대출", lender: "국민", balance: 120_000_000, interestRate: 3.5, monthlyPayment: 700_000, sortOrder: 0, updatedAt: 1 });
 
     const json = await exportAll();
-    expect(JSON.parse(json).schemaVersion).toBe(6);
+    expect(JSON.parse(json).schemaVersion).toBe(7);
 
     await db.delete();
     await db.open();
@@ -294,5 +294,16 @@ describe("exportAll / importAll", () => {
     await importAll(json, { mode: "overwrite" });
     const restored = await db.goal.get("goal");
     expect(restored?.targetNetWorthKrw).toBe(100_000_000);
+  });
+
+  it("envelope 항목·config를 export/import 라운드트립한다", async () => {
+    await db.envelopeItems.put({ id: "e1", profile: "wife", tag: "저축", account: "신한", name: "청년도약", amountKrw: 700_000, sortOrder: 0, createdAt: 1 });
+    await db.envelopeConfig.put({ id: "envelope", customTags: ["경조사"], customAccounts: ["카카오뱅크"] });
+    const json = await exportAll();
+    await db.envelopeItems.clear();
+    await db.envelopeConfig.clear();
+    await importAll(json, { mode: "overwrite" });
+    expect((await db.envelopeItems.get("e1"))?.amountKrw).toBe(700_000);
+    expect((await db.envelopeConfig.get("envelope"))?.customTags).toEqual(["경조사"]);
   });
 });

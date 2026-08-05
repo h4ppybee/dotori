@@ -6,9 +6,10 @@ import type { Connection, Holding, SavingsAccount, CoinHolding, HoldingSource } 
 // v4: 사용자가 직접 입력한 수동 데이터만 백업. API 설정·AUTO 데이터·시세/환율 캐시·settings 제외.
 // v5: 자산 스냅샷(assetSnapshots) 포함.
 // v6: 순자산 목표(goal) 포함.
-// 구버전(v1~v4) 백업도 계속 불러올 수 있다(그 안의 API 설정·AUTO·캐시·settings는 무시).
-export const SCHEMA_VERSION = 6;
-const SUPPORTED_VERSIONS = new Set([1, 2, 3, 4, 5, 6]);
+// v7: 통장 쪼개기(envelopeItems·envelopeConfig) 포함.
+// 구버전(v1~v6) 백업도 계속 불러올 수 있다(그 안의 API 설정·AUTO·캐시·settings는 무시).
+export const SCHEMA_VERSION = 7;
+const SUPPORTED_VERSIONS = new Set([1, 2, 3, 4, 5, 6, 7]);
 
 interface BackupData {
   members: unknown[];
@@ -22,6 +23,8 @@ interface BackupData {
   debts: unknown[];
   assetSnapshots: unknown[];
   goal: unknown[];
+  envelopeItems: unknown[];
+  envelopeConfig: unknown[];
 }
 
 interface BackupPayload {
@@ -48,6 +51,8 @@ export async function exportAll(): Promise<string> {
     debts,
     assetSnapshots,
     goal,
+    envelopeItems,
+    envelopeConfig,
   ] = await Promise.all([
     db.members.toArray(),
     db.connections.where("type").equals("MANUAL").toArray(),
@@ -60,6 +65,8 @@ export async function exportAll(): Promise<string> {
     db.debts.toArray(),
     db.assetSnapshots.toArray(),
     db.goal.toArray(),
+    db.envelopeItems.toArray(),
+    db.envelopeConfig.toArray(),
   ]);
 
   const payload: BackupPayload = {
@@ -77,6 +84,8 @@ export async function exportAll(): Promise<string> {
       debts,
       assetSnapshots,
       goal,
+      envelopeItems,
+      envelopeConfig,
     },
   };
 
@@ -117,6 +126,8 @@ export async function importAll(json: string, opts: { mode: "merge" | "overwrite
   const debts = (data.debts ?? []) as Parameters<typeof db.debts.bulkPut>[0];
   const assetSnapshots = (data.assetSnapshots ?? []) as Parameters<typeof db.assetSnapshots.bulkPut>[0];
   const goal = (data.goal ?? []) as Parameters<typeof db.goal.bulkPut>[0];
+  const envelopeItems = (data.envelopeItems ?? []) as Parameters<typeof db.envelopeItems.bulkPut>[0];
+  const envelopeConfig = (data.envelopeConfig ?? []) as Parameters<typeof db.envelopeConfig.bulkPut>[0];
 
   // 트랜잭션 스코프는 db.tables 전체 유지(선택적 삭제가 여러 테이블에 걸침).
   await db.transaction("rw", db.tables, async () => {
@@ -130,6 +141,8 @@ export async function importAll(json: string, opts: { mode: "merge" | "overwrite
       await db.debts.clear();
       await db.assetSnapshots.clear();
       await db.goal.clear();
+      await db.envelopeItems.clear();
+      await db.envelopeConfig.clear();
     }
     await db.members.bulkPut(members);
     await db.connections.bulkPut(manualConnections);
@@ -142,5 +155,7 @@ export async function importAll(json: string, opts: { mode: "merge" | "overwrite
     await db.debts.bulkPut(debts);
     await db.assetSnapshots.bulkPut(assetSnapshots);
     await db.goal.bulkPut(goal);
+    await db.envelopeItems.bulkPut(envelopeItems);
+    await db.envelopeConfig.bulkPut(envelopeConfig);
   });
 }

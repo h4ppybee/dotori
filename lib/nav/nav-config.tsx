@@ -97,6 +97,28 @@ function CryptoIcon(active: boolean): ReactNode {
   );
 }
 
+// 통장 쪼개기 — 봉투(예산 봉투)
+function EnvelopeIcon(active: boolean): ReactNode {
+  const w = active ? 2.4 : 2;
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" strokeWidth={w} strokeLinejoin="round" />
+      <path d="M4 6.5l8 6 8-6" stroke="currentColor" strokeWidth={w} strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+// 부동산 — 집/건물
+function RealtyIcon(active: boolean): ReactNode {
+  const w = active ? 2.4 : 2;
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M4 10 12 4l8 6" stroke="currentColor" strokeWidth={w} strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M6 9.5V20h12V9.5" stroke="currentColor" strokeWidth={w} strokeLinejoin="round" />
+      <path d="M10 20v-5h4v5" stroke="currentColor" strokeWidth={w} strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 // ── 탭 정의 (key는 lib/nav/active.ts 반환값과 일치) ────────────────────
 export const mainTabs: TabDef[] = [
   { key: "home", href: "/", label: "홈", icon: HomeIcon },
@@ -114,4 +136,10 @@ export const assetSubTabs: TabDef[] = [
   { key: "pension", href: "/assets/pension", label: "연금", icon: PensionIcon },
   { key: "crypto", href: "/assets/crypto", label: "코인", icon: CryptoIcon },
   // 향후 확장: { key: "insurance", href: "/assets/insurance", label: "보험", icon: ... } ...
+];
+
+// 계획 서브탭 — 플로팅 바에서 아이콘 + 라벨로 표시한다.
+export const planSubTabs: TabDef[] = [
+  { key: "envelope", href: "/plan", label: "통장 쪼개기", icon: EnvelopeIcon },
+  { key: "realty", href: "/plan/realty", label: "부동산", icon: RealtyIcon },
 ];

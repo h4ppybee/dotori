@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-// 잠금 해제 시 LockGate가 AppNav(하위에 MainTabBar/AssetSubTabBar)를 렌더링하므로
+// 잠금 해제 시 LockGate가 AppNav(하위에 MainTabBar/NestedTabBar)를 렌더링하므로
 // usePathname과 useRouter를 모킹한다.
 vi.mock("next/navigation", () => ({
   usePathname: () => "/",

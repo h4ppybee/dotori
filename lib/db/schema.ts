@@ -1,7 +1,7 @@
 import Dexie, { type Table } from "dexie";
 import type {
   Member, Connection, TokenCache, Holding, PriceCache, FxRate, DailySnapshot, Settings, SavingsAccount,
-  PensionAccount, CoinHolding, LoanAccount, AssetSnapshot, Goal,
+  PensionAccount, CoinHolding, LoanAccount, AssetSnapshot, Goal, EnvelopeItem, EnvelopeConfig,
 } from "@/lib/types";
 
 /**
@@ -31,6 +31,8 @@ export class DotoriDB extends Dexie {
   debts!: Table<LoanAccount, string>;         // key: id (수동 대출/부채)
   assetSnapshots!: Table<AssetSnapshot, string>; // key: id (수동 전체 자산 스냅샷)
   goal!: Table<Goal, string>; // key: id (순자산 목표, 단일 행)
+  envelopeItems!: Table<EnvelopeItem, string>;    // key: id (통장 쪼개기 항목)
+  envelopeConfig!: Table<EnvelopeConfig, string>; // key: id (커스텀 태그·은행)
 
   constructor() {
     super("dotori");
@@ -74,6 +76,11 @@ export class DotoriDB extends Dexie {
     // v8: 순자산 목표 테이블 추가 (docs/superpowers/specs/2026-07-31-home-net-worth-goal-design.md)
     this.version(8).stores({
       goal: "id",
+    });
+    // v9: 통장 쪼개기 테이블 추가 (docs/superpowers/specs/2026-07-31-plan-envelope-budgeting-design.md)
+    this.version(9).stores({
+      envelopeItems: "id, profile, sortOrder",
+      envelopeConfig: "id",
     });
   }
 }
