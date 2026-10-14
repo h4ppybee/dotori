@@ -7,6 +7,7 @@ import { db } from "@/lib/db/schema";
 import { SavingsSummaryHero } from "@/components/savings/SavingsSummaryHero";
 import { SavingsDonut } from "@/components/savings/SavingsDonut";
 import { SavingsManageList } from "@/components/savings/SavingsManageList";
+import { SavingsAccountDialog } from "@/components/savings/SavingsAccountDialog";
 import { buildSavingsVM } from "@/lib/savings/savings-service";
 import type { SavingsAccount } from "@/lib/types";
 
@@ -105,5 +106,36 @@ describe("SavingsManageList", () => {
     // AUTO 행은 입력·삭제 컨트롤이 없다.
     expect(screen.queryByLabelText("업비트 예수금 금액")).toBeNull();
     expect(screen.queryByLabelText("업비트 예수금 삭제")).toBeNull();
+  });
+});
+
+describe("SavingsAccountDialog 자동 증가 안내", () => {
+  const deposit = a({
+    id: "d", category: "DEPOSIT", amount: 1000, monthlyDeposit: 100,
+    maturityDate: "2027-07-24", balanceAsOf: "2026-10-14",
+  });
+
+  it("기준일과 납입일을 보여준다", () => {
+    renderWithQuery(
+      <SavingsAccountDialog open initial={deposit} onClose={() => {}} onSave={() => {}} />,
+    );
+    expect(screen.getByText("2026.10.14 기준 · 매월 25일에 월 불입액만큼 늘어나요")).toBeInTheDocument();
+  });
+
+  it("금액을 바꾸면 저장 시 오늘 기준이라고 알려준다", async () => {
+    renderWithQuery(
+      <SavingsAccountDialog open initial={deposit} onClose={() => {}} onSave={() => {}} />,
+    );
+    const input = screen.getByDisplayValue("1000");
+    await userEvent.clear(input);
+    await userEvent.type(input, "2000");
+    expect(screen.getByText("저장하면 오늘 기준으로 매월 25일에 월 불입액만큼 늘어나요")).toBeInTheDocument();
+  });
+
+  it("월 불입액이 없으면 안내하지 않는다", () => {
+    renderWithQuery(
+      <SavingsAccountDialog open initial={{ ...deposit, monthlyDeposit: undefined }} onClose={() => {}} onSave={() => {}} />,
+    );
+    expect(screen.queryByText(/월 불입액만큼 늘어나요/)).not.toBeInTheDocument();
   });
 });

@@ -75,3 +75,10 @@ export function formatDateTime(ms: number): string {
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}.${pad(d.getMonth() + 1)}.${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
+
+/** epoch ms → 로컬 날짜 "YYYY-MM-DD" (저장용 날짜 키). */
+export function toLocalYmd(ms: number): string {
+  const d = new Date(ms);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}

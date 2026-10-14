@@ -1,8 +1,8 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import { db } from "@/lib/db/schema";
 import * as store from "@/lib/db/local-store";
 
-afterEach(async () => { await db.delete(); await db.open(); });
+afterEach(async () => { vi.useRealTimers(); await db.delete(); await db.open(); });
 
 describe("savings local-store", () => {
   it("새 계좌를 추가하면 카테고리별 sortOrder가 0부터 증가한다", async () => {
@@ -48,5 +48,39 @@ describe("savings local-store", () => {
     const rows = await store.listSavings();
     expect(rows.find((x) => x.id === a.id)?.amount).toBe(111);
     expect(rows.find((x) => x.id === b.id)?.amount).toBe(222);
+  });
+
+  describe("금액 기준일(balanceAsOf)", () => {
+    const at = (ymd: string) => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date(`${ymd}T12:00:00`));
+    };
+
+    it("새 계좌는 오늘 날짜로 찍는다", async () => {
+      at("2026-10-14");
+      const a = await store.upsertSavings({ category: "DEPOSIT", name: "적금", amount: 100 });
+      expect(a.balanceAsOf).toBe("2026-10-14");
+    });
+
+    it("금액이 바뀌면 갱신하고, 다른 필드만 바뀌면 유지한다", async () => {
+      at("2026-10-01");
+      const a = await store.upsertSavings({ category: "DEPOSIT", name: "적금", amount: 100 });
+      at("2026-10-14");
+      const renamed = await store.upsertSavings({ ...a, name: "새 이름" });
+      expect(renamed.balanceAsOf).toBe("2026-10-01");
+      const changed = await store.upsertSavings({ ...a, amount: 200 });
+      expect(changed.balanceAsOf).toBe("2026-10-14");
+    });
+
+    it("일괄 저장은 금액이 바뀐 행만 갱신한다", async () => {
+      at("2026-10-01");
+      const a = await store.upsertSavings({ category: "DEPOSIT", name: "A", amount: 100 });
+      const b = await store.upsertSavings({ category: "DEPOSIT", name: "B", amount: 200 });
+      at("2026-10-14");
+      await store.bulkUpdateSavings([{ ...a, amount: 111 }, { ...b, name: "B2" }]);
+      const rows = await store.listSavings();
+      expect(rows.find((x) => x.id === a.id)?.balanceAsOf).toBe("2026-10-14");
+      expect(rows.find((x) => x.id === b.id)?.balanceAsOf).toBe("2026-10-01");
+    });
   });
 });

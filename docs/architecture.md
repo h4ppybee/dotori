@@ -75,10 +75,10 @@ components/
 lib/
   toss/                    toss-client(API 호출·정규화·재시도), toss-token(토큰 발급/캐시)
   upbit/                   upbit-client·normalize·upbit-jwt·relay-endpoint (코인·예수금)
-  sync/                    refresh(토스: 토큰→보유→시세→환율→DB), refresh-upbit(코인·예수금)
+  sync/                    refresh(토스: 토큰→보유→시세→환율→DB), refresh-upbit(코인·예수금), refresh-savings(예적금 자동 증가)
   db/                      schema(Dexie 정의), local-store(CRUD 헬퍼), session-vault
   portfolio/               순수 계산: portfolio-service(buildPortfolio), pnl, fx, merge, ratios, net-worth
-  savings/, pension/, coin/, debt/   자산별 순수 서비스(VM 빌드·집계·카테고리 라벨)
+  savings/, pension/, coin/, debt/   자산별 순수 서비스(VM 빌드·집계·카테고리 라벨). savings/deposit-accrual은 예적금 납입일 계산·자동 증가
   goal/                    순수 계산: goal-service(buildGoalProgress) — 순자산 목표 진척(월 필요 저축액·달성률)
   envelope/                순수 계산: envelope-service(태그·은행·프로필별 롤업 집계), presets(태그·은행 기본 목록), tag-color(태그 팔레트 매핑)
   sector/                  seed(종목→섹터 시드), sector-map(resolveSector + KNOWN_SECTORS)
@@ -107,7 +107,7 @@ docs/                      본 문서 + superpowers/(스펙·플랜)
      │   refreshAll   : 토스 토큰→보유→시세→환율→DB, prevClose 롤오버
      │   refreshPension: 연금 symbol 보유분 현재가(토스 시세)
      │   refreshUpbit  : 업비트 코인·예수금(AUTO)
-     │   (저축 수동 입력분은 갱신 대상 아님)
+     │   refreshSavingsAccrual: 예적금 월 불입액 자동 증가(외부 호출 없음)
      ▼
 [IndexedDB]  holdings · priceCache · fxRates · sectorOverrides · snapshots · settings
              · savings · pension · coin · debts · assetSnapshots · goal · session
@@ -124,6 +124,7 @@ docs/                      본 문서 + superpowers/(스펙·플랜)
 - **직접 추가(MANUAL)**: 주식은 [HoldingForm](../components/holdings/HoldingForm.tsx)이 `upsertManualHolding` + `sectorOverride`를 기록한다(추가는 `holdings/new`, 수정·삭제는 `holdings/[id]`). 저축·연금·코인·부채는 각 자산 화면의 `manage`/다이얼로그에서 직접 입력·수정한다.
 - **자산 소스**: AUTO(연동)는 토스(주식·연금 시세·환율)와 업비트(코인·예수금), MANUAL(직접 입력)은 저축·부채 및 직접 추가분. 연동·수동을 합쳐 보여준다.
 - **갱신 트리거**: 자산 화면의 `RefreshBar` → `useAssetsRefresh` 뮤테이션 → 성공 시 `portfolio`·`pension`·`coin`·`savings` 쿼리 무효화. 각 자산 추가/수정/삭제 후에도 해당 쿼리를 무효화해 화면을 갱신한다.
+- **예적금 자동 증가**: 저축 계좌는 금액 기준일 `balanceAsOf`("YYYY-MM-DD")를 가진다. 새 계좌이거나 금액이 바뀔 때만 `upsertSavings`/`bulkUpdateSavings`가 오늘로 찍는다. 통합 갱신 때 [refreshSavingsAccrual](../lib/sync/refresh-savings.ts)이 MANUAL 예적금(`DEPOSIT`·KRW·월 불입액·만기일 있음)에 순수 함수 [accrueDeposit](../lib/savings/deposit-accrual.ts)을 적용한다. 납입일은 만기일 다음 날의 일자(만기 07-24 → 매월 25일, 만기가 말일이면 1일, 그 달에 없는 일자는 말일로 보정)이고, `기준일 < 납입일 ≤ min(오늘, 만기일)`인 횟수만큼 월 불입액을 더한 뒤 기준일을 오늘로 옮긴다. 기준일이 없는 기존 행은 소급하지 않고 기준일만 초기화한다.
 - **자산 스냅샷(수동 전체)**: 자동 갱신 흐름과 별개로, 자산 탭 하단 [SnapshotSection](../components/snapshot/SnapshotSection.tsx)의 "+ 지금 기록" 버튼을 누르면 [captureAssetSnapshot](../lib/snapshot/capture.ts)이 DB 상태를 화면과 동일한 VM 5종(주식·저축·연금·코인·부채)으로 계산해 순수 빌더 [buildAssetSnapshot](../lib/snapshot/asset-snapshot.ts)에 넘기고, 결과 1건을 `assetSnapshots` 테이블에 저장한다. 이전의 주식 전용 일별 자동 스냅샷(`snapshots` 테이블, `Settings.lastSnapshotDate`)은 제거되어 이 수동 전체 스냅샷으로 일원화됐다 — `snapshots` 테이블과 과거 데이터는 하위호환을 위해 보존만 되고 더 이상 기록되지 않는다. 추이는 [SnapshotTrendChart](../components/snapshot/SnapshotTrendChart.tsx)가 최신 20건을 [buildTrendData](../lib/snapshot/trend.ts)로 가공해 순자산 선(상단 밴드) + 직전 대비 변화량 막대(하단 밴드)로 보여준다. 목록·상세는 `/assets/snapshots`, `/assets/snapshots/[id]`.
 
 ---

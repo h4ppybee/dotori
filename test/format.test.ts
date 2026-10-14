@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatKrw, formatUsd, formatPct, signClass, formatKoreanUnit, formatDateTime } from "@/lib/format";
+import { formatKrw, formatUsd, formatPct, signClass, formatKoreanUnit, formatDateTime, toLocalYmd } from "@/lib/format";
 
 describe("formatKoreanUnit", () => {
   it("만 단위로 읽기 쉽게 표기한다", () => {
@@ -97,5 +97,11 @@ describe("formatDateTime", () => {
     // 로컬 타임존 기준 — 고정 시각으로 구성
     const d = new Date(2026, 6, 2, 14, 5); // 2026-07-02 14:05
     expect(formatDateTime(d.getTime())).toBe("2026.07.02 14:05");
+  });
+});
+
+describe("toLocalYmd", () => {
+  it("로컬 날짜를 YYYY-MM-DD로 만든다", () => {
+    expect(toLocalYmd(new Date(2026, 9, 4, 23, 59).getTime())).toBe("2026-10-04");
   });
 });

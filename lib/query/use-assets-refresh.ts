@@ -4,7 +4,9 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAppStore } from "@/stores/app-store";
 import { refreshAll, refreshPensionPrices } from "@/lib/sync/refresh";
 import { refreshUpbit } from "@/lib/sync/refresh-upbit";
+import { refreshSavingsAccrual } from "@/lib/sync/refresh-savings";
 import { ensureFxFallback } from "@/lib/sync/fx-fallback";
+import { toLocalYmd } from "@/lib/format";
 
 interface RefreshFailure {
   connectionId: string;
@@ -14,7 +16,8 @@ interface RefreshFailure {
 
 /**
  * 자산 통합 새로고침. 토스 시세로 주식(보유종목)과 연금(symbol 보유분) 현재가를,
- * 업비트 API로 코인·예수금(AUTO)을 함께 갱신한다. 저축(수동 입력분)은 갱신 대상이 아니다.
+ * 업비트 API로 코인·예수금(AUTO)을 함께 갱신한다. 수동 저축 중 예적금은 금액 기준일 이후
+ * 지난 납입일만큼 월 불입액을 더한다(lib/sync/refresh-savings, 외부 호출 없음).
  * 시작 시 오늘자 USDKRW가 없으면 공개 환율 API로 폴백한다(lib/sync/fx-fallback).
  * 성공 시 portfolio·pension·coin·savings 쿼리를 무효화한다.
  */
@@ -35,6 +38,7 @@ export function useAssetsRefresh() {
       const stocks = await refreshAll({ key: sessionKey });
       const pension = await refreshPensionPrices({ key: sessionKey });
       const upbit = await refreshUpbit({ key: sessionKey });
+      await refreshSavingsAccrual({ today: toLocalYmd(Date.now()) });
       return { failures: [...stocks.failures, ...pension.failures, ...upbit.failures] };
     },
     onSuccess: () => {
