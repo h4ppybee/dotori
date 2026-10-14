@@ -84,6 +84,7 @@
 3. **입력 정제**: 불러온 데이터도 다시 필터링한다. 구버전 백업이 담은 API 설정·AUTO·캐시·`settings`·`tokenCache`는 통과시키지 않는다.
    - `connections`는 `type === "MANUAL"`, `holdings`는 `source === "MANUAL"`만 통과.
    - `savings`/`coin`은 **source 백필** 후 필터: v4 이전 백업엔 `source` 필드가 없으므로 `source ?? "MANUAL"`로 채운 뒤 `MANUAL`만 통과(`withSource` 헬퍼).
+   - `savings`의 금액 기준일 `balanceAsOf`(예적금 자동 증가용)는 행에 그대로 실려 왕복한다. 이 필드가 없는 예전 백업을 불러오면 다음 통합 갱신 때 소급 없이 오늘로 초기화된다.
 4. **단일 트랜잭션**: 삭제 + 삽입 전체를 `db.transaction("rw", db.tables, …)` 한 번으로 감싼다. 중간 실패 시 롤백. 선택적 삭제가 여러 테이블에 걸쳐 스코프를 전체 테이블로 잡는다.
 
 ---

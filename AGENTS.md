@@ -53,7 +53,7 @@ GitHub `h4ppybee/dotori` ↔ Vercel 프로젝트가 **Git 연동**되어 있다.
   - `plan/realty` — 부동산 조달계획(플레이스홀더)
   - `api/toss/*`·`api/upbit/*` — 서버 프록시(토스·업비트)
 - `components/` — `ui/`(디자인 프리미티브·`DonutChart` 등), `portfolio/`, `holdings/`, `savings/`, `pension/`, `coin/`, `debt/`, `snapshot/`(스냅샷 섹션·목록 행·추이 콤보 차트), `goal/`(목표 카드·폼·빈상태·진행률 링), `envelope/`(통장 쪼개기: `ProfileSegment`·`RollupCard`·`EnvelopeItemRow`·`EnvelopeItemDialog`), `nav/`(탭 바, `NestedTabBar` — 자산·계획 공용), `settings/`
-- `lib/` — 자산 소스: `toss/`·`upbit/`·`sync/`(동기화). 도메인 서비스(순수 계산): `portfolio/`·`savings/`·`pension/`·`coin/`·`debt/`·`goal/`(순자산 목표 진척 순수 계산)·`envelope/`(통장 쪼개기 집계·태그색·프리셋). 공통: `db/`(Dexie·CRUD), `sector/`, `crypto/`, `snapshot/`(수동 전체 자산 스냅샷 — 캡처·순수 빌더·추이 헬퍼), `backup/`, `nav/`, `query/`(자산별 훅, `use-asset-snapshots`·`use-goal`·`use-net-worth`·`use-envelope` 포함)
+- `lib/` — 자산 소스: `toss/`·`upbit/`·`sync/`(동기화 — 토스·업비트·예적금 자동 증가). 도메인 서비스(순수 계산): `portfolio/`·`savings/`·`pension/`·`coin/`·`debt/`·`goal/`(순자산 목표 진척 순수 계산)·`envelope/`(통장 쪼개기 집계·태그색·프리셋). 공통: `db/`(Dexie·CRUD), `sector/`, `crypto/`, `snapshot/`(수동 전체 자산 스냅샷 — 캡처·순수 빌더·추이 헬퍼), `backup/`, `nav/`, `query/`(자산별 훅, `use-asset-snapshots`·`use-goal`·`use-net-worth`·`use-envelope` 포함)
 - `stores/` — `app-store.ts`(잠금·세션 키·마지막 갱신), `nav-store.ts`(탭 복귀 지점)
 - `test/` — 모듈 구조를 미러링한 테스트
 
@@ -66,6 +66,7 @@ GitHub `h4ppybee/dotori` ↔ Vercel 프로젝트가 **Git 연동**되어 있다.
   - **새 디자인 토큰/규칙을 추가하거나 기존 규칙을 바꿀 때는 [DESIGN.md](DESIGN.md)도 함께 수정**해 코드와 문서를 항상 일치시킨다. 새 색·간격·컴포넌트 규격·UX 카피 규칙이 생기면 먼저(또는 함께) DESIGN.md에 반영한다.
 - **보안**: 비밀번호는 절대 저장하지 않는다(`salt` + `verifier`만 저장). 세션 키(CryptoKey)는 비추출 키로 파생하고, 자동 잠금(10분 유휴 슬라이딩)을 위해서만 비추출 핸들 + 만료시각을 세션 볼트(`lib/db/session-vault`, IndexedDB)에 둔다 — 만료/잠금 시 폐기되며 원본 키 바이트는 영속화되지 않는다. 토스·업비트 시크릿·토큰은 `app/api/toss/*`·`app/api/upbit/*` 프록시 경유. 암호화는 `lib/crypto`.
 - **순수 계산**: `lib/portfolio/`(및 `savings/`·`pension/`·`coin/`·`debt/`·`goal/`·`envelope/`)의 서비스 함수는 DB·비동기·`Date` 없이 입력만으로 결과를 낸다. 계산 로직은 여기에 두고 테스트한다.
+- **예적금 자동 증가**: 저축 `DEPOSIT` 계좌는 금액 기준일 `balanceAsOf` 이후 지난 납입일(만기일 다음 날의 일자)마다 월 불입액만큼 늘어난다. 계산은 `lib/savings/deposit-accrual`(순수), 실행은 통합 갱신(`useAssetsRefresh` → `lib/sync/refresh-savings`). 기준일은 금액이 바뀔 때만 갱신한다.
 - **goal 테이블**: Dexie v8에서 추가된 `goal` 테이블(스키마: `{ id:"goal", targetNetWorthKrw, targetDate, createdAt }`)은 단일 행으로 순자산 목표를 저장한다. 사용자가 직접 입력하는 수동 데이터이므로 백업(payload v6)에 포함된다.
 - **envelope 테이블**: Dexie v9에서 추가된 `envelopeItems`(통장 쪼개기 항목: 프로필·태그·은행·금액)·`envelopeConfig`(커스텀 태그·은행 프리셋) 테이블은 수동 데이터이므로 백업(payload v7)에 포함된다.
 - **섹터**: 화면 표시는 항상 `resolveSector(symbol, sectorOverrides)` 기반(우선순위 overrides > seed > "미분류"). `sectorOverrides`는 symbol을 키로 저장해 AUTO·MANUAL 모두에 적용된다. 기본 목록은 `KNOWN_SECTORS`(테마형).

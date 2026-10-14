@@ -6,6 +6,7 @@ import { TextInput } from "@/components/ui/TextInput";
 import { Chip } from "@/components/ui/Chip";
 import { formatKrw, formatKoreanUnit } from "@/lib/format";
 import { SAVINGS_CATEGORIES } from "@/lib/savings/savings-service";
+import { depositPayDay } from "@/lib/savings/deposit-accrual";
 import type { SavingsAccount, SavingsCategory, Currency } from "@/lib/types";
 
 interface SavingsAccountDialogProps {
@@ -107,6 +108,19 @@ export function SavingsAccountDialog({
       ? formatKoreanUnit(amountNum)
       : null;
 
+  // 예적금 자동 증가 안내: 납입일(만기일 다음 날)마다 월 불입액만큼 금액이 늘어난다.
+  const payDay =
+    showsMonthly(category) && currency === "KRW" && (parseNum(monthly) ?? 0) > 0
+      ? depositPayDay(maturity.trim())
+      : null;
+  const amountUnchanged = initial?.balanceAsOf != null && amountNum === initial.amount;
+  const accrualHint =
+    payDay === null
+      ? null
+      : amountUnchanged
+        ? `${initial.balanceAsOf!.replace(/-/g, ".")} 기준 · 매월 ${payDay}일에 월 불입액만큼 늘어나요`
+        : `저장하면 오늘 기준으로 매월 ${payDay}일에 월 불입액만큼 늘어나요`;
+
   return (
     <Dialog
       open={open}
@@ -153,6 +167,9 @@ export function SavingsAccountDialog({
           )}
           {krwHint && (
             <span className="text-[12px] font-semibold text-primary pl-1">{krwHint}</span>
+          )}
+          {accrualHint && (
+            <span className="text-[12px] font-normal text-muted pl-1">{accrualHint}</span>
           )}
         </div>
 

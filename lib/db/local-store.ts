@@ -4,6 +4,7 @@ import type {
   PensionAccount, PensionCategory, CoinHolding, LoanAccount, LoanCategory, AssetSnapshot, Goal,
   EnvelopeItem, EnvelopeConfig, EnvelopeProfile,
 } from "@/lib/types";
+import { toLocalYmd } from "@/lib/format";
 
 const now = () => Date.now();
 const uid = () => crypto.randomUUID();
@@ -97,6 +98,8 @@ export async function upsertSavings(
   const category = (s.category ?? existing?.category ?? "ETC") as SavingsCategory;
   const sortOrder =
     s.sortOrder ?? existing?.sortOrder ?? (await nextSavingsSortOrder(category));
+  // 금액 기준일: 새 계좌이거나 금액이 바뀌었을 때만 오늘로 찍는다(예적금 자동 증가의 기준).
+  const amountChanged = !existing || (s.amount !== undefined && s.amount !== existing.amount);
   const rec = {
     ...existing,
     ...s,
@@ -104,6 +107,7 @@ export async function upsertSavings(
     category,
     sortOrder,
     source: existing?.source ?? "MANUAL",
+    balanceAsOf: amountChanged ? toLocalYmd(now()) : existing.balanceAsOf,
     updatedAt: now(),
   } as SavingsAccount;
   await db.savings.put(rec);
@@ -112,9 +116,19 @@ export async function upsertSavings(
 
 export const deleteSavings = (id: string) => db.savings.delete(id);
 
-/** 편집 모드 일괄 저장. updatedAt를 갱신해 bulkPut. */
+/** 편집 모드 일괄 저장. updatedAt를 갱신하고, 금액이 바뀐 행만 기준일을 오늘로 찍어 bulkPut. */
 export async function bulkUpdateSavings(rows: SavingsAccount[]): Promise<void> {
-  const stamped = rows.map((r) => ({ ...r, updatedAt: now() }));
+  const existing = await db.savings.bulkGet(rows.map((r) => r.id));
+  const today = toLocalYmd(now());
+  const stamped = rows.map((r, i) => {
+    const prev = existing[i];
+    const amountChanged = !prev || prev.amount !== r.amount;
+    return {
+      ...r,
+      balanceAsOf: amountChanged ? today : r.balanceAsOf,
+      updatedAt: now(),
+    };
+  });
   await db.savings.bulkPut(stamped);
 }
 

@@ -73,6 +73,7 @@ export interface SavingsAccount {
   interestRate?: number;   // 이율 (%) — DEPOSIT/CHECKING/BOND
   maturityDate?: string;   // 만기 "YYYY-MM-DD" — DEPOSIT/BOND
   monthlyDeposit?: number; // 월 불입액 (KRW) — DEPOSIT
+  balanceAsOf?: string;    // 금액 기준일 "YYYY-MM-DD". 금액 변경·자동 증가 시 갱신 — MANUAL
   note?: string;           // 비고
   sortOrder: number;       // 카테고리 내 표시 순서
   updatedAt: number;
