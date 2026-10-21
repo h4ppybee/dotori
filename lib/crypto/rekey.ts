@@ -6,8 +6,9 @@ import { db } from "@/lib/db/schema";
  *
  * - db.connections: clientSecretEnc가 있는 행 전부 재암호화.
  * - db.tokenCache: accessTokenEnc 재암호화. 복호화 실패 시(stale) 행 삭제.
- * - db.sheetExport: secretEnc 재암호화(설정이 있을 때만).
- * 실패 시 전체를 중단하지 않는다 — tokenCache는 최선 노력(best-effort).
+ * - db.sheetExport: secretEnc 재암호화(설정이 있을 때만). 복호화·암호화 실패 시(stale)
+ *   행 삭제 — 사용자가 설정에서 다시 연결하면 된다.
+ * 실패 시 전체를 중단하지 않는다 — tokenCache·sheetExport는 최선 노력(best-effort).
  */
 export async function rekeyVault(oldKey: CryptoKey, newKey: CryptoKey): Promise<void> {
   await rekeyConnections(oldKey, newKey);
@@ -46,6 +47,11 @@ async function rekeySheetExport(oldKey: CryptoKey, newKey: CryptoKey): Promise<v
   if (!cfg) {
     return;
   }
-  const plain = await decrypt(oldKey, cfg.secretEnc);
-  await db.sheetExport.update("sheet", { secretEnc: await encrypt(newKey, plain) });
+  try {
+    const plain = await decrypt(oldKey, cfg.secretEnc);
+    await db.sheetExport.update("sheet", { secretEnc: await encrypt(newKey, plain) });
+  } catch {
+    // stale 설정 — 복호화(또는 재암호화) 불가 → 행 삭제(사용자가 다시 연결하면 된다)
+    await db.sheetExport.delete("sheet");
+  }
 }
