@@ -306,4 +306,17 @@ describe("exportAll / importAll", () => {
     expect((await db.envelopeItems.get("e1"))?.amountKrw).toBe(700_000);
     expect((await db.envelopeConfig.get("envelope"))?.customTags).toEqual(["경조사"]);
   });
+
+  it("시트 내보내기 설정은 백업에 포함되지 않고, 덮어쓰기 불러오기 후에도 유지된다", async () => {
+    await db.sheetExport.put({
+      id: "sheet", webAppUrl: "https://script.google.com/macros/s/x/exec",
+      secretEnc: "iv.ciphertext-marker", updatedAt: 1,
+    });
+    const json = await exportAll();
+    expect(json).not.toContain("ciphertext-marker");
+    expect(json).not.toContain("sheetExport");
+
+    await importAll(json, { mode: "overwrite" });
+    expect((await db.sheetExport.get("sheet"))?.secretEnc).toBe("iv.ciphertext-marker");
+  });
 });

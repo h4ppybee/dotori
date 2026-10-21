@@ -52,10 +52,13 @@ app/                       App Router 라우트 (모두 "use client")
   plan/page.tsx            통장 쪼개기 — 프로필(통합/아내/남편) · 태그·은행별 롤업 · 항목 관리(일괄 편집 모드 지원). 통합 뷰는 전체 항목을 아내/남편 섹션으로 나눠 리스트하며 항목 추가는 프로필 뷰에서만.
   plan/realty/page.tsx     부동산 조달계획 (플레이스홀더 DummyPage)
   ledger                   가계부 (플레이스홀더 DummyPage)
-  settings/page.tsx        연동(토스·업비트) / 백업 / PIN 설정·변경
+  settings/page.tsx        연동(토스·업비트) / 백업 / 구글 시트 내보내기 / PIN 설정·변경
   api/toss/*/route.ts      토스 프록시 (token·holdings·prices·exchange-rate·accounts)
   api/upbit/*/route.ts     업비트 프록시 (accounts·markets·tickers)
   globals.css, manifest.json
+
+integrations/
+  apps-script/             구글 시트 내보내기 Apps Script 원본(sheet-export.gs)과 설치 안내(README.md) — 저장소 버전 관리, 시트에서 직접 고치지 않음
 
 components/
   ui/                      디자인 시스템 프리미티브
@@ -69,7 +72,7 @@ components/
   envelope/                ProfileSegment, RollupCard, EnvelopeItemRow, EnvelopeItemDialog (통장 쪼개기)
   holdings/HoldingForm.tsx 종목 추가/편집 폼
   nav/                     AppNav, MainTabBar, NestedTabBar(자산·계획 공용 플로팅 서브탭), DummyPage
-  settings/                ConnectionForm, BackupPanel
+  settings/                ConnectionForm, BackupPanel, SheetExportPanel(구글 시트 내보내기 연결/해제/지금 내보내기)
   LockGate, ServiceWorkerRegister
 
 lib/
@@ -84,13 +87,14 @@ lib/
   sector/                  seed(종목→섹터 시드), sector-map(resolveSector + KNOWN_SECTORS)
   crypto/                  crypto(PBKDF2/AES-GCM), rekey(비밀번호 변경 재암호화)
   snapshot/                수동 전체 자산 스냅샷 — capture(DB 상태→VM 5종→저장), asset-snapshot(순수 빌더), trend(추이 차트 데이터 헬퍼)
+  sheet-export/            구글 시트 내보내기 — build-payload(순수 빌더: VM 5종+envelope→탭별 2차원 배열), client(Apps Script 웹앱 POST·응답 정규화), export(설정·DB 읽기→빌더→전송 조립, throw 없음). 상세 docs/external-api.md
   backup/                  수동 데이터 export/import (JSON) — 상세 docs/backup.md
   nav/                     nav-config(탭 정의), active(활성 탭 판정)
-  query/                   client(QueryProvider), use-portfolio·use-savings·use-pension·use-coin·use-debt·use-settings, use-assets-refresh, use-asset-snapshots(목록/단건/기록·삭제 뮤테이션), use-goal(목표 조회·저장·삭제 뮤테이션), use-net-worth(순자산 합산 훅), use-envelope(항목·설정 CRUD + bulkUpdate 뮤테이션)
+  query/                   client(QueryProvider), use-portfolio·use-savings·use-pension·use-coin·use-debt·use-settings, use-assets-refresh, use-asset-snapshots(목록/단건/기록·삭제 뮤테이션), use-goal(목표 조회·저장·삭제 뮤테이션), use-net-worth(순자산 합산 훅), use-envelope(항목·설정 CRUD + bulkUpdate 뮤테이션), use-sheet-export(설정 조회 + 저장·해제·지금 내보내기 뮤테이션, runSheetExport)
   format.ts, types.ts
 
 stores/
-  app-store.ts             zustand — locked, sessionKey(CryptoKey, 비추출·세션 볼트 동기화), lastRefreshAt
+  app-store.ts             zustand — locked, sessionKey(CryptoKey, 비추출·세션 볼트 동기화), lastRefreshAt, lastSheetExport(자동·수동 공용 마지막 시트 내보내기 결과)
   nav-store.ts             자산 탭 진입 전 메인 탭 경로(복귀 지점)
 test/                      모듈 구조를 미러링한 단위/UI 테스트
 docs/                      본 문서 + superpowers/(스펙·플랜)
@@ -111,13 +115,18 @@ docs/                      본 문서 + superpowers/(스펙·플랜)
      ▼
 [IndexedDB]  holdings · priceCache · fxRates · sectorOverrides · snapshots · settings
              · savings · pension · coin · debts · assetSnapshots · goal · session
-             · envelopeItems · envelopeConfig
+             · envelopeItems · envelopeConfig · sheetExport
      │
 [use-* 훅]   DB 로드 → 자산별 순수 서비스로 VM 빌드
      │   주식: buildPortfolio(merge+pnl+fx+ratios+resolveSector)
      │   저축·연금·코인·부채: 각 *-service의 집계/환산
      ▼
 [assets/page]  자산별 값 합산 → 순자산 = 자산 합계 − 부채, 각 화면에서 렌더링
+
+[useAssetsRefresh 성공] → runSheetExport(fire-and-forget) → exportToSheet
+     │   설정(sheetExport) 없으면 skipped · 있으면 같은 VM 빌더로 buildSheetPayload → 구글 시트 웹앱 POST
+     ▼
+[app-store.lastSheetExport]  자동·수동 공용 결과({ at, status, message? }) — RefreshBar·SheetExportPanel이 여기서 읽음
 ```
 
 - **순수 계산 레이어**: `lib/portfolio/`(및 `savings/`·`pension/`·`coin/`·`debt/`·`envelope/`)의 서비스 함수들은 DB·비동기·`Date` 없이 입력만으로 결과를 낸다 ([portfolio-service.ts](../lib/portfolio/portfolio-service.ts) 헤더 주석 참고). 테스트가 쉽고 결정적이다.
@@ -126,6 +135,7 @@ docs/                      본 문서 + superpowers/(스펙·플랜)
 - **갱신 트리거**: 자산 화면의 `RefreshBar` → `useAssetsRefresh` 뮤테이션 → 성공 시 `portfolio`·`pension`·`coin`·`savings` 쿼리 무효화. 각 자산 추가/수정/삭제 후에도 해당 쿼리를 무효화해 화면을 갱신한다.
 - **예적금 자동 증가**: 저축 계좌는 금액 기준일 `balanceAsOf`("YYYY-MM-DD")를 가진다. 새 계좌이거나 금액이 바뀔 때만 `upsertSavings`/`bulkUpdateSavings`가 오늘로 찍는다. 통합 갱신 때 [refreshSavingsAccrual](../lib/sync/refresh-savings.ts)이 MANUAL 예적금(`DEPOSIT`·KRW·월 불입액·만기일 있음)에 순수 함수 [accrueDeposit](../lib/savings/deposit-accrual.ts)을 적용한다. 납입일은 만기일 다음 날의 일자(만기 07-24 → 매월 25일, 만기가 말일이면 1일, 그 달에 없는 일자는 말일로 보정)이고, `기준일 < 납입일 ≤ min(오늘, 만기일)`인 횟수만큼 월 불입액을 더한 뒤 기준일을 오늘로 옮긴다. 기준일이 없는 기존 행은 소급하지 않고 기준일만 초기화한다.
 - **자산 스냅샷(수동 전체)**: 자동 갱신 흐름과 별개로, 자산 탭 하단 [SnapshotSection](../components/snapshot/SnapshotSection.tsx)의 "+ 지금 기록" 버튼을 누르면 [captureAssetSnapshot](../lib/snapshot/capture.ts)이 DB 상태를 화면과 동일한 VM 5종(주식·저축·연금·코인·부채)으로 계산해 순수 빌더 [buildAssetSnapshot](../lib/snapshot/asset-snapshot.ts)에 넘기고, 결과 1건을 `assetSnapshots` 테이블에 저장한다. 이전의 주식 전용 일별 자동 스냅샷(`snapshots` 테이블, `Settings.lastSnapshotDate`)은 제거되어 이 수동 전체 스냅샷으로 일원화됐다 — `snapshots` 테이블과 과거 데이터는 하위호환을 위해 보존만 되고 더 이상 기록되지 않는다. 추이는 [SnapshotTrendChart](../components/snapshot/SnapshotTrendChart.tsx)가 최신 20건을 [buildTrendData](../lib/snapshot/trend.ts)로 가공해 순자산 선(상단 밴드) + 직전 대비 변화량 막대(하단 밴드)로 보여준다. 목록·상세는 `/assets/snapshots`, `/assets/snapshots/[id]`.
+- **구글 시트 내보내기**: `useAssetsRefresh`의 `onSuccess`에서 설정(`sheetExport` 테이블)이 있으면 [runSheetExport](../lib/query/use-sheet-export.ts)를 기다리지 않고(fire-and-forget) 실행한다 — 갱신 스피너·쿼리 무효화가 내보내기 때문에 늦어지지 않게 하기 위함. [exportToSheet](../lib/sheet-export/export.ts)는 설정 복호화 → DB 읽기 → 화면과 같은 VM 빌더로 [buildSheetPayload](../lib/sheet-export/build-payload.ts) → Apps Script 웹앱에 POST 순으로 조립하며, 어떤 실패도 throw하지 않고 `{ status: "error", message }`로 돌려준다. 결과는 자동·수동(설정 화면의 "지금 내보내기") 공용으로 `stores/app-store.ts`의 `lastSheetExport`에 기록되고, 자산 탭의 [RefreshBar](../components/portfolio/RefreshBar.tsx)와 설정의 [SheetExportPanel](../components/settings/SheetExportPanel.tsx)이 여기서 읽는다. 내보내기 실패는 갱신 실패로 취급하지 않는다. 상세 계약·오류 코드는 [external-api.md](external-api.md).
 
 ---
 

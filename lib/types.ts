@@ -218,3 +218,11 @@ export interface EnvelopeConfig {
   customTags: string[];
   customAccounts: string[];
 }
+
+/** 구글 시트 내보내기 설정(단일 행). 기기별 민감 설정 → 백업 제외. */
+export interface SheetExportConfig {
+  id: "sheet";          // 고정 키
+  webAppUrl: string;    // Apps Script 웹앱 URL (…/exec)
+  secretEnc: string;    // 공유 비밀키 (세션 키로 암호화, base64)
+  updatedAt: number;
+}

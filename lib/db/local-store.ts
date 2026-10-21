@@ -2,9 +2,10 @@ import { db, priceKey } from "@/lib/db/schema";
 import type {
   Connection, Holding, PriceCache, FxRate, Settings, Member, SavingsAccount, SavingsCategory,
   PensionAccount, PensionCategory, CoinHolding, LoanAccount, LoanCategory, AssetSnapshot, Goal,
-  EnvelopeItem, EnvelopeConfig, EnvelopeProfile,
+  EnvelopeItem, EnvelopeConfig, EnvelopeProfile, SheetExportConfig,
 } from "@/lib/types";
 import { toLocalYmd } from "@/lib/format";
+import { encrypt } from "@/lib/crypto/crypto";
 
 const now = () => Date.now();
 const uid = () => crypto.randomUUID();
@@ -328,3 +329,23 @@ const DEFAULT_ENVELOPE_CONFIG: EnvelopeConfig = { id: "envelope", customTags: []
 export const getEnvelopeConfig = async (): Promise<EnvelopeConfig> =>
   (await db.envelopeConfig.get("envelope")) ?? DEFAULT_ENVELOPE_CONFIG;
 export const putEnvelopeConfig = (c: EnvelopeConfig) => db.envelopeConfig.put(c);
+
+// ── 구글 시트 내보내기 설정 (기기별, 단일 행) ─────────────────────────────
+export const getSheetExportConfig = () => db.sheetExport.get("sheet");
+
+/** 비밀키는 세션 키로 암호화해 저장한다(원문 비밀키는 영속화하지 않음). */
+export async function saveSheetExportConfig(
+  key: CryptoKey,
+  input: { webAppUrl: string; secret: string },
+): Promise<SheetExportConfig> {
+  const rec: SheetExportConfig = {
+    id: "sheet",
+    webAppUrl: input.webAppUrl,
+    secretEnc: await encrypt(key, input.secret),
+    updatedAt: now(),
+  };
+  await db.sheetExport.put(rec);
+  return rec;
+}
+
+export const clearSheetExportConfig = () => db.sheetExport.delete("sheet");

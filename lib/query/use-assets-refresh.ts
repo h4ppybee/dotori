@@ -7,6 +7,7 @@ import { refreshUpbit } from "@/lib/sync/refresh-upbit";
 import { refreshSavingsAccrual } from "@/lib/sync/refresh-savings";
 import { ensureFxFallback } from "@/lib/sync/fx-fallback";
 import { toLocalYmd } from "@/lib/format";
+import { runSheetExport } from "@/lib/query/use-sheet-export";
 
 interface RefreshFailure {
   connectionId: string;
@@ -20,6 +21,7 @@ interface RefreshFailure {
  * 지난 납입일만큼 월 불입액을 더한다(lib/sync/refresh-savings, 외부 호출 없음).
  * 시작 시 오늘자 USDKRW가 없으면 공개 환율 API로 폴백한다(lib/sync/fx-fallback).
  * 성공 시 portfolio·pension·coin·savings 쿼리를 무효화한다.
+ * 성공 후 시트 내보내기 설정이 있으면 기다리지 않고 내보낸다(결과는 app-store.lastSheetExport).
  */
 export function useAssetsRefresh() {
   const sessionKey = useAppStore((s) => s.sessionKey);
@@ -47,6 +49,15 @@ export function useAssetsRefresh() {
       queryClient.invalidateQueries({ queryKey: ["pension"] });
       queryClient.invalidateQueries({ queryKey: ["coin"] });
       queryClient.invalidateQueries({ queryKey: ["savings"] });
+      // 시트 내보내기는 기다리지 않는다(갱신 스피너·쿼리 무효화를 늦추지 않음).
+      // 일부 연결이 실패해도 DB의 마지막 값으로 내보낸다. 설정이 없으면 skipped.
+      // 렌더 시점 클로저의 sessionKey가 아니라, 이 순간 스토어 값을 다시 읽는다 — 갱신 도중
+      // 화면을 벗어나 훅이 사라진 뒤 잠겨도(언마운트 후엔 리렌더로 값이 갱신되지 않는다)
+      // stale 키로 내보내지 않기 위함.
+      const currentSessionKey = useAppStore.getState().sessionKey;
+      if (currentSessionKey !== null) {
+        void runSheetExport(currentSessionKey);
+      }
     },
   });
 }

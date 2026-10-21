@@ -241,4 +241,17 @@ describe("RefreshBar", () => {
     expect(screen.getByText(/요청 시간이 초과됐어요/)).toBeInTheDocument();
     expect(screen.getByText(/토스 연동이 없어요/)).toBeInTheDocument();
   });
+
+  it("마지막 시트 내보내기가 실패했으면 실패 사유를 보여준다", () => {
+    render(
+      <RefreshBar
+        onRefresh={() => {}}
+        pending={false}
+        lastRefreshAt={null}
+        sheetExportError="시트에 연결하지 못했어요."
+      />,
+    );
+    expect(screen.getByText("시트 내보내기 실패")).toBeInTheDocument();
+    expect(screen.getByText(/시트에 연결하지 못했어요/)).toBeInTheDocument();
+  });
 });

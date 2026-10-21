@@ -125,4 +125,48 @@ describe("rekeyVault", () => {
       expect(await decrypt(newKey, row!.clientSecretEnc!)).toBe(secrets[i]);
     }
   });
+
+  it("sheetExport의 secretEnc를 새 키로 재암호화한다", async () => {
+    const oldKey = await deriveKey("old", makeSalt());
+    const newKey = await deriveKey("new", makeSalt());
+    await db.sheetExport.put({
+      id: "sheet",
+      webAppUrl: "https://script.google.com/macros/s/x/exec",
+      secretEnc: await encrypt(oldKey, "sheet-secret"),
+      updatedAt: 1,
+    });
+
+    await rekeyVault(oldKey, newKey);
+
+    const cfg = await db.sheetExport.get("sheet");
+    expect(await decrypt(newKey, cfg!.secretEnc)).toBe("sheet-secret");
+    await expect(decrypt(oldKey, cfg!.secretEnc)).rejects.toThrow();
+  });
+
+  it("sheetExport 설정이 없어도 실패하지 않는다", async () => {
+    const oldKey = await deriveKey("old", makeSalt());
+    const newKey = await deriveKey("new", makeSalt());
+    await expect(rekeyVault(oldKey, newKey)).resolves.toBeUndefined();
+  });
+
+  it("복호화 불가한 sheetExport 행은(stale) 예외 없이 삭제한다 — 다시 연결하면 된다", async () => {
+    const oldKey = await deriveKey("old", makeSalt());
+    const newKey = await deriveKey("new", makeSalt());
+    // 다른 키로 암호화된 stale 비밀키 (복호화 실패 시뮬레이션)
+    const staleKey = await deriveKey("stale", makeSalt());
+    const staleSecretEnc = await encrypt(staleKey, "stale-secret");
+
+    await db.sheetExport.put({
+      id: "sheet",
+      webAppUrl: "https://script.google.com/macros/s/x/exec",
+      secretEnc: staleSecretEnc,
+      updatedAt: 1,
+    });
+
+    // 예외 없이 완료되어야 함(tokenCache와 동일하게 best-effort)
+    await expect(rekeyVault(oldKey, newKey)).resolves.toBeUndefined();
+
+    const deleted = await db.sheetExport.get("sheet");
+    expect(deleted).toBeUndefined();
+  });
 });
