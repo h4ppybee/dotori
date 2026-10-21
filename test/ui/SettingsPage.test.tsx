@@ -160,3 +160,39 @@ describe("SettingsPage — 섹션 제목 렌더링", () => {
     });
   });
 });
+
+describe("SettingsPage — 구글 시트 내보내기 패널", () => {
+  beforeEach(async () => {
+    await seedSessionKey();
+    useAppStore.setState({ lastSheetExport: null });
+  });
+
+  it("미연결 상태에서 설정 폼과 연결하기 버튼을 보여준다", async () => {
+    await renderSettings();
+    expect(screen.getByRole("heading", { level: 2, name: "구글 시트 내보내기" })).toBeInTheDocument();
+    expect(screen.getByLabelText("웹앱 URL")).toBeInTheDocument();
+    expect(screen.getByLabelText("비밀키")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "연결하기" })).toBeInTheDocument();
+  });
+
+  it("잘못된 웹앱 URL로 연결하면 오류 문구를 보여준다", async () => {
+    await renderSettings();
+    fireEvent.change(screen.getByLabelText("웹앱 URL"), { target: { value: "https://example.com" } });
+    fireEvent.change(screen.getByLabelText("비밀키"), { target: { value: "s3cret" } });
+    fireEvent.click(screen.getByRole("button", { name: "연결하기" }));
+    await waitFor(() => {
+      expect(screen.getByRole("alert").textContent).toContain("웹앱 URL 형식이 아니에요");
+    });
+  });
+
+  it("올바른 URL로 연결하면 연결 상태로 바뀐다", async () => {
+    await renderSettings();
+    fireEvent.change(screen.getByLabelText("웹앱 URL"), {
+      target: { value: "https://script.google.com/macros/s/abc123/exec" },
+    });
+    fireEvent.change(screen.getByLabelText("비밀키"), { target: { value: "s3cret" } });
+    fireEvent.click(screen.getByRole("button", { name: "연결하기" }));
+    expect(await screen.findByRole("button", { name: "지금 내보내기" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "연결 해제하기" })).toBeInTheDocument();
+  });
+});

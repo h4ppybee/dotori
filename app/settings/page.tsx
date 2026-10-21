@@ -10,6 +10,7 @@ import { Dialog } from "@/components/ui/Dialog";
 import { Switch } from "@/components/ui/Switch";
 import { ConnectionForm } from "@/components/settings/ConnectionForm";
 import { BackupPanel } from "@/components/settings/BackupPanel";
+import { SheetExportPanel } from "@/components/settings/SheetExportPanel";
 import { getSettings, putSettings } from "@/lib/db/local-store";
 import { useSettings } from "@/lib/query/use-settings";
 import { useQueryClient } from "@tanstack/react-query";
@@ -276,6 +277,7 @@ export default function SettingsPage() {
         <div className="flex flex-col gap-4">
           <ConnectionForm />
           <BackupPanel />
+          <SheetExportPanel />
           <PrivacySection />
           <PinSection />
           <DeleteAllSection />
