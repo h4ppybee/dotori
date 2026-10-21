@@ -17,6 +17,11 @@ function doPost(e) {
   } catch (err) {
     return json_({ ok: false, error: "BAD_REQUEST" });
   }
+  // JSON.parse("null")·JSON.parse("42")처럼 파싱은 성공해도 객체가 아니면, 뒤에서
+  // body.secret 등을 읽다가 예외가 날 수 있다(특히 null). 여기서 바로 걸러낸다.
+  if (!body || typeof body !== "object") {
+    return json_({ ok: false, error: "BAD_REQUEST" });
+  }
 
   const secret = PropertiesService.getScriptProperties().getProperty(SECRET_PROP);
   if (!secret || body.secret !== secret) {
@@ -27,7 +32,7 @@ function doPost(e) {
   }
 
   const lock = LockService.getScriptLock();
-  if (!lock.tryLock(10000)) {
+  if (!lock.tryLock(5000)) {
     return json_({ ok: false, error: "BUSY" });
   }
   try {

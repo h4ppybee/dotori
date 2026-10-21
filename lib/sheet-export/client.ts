@@ -6,7 +6,10 @@ import type { SheetTab } from "@/lib/sheet-export/build-payload";
  * Apps Script는 HTTP 상태 코드를 지정할 수 없어 본문 { ok, ... }으로 성공 여부를 판정한다.
  */
 
-export const SHEET_EXPORT_TIMEOUT_MS = 15_000;
+// Apps Script의 LockService.tryLock은 5초(sheet-export.gs)다. 클라이언트 타임아웃이 그보다
+// 짧으면, 락을 기다리던 스크립트가 아직 응답하기 전에 우리가 먼저 포기해 버려 성공한 쓰기를
+// 네트워크 실패로 오인할 수 있다. 그래서 락 대기(5s) + 실제 쓰기 여유를 넉넉히 둔 30초로 둔다.
+export const SHEET_EXPORT_TIMEOUT_MS = 30_000;
 
 export const SHEET_EXPORT_MESSAGES = {
   network: "시트에 연결하지 못했어요.",

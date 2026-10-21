@@ -142,7 +142,7 @@ dotori의 자산·부채·통장 쪼개기 데이터를 사용자의 구글 시�
 
 - 숨겨야 할 dotori 소유 시크릿이 없다. 대상은 사용자가 자신의 구글 계정으로 직접 배포한 Apps Script 웹앱이고, 쓰는 비밀키(`DOTORI_SECRET`)도 사용자가 그 스크립트 속성에 직접 넣은 값이다.
 - Apps Script 웹앱은 CORS preflight(`OPTIONS`)를 처리하지 못한다. `postSheetExport`(`lib/sheet-export/client.ts`)는 `Content-Type: text/plain;charset=utf-8`으로 보내 preflight를 피한다.
-- Apps Script는 HTTP 상태 코드를 지정할 수 없어 **항상 200 + 본문 `{ ok, ... }`** 으로 성공 여부를 판정한다. 타임아웃은 15초(`SHEET_EXPORT_TIMEOUT_MS`), `AbortController`로 제어.
+- Apps Script는 HTTP 상태 코드를 지정할 수 없어 **항상 200 + 본문 `{ ok, ... }`** 으로 성공 여부를 판정한다. 타임아웃은 30초(`SHEET_EXPORT_TIMEOUT_MS`), `AbortController`로 제어 — 스크립트의 `LockService.tryLock`(5초) 대기 + 실제 탭 쓰기 시간을 넉넉히 포함하는 값이다(락 대기보다 짧으면 스크립트가 아직 쓰는 중인데 클라이언트가 먼저 네트워크 실패로 오판할 수 있다).
 
 ### 페이로드 계약
 
@@ -158,6 +158,7 @@ dotori의 자산·부채·통장 쪼개기 데이터를 사용자의 구글 시�
 
 - 셀 값은 `string | number`만 허용(빈 칸은 `""`). 문자열 셀은 스크립트가 쓰기 전 대상 범위에 텍스트 서식(`"@"`)을 걸어 `"005930"` → `5930`, `"=1+1"` → 수식 실행으로 바뀌지 않게 한다. 숫자 셀은 숫자 서식(`"General"`)으로 되돌린다. 셀 타입은 앱이 보낸 JS 타입(string/number)으로 그대로 결정된다.
 - 탭 이름이 `dotori_` 접두사로 시작하는 것만 스크립트가 허용한다(다른 탭 덮어쓰기 방지). 현재 앱이 보내는 탭은 `SHEET_TABS`(`lib/sheet-export/build-payload.ts`) 기준 `dotori_자산`·`dotori_부채`·`dotori_통장쪼개기`·`dotori_meta`.
+- 스크립트(`writeTab_`, `sheet-export.gs`)는 `tabs` 배열을 **순서대로** 덮어쓰고, `dotori_meta`를 맨 마지막에 쓴다. 즉 `dotori_meta`의 내보낸 시각은 "모든 탭이 끝까지 성공적으로 쓰인 시점"을 뜻한다 — 중간에 실패하면(예: 네 번째 탭에서 예외) 앞선 탭들은 이미 갱신된 채로 남고 `dotori_meta`만 갱신되지 않아, meta 시각과 다른 탭의 실제 반영 시점이 어긋날 수 있다.
 - `buildSheetPayload`는 순수 함수다 — DB·비동기·`Date` 없이 VM 5종(portfolio·savings·pension·coin·debt) + 통장 쪼개기 항목만으로 탭별 2차원 배열을 만든다. 화면과 같은 VM 빌더를 쓰므로 시트 금액과 앱 화면 금액이 일치한다.
 
 ### 응답과 오류 메시지 매핑
@@ -169,7 +170,7 @@ dotori의 자산·부채·통장 쪼개기 데이터를 사용자의 구글 시�
 | fetch 실패·타임아웃(네트워크) | "시트에 연결하지 못했어요." |
 | HTTP 비정상 응답, 또는 JSON 파싱 실패, 또는 `error`가 `BAD_REQUEST`·그 외 문자열이 아닌 값 | "시트 스크립트 응답을 읽지 못했어요. 스크립트를 최신 버전으로 배포했는지 확인해 주세요." |
 | `error: "UNAUTHORIZED"`(비밀키 불일치·미설정) | "비밀키가 스크립트 설정과 달라요." |
-| `error: "BUSY"`(`LockService.tryLock` 10초 초과) | "다른 내보내기가 진행 중이에요. 잠시 후 다시 시도해 주세요." |
+| `error: "BUSY"`(`LockService.tryLock` 5초 초과) | "다른 내보내기가 진행 중이에요. 잠시 후 다시 시도해 주세요." |
 | 그 외 문자열 `error`(스크립트 런타임 오류 등) | "시트에 쓰지 못했어요. `<스크립트가 보낸 메시지>`" |
 
 ### 보안
@@ -181,9 +182,10 @@ dotori의 자산·부채·통장 쪼개기 데이터를 사용자의 구글 시�
 
 ### 호출 시점
 
-- 통합 갱신(`useAssetsRefresh`) 성공 시 **기다리지 않고(fire-and-forget)** 내보낸다(`runSheetExport`) — 갱신 스피너·쿼리 무효화가 내보내기 때문에 늦어지지 않게 하기 위함. 일부 연결이 실패해도(`failures` 있음) DB의 마지막 값으로 내보낸다.
-- 설정 화면 [SheetExportPanel](../components/settings/SheetExportPanel.tsx)의 "지금 내보내기" 버튼(수동, `useSheetExportNow`).
-- 두 경로 모두 `runSheetExport`를 거쳐 결과를 `stores/app-store.ts`의 `lastSheetExport`에 기록한다(자동·수동 공용 단일 원천). 설정이 없으면 `{ status: "skipped" }`로 조용히 넘어가고 기록하지 않는다.
+- 통합 갱신(`useAssetsRefresh`) 성공 시 **기다리지 않고(fire-and-forget)** 내보낸다(`runSheetExport`) — 갱신 스피너·쿼리 무효화가 내보내기 때문에 늦어지지 않게 하기 위함. 일부 연결이 실패해도(`failures` 있음) DB의 마지막 값으로 내보낸다. `onSuccess`는 렌더 시점 클로저가 아니라 그 순간의 `useAppStore.getState().sessionKey`를 다시 읽는다 — 갱신 도중 화면을 벗어나고(훅 언마운트) 자동 잠금이 걸려도 stale 키로 내보내지 않기 위함.
+- 설정 화면 [SheetExportPanel](../components/settings/SheetExportPanel.tsx)의 "지금 내보내기" 버튼(수동, `useSheetExportNow`). 결과가 `skipped`면(캐시엔 연결 상태인데 DB엔 설정이 없는 경우 — 다른 탭에서 해제 등) 설정 조회를 무효화해 화면을 미연결 상태로 맞춘다.
+- 두 경로 모두 `runSheetExport`를 거쳐 결과를 `stores/app-store.ts`의 `lastSheetExport`에 기록한다(자동·수동 공용 단일 원천). 설정이 없으면 `{ status: "skipped" }`로 넘어가고, 이전에 남아있던 성공/실패 기록은 지운다(`clearLastSheetExport`) — 연결 해제 후에도 지난 실패 배너가 남지 않게. 연결 해제(`useClearSheetExportConfig`)·로컬 데이터 전체 삭제 시에도 같은 이유로 기록을 지운다.
+- `runSheetExport`는 모듈 스코프에서 진행 중인 호출을 공유하는 single-flight다 — 자동·수동 호출이 겹쳐도 Apps Script에 동시에 두 번 POST하지 않는다(겹치면 `LockService`가 뒤 요청을 `BUSY`로 튕긴다).
 
 ### 설치
 
