@@ -54,7 +54,7 @@ describe("buildSheetPayload", () => {
     const vmRow = input.portfolio.rows[0];
     expect(row).toEqual([
       "주식", "KRX", "삼성전자", "토스", "005930", 10,
-      700_000, 800_000, 100_000, vmRow.returnPct / 100, "KRW", vmRow.sector,
+      700_000, 800_000, 100_000, vmRow.returnPct / 100, "KRW", vmRow.sector, "", "", "", "",
     ]);
     expect(typeof row[4]).toBe("string");
   });
@@ -75,14 +75,14 @@ describe("buildSheetPayload", () => {
     const rows = tab(buildSheetPayload(input), SHEET_TABS.assets).rows;
     expect(rows[1][7]).toBe(300_000);
     expect(rows[1][10]).toBe("USD");
-    expect(rows[2]).toEqual(["저축", "입출금", "달러 통장", "토스뱅크", "", "", "", 10_000, "", "", "USD", ""]);
+    expect(rows[2]).toEqual(["저축", "입출금", "달러 통장", "토스뱅크", "", "", "", 10_000, "", "", "USD", "", "", "", "", ""]);
   });
 
   it("연금·코인 행 매핑과 자산군 순서(주식→저축→연금→코인)", () => {
     const input = empty();
     input.pension = buildPensionVM([{
       id: "p1", category: "PERSONAL", name: "TIGER 미국S&P500", symbol: "360750",
-      company: "미래에셋", quantity: 10, buyPrice: 20_000, currentPrice: 25_000,
+      company: "미래에셋", fundType: "ETF", quantity: 10, buyPrice: 20_000, currentPrice: 25_000,
       sortOrder: 0, updatedAt: 1,
     }]);
     input.coin = buildCoinVM([{
@@ -91,9 +91,21 @@ describe("buildSheetPayload", () => {
     }]);
     const rows = tab(buildSheetPayload(input), SHEET_TABS.assets).rows;
     expect(rows[1]).toEqual(["연금", "개인연금", "TIGER 미국S&P500", "미래에셋", "360750", 10,
-      200_000, 250_000, 50_000, 0.25, "KRW", ""]);
+      200_000, 250_000, 50_000, 0.25, "KRW", "", "", "", "", "ETF"]);
     expect(rows[2]).toEqual(["코인", "", "비트코인", "업비트", "KRW-BTC", 0.5,
-      50_000_000, 60_000_000, 10_000_000, 0.2, "KRW", ""]);
+      50_000_000, 60_000_000, 10_000_000, 0.2, "KRW", "", "", "", "", ""]);
+  });
+
+  it("저축 행: 월불입액·이율(소수)·만기를 M~O열로, 헤더는 16열", () => {
+    const input = empty();
+    input.savings = buildSavingsVM([{
+      id: "s1", category: "DEPOSIT", name: "청년도약", bank: "우리", amount: 18_900_000,
+      monthlyDeposit: 700_000, interestRate: 4.5, maturityDate: "2029-07-24",
+      sortOrder: 0, updatedAt: 1, source: "MANUAL",
+    }], undefined);
+    const rows = tab(buildSheetPayload(input), SHEET_TABS.assets).rows;
+    expect(rows[0].slice(12)).toEqual(["월불입액", "이율", "만기", "상품구분"]);
+    expect(rows[1].slice(12)).toEqual([700_000, 0.045, "2029-07-24", ""]);
   });
 
   it("부채 행: 카테고리 라벨·금리 소수·빈 값은 빈 문자열", () => {
