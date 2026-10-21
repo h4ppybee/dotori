@@ -212,6 +212,7 @@ function PinSection() {
 
 function DeleteAllSection() {
   const lock = useAppStore((s) => s.lock);
+  const clearLastSheetExport = useAppStore((s) => s.clearLastSheetExport);
   const router = useRouter();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -222,6 +223,8 @@ function DeleteAllSection() {
       await db.delete();
       await db.open();
       lock();
+      // 시트 내보내기 설정도 함께 사라졌으니 지난 성공/실패 기록이 남지 않게 지운다.
+      clearLastSheetExport();
       router.push("/");
     } catch {
       setDeleting(false);

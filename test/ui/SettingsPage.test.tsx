@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { useAppStore } from "@/stores/app-store";
 import { db } from "@/lib/db/schema";
-import { deriveKey, makeSalt, makeVerifier, checkVerifier } from "@/lib/crypto/crypto";
+import { deriveKey, makeSalt, makeVerifier, checkVerifier, encrypt } from "@/lib/crypto/crypto";
 import { QueryWrapper } from "@/test/utils/query";
 import { putSettings, getSettings } from "@/lib/db/local-store";
 
@@ -84,6 +84,14 @@ describe("SettingsPage — 섹션 제목 렌더링", () => {
   it("모든 데이터 삭제 버튼이 렌더링된다", async () => {
     await renderSettings();
     expect(screen.getByRole("button", { name: "모든 데이터 삭제" })).toBeInTheDocument();
+  });
+
+  it("모든 데이터를 삭제하면 마지막 시트 내보내기 기록도 지운다", async () => {
+    useAppStore.setState({ lastSheetExport: { at: 1, status: "error", message: "이전 실패" } });
+    await renderSettings();
+    fireEvent.click(screen.getByRole("button", { name: "모든 데이터 삭제" }));
+    fireEvent.click(await screen.findByRole("button", { name: "삭제하기" }));
+    await waitFor(() => expect(useAppStore.getState().lastSheetExport).toBeNull());
   });
 
   it("프라이버시 섹션이 렌더링된다", async () => {
@@ -194,5 +202,27 @@ describe("SettingsPage — 구글 시트 내보내기 패널", () => {
     fireEvent.click(screen.getByRole("button", { name: "연결하기" }));
     expect(await screen.findByRole("button", { name: "지금 내보내기" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "연결 해제하기" })).toBeInTheDocument();
+  });
+
+  it("'지금 내보내기' 결과가 skipped면 설정 조회를 무효화해 미연결 상태로 돌아간다", async () => {
+    const key = useAppStore.getState().sessionKey!;
+    await db.sheetExport.put({
+      id: "sheet",
+      webAppUrl: "https://script.google.com/macros/s/abc123/exec",
+      secretEnc: await encrypt(key, "secret"),
+      updatedAt: Date.now(),
+    });
+
+    await renderSettings();
+    expect(await screen.findByRole("button", { name: "지금 내보내기" })).toBeInTheDocument();
+
+    // 다른 곳(다른 기기·탭)에서 연결이 지워진 상황을 흉내낸다 — 쿼리 캐시는 아직 연결 상태.
+    await db.sheetExport.delete("sheet");
+
+    fireEvent.click(screen.getByRole("button", { name: "지금 내보내기" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "연결하기" })).toBeInTheDocument();
+    });
   });
 });

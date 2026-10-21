@@ -51,8 +51,12 @@ export function useAssetsRefresh() {
       queryClient.invalidateQueries({ queryKey: ["savings"] });
       // 시트 내보내기는 기다리지 않는다(갱신 스피너·쿼리 무효화를 늦추지 않음).
       // 일부 연결이 실패해도 DB의 마지막 값으로 내보낸다. 설정이 없으면 skipped.
-      if (sessionKey !== null) {
-        void runSheetExport(sessionKey);
+      // 렌더 시점 클로저의 sessionKey가 아니라, 이 순간 스토어 값을 다시 읽는다 — 갱신 도중
+      // 화면을 벗어나 훅이 사라진 뒤 잠겨도(언마운트 후엔 리렌더로 값이 갱신되지 않는다)
+      // stale 키로 내보내지 않기 위함.
+      const currentSessionKey = useAppStore.getState().sessionKey;
+      if (currentSessionKey !== null) {
+        void runSheetExport(currentSessionKey);
       }
     },
   });

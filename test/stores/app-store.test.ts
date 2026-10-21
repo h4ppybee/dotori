@@ -42,4 +42,12 @@ describe("app-store", () => {
     const persisted = JSON.parse(localStorage.getItem("dotori-app") ?? "{}");
     expect(persisted.state.lastSheetExport).toEqual({ at: 10, status: "error", message: "실패" });
   });
+
+  it("clearLastSheetExport는 마지막 결과를 지운다", () => {
+    useAppStore.getState().setLastSheetExport({ at: 10, status: "error", message: "실패" });
+    useAppStore.getState().clearLastSheetExport();
+    expect(useAppStore.getState().lastSheetExport).toBeNull();
+    const persisted = JSON.parse(localStorage.getItem("dotori-app") ?? "{}");
+    expect(persisted.state.lastSheetExport).toBeNull();
+  });
 });

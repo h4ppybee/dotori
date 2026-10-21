@@ -20,21 +20,39 @@ export function useSheetExportConfig() {
   });
 }
 
+// 진행 중인 내보내기 Promise(모듈 스코프 단일 슬롯). 자동(갱신 직후)·수동("지금 내보내기")이
+// 겹쳐 호출돼도 같은 요청을 공유하게 한다 — 동시에 두 번 POST하면 시트 Apps Script의
+// LockService가 뒤 요청을 BUSY로 튕기므로, 애초에 겹치지 않게 막는다.
+let inflight: Promise<SheetExportOutcome> | null = null;
+
 /**
- * 내보내기 실행 + 결과를 app-store에 기록(자동·수동 공용 단일 원천). skipped는 기록하지 않는다.
+ * 내보내기 실행 + 결과를 app-store에 기록(자동·수동 공용 단일 원천).
+ * skipped(설정 없음)면 이전 기록을 지운다 — 연결을 해제했는데 지난 실패 배너가 남아있지 않게.
+ * 이미 진행 중인 호출이 있으면 새로 시작하지 않고 그 결과를 함께 기다린다(single-flight).
  * exportToSheet가 throw하지 않으므로 fire-and-forget으로 호출해도 안전하다.
  */
 export async function runSheetExport(key: CryptoKey): Promise<SheetExportOutcome> {
-  const outcome = await exportToSheet({ key, now: Date.now() });
-  if (outcome.status === "skipped") {
-    return outcome;
+  if (inflight) {
+    return inflight;
   }
-  useAppStore.getState().setLastSheetExport(
-    outcome.status === "ok"
-      ? { at: Date.now(), status: "ok" }
-      : { at: Date.now(), status: "error", message: outcome.message },
-  );
-  return outcome;
+  inflight = (async () => {
+    try {
+      const outcome = await exportToSheet({ key, now: Date.now() });
+      if (outcome.status === "skipped") {
+        useAppStore.getState().clearLastSheetExport();
+        return outcome;
+      }
+      useAppStore.getState().setLastSheetExport(
+        outcome.status === "ok"
+          ? { at: Date.now(), status: "ok" }
+          : { at: Date.now(), status: "error", message: outcome.message },
+      );
+      return outcome;
+    } finally {
+      inflight = null;
+    }
+  })();
+  return inflight;
 }
 
 export function useSaveSheetExportConfig() {
@@ -61,7 +79,11 @@ export function useClearSheetExportConfig() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: () => clearSheetExportConfig(),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: SHEET_EXPORT_CONFIG_KEY }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: SHEET_EXPORT_CONFIG_KEY });
+      // 연결을 해제했으니 지난 성공/실패 기록도 함께 지운다(stale 배너 방지).
+      useAppStore.getState().clearLastSheetExport();
+    },
   });
 }
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { TextInput } from "@/components/ui/TextInput";
@@ -12,6 +13,7 @@ import {
   useSaveSheetExportConfig,
   useClearSheetExportConfig,
   useSheetExportNow,
+  SHEET_EXPORT_CONFIG_KEY,
 } from "@/lib/query/use-sheet-export";
 
 // 웹앱 연결 준비 순서(순서가 의미 있으므로 번호 목록으로 보여준다)
@@ -33,9 +35,22 @@ export function SheetExportPanel() {
   const clear = useClearSheetExportConfig();
   const exportNow = useSheetExportNow();
   const last = useAppStore((s) => s.lastSheetExport);
+  const queryClient = useQueryClient();
   const [url, setUrl] = useState("");
   const [secret, setSecret] = useState("");
   const [error, setError] = useState<string | null>(null);
+
+  function handleExportNow() {
+    exportNow.mutate(undefined, {
+      onSuccess: (outcome) => {
+        // skipped = DB엔 설정이 없는데 캐시엔 연결 상태로 남은 경우(다른 탭에서 해제 등).
+        // 설정 조회를 무효화해 화면을 실제 상태(미연결)로 맞춘다.
+        if (outcome.status === "skipped") {
+          queryClient.invalidateQueries({ queryKey: SHEET_EXPORT_CONFIG_KEY });
+        }
+      },
+    });
+  }
 
   async function handleSave() {
     setError(null);
@@ -92,7 +107,7 @@ export function SheetExportPanel() {
           </div>
           <Button
             variant="secondary"
-            onClick={() => exportNow.mutate()}
+            onClick={handleExportNow}
             disabled={exportNow.isPending}
             className="w-full"
           >

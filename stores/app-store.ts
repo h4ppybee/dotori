@@ -19,6 +19,7 @@ interface AppState {
   lock: () => void;
   setLastRefresh: (t: number) => void;
   setLastSheetExport: (s: SheetExportStatus) => void;
+  clearLastSheetExport: () => void;
   revealAmounts: () => void;
 }
 
@@ -54,6 +55,8 @@ export const useAppStore = create<AppState>()(
       },
       setLastRefresh: (t) => set({ lastRefreshAt: t }),
       setLastSheetExport: (s) => set({ lastSheetExport: s }),
+      // 연결 해제·전체 삭제 등으로 설정이 사라졌을 때, 이전 성공/실패 기록이 남아있지 않게 지운다.
+      clearLastSheetExport: () => set({ lastSheetExport: null }),
       revealAmounts: () => set({ amountsRevealed: true }),
     }),
     {
