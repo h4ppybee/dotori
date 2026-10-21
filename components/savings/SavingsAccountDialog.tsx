@@ -142,7 +142,7 @@ export function SavingsAccountDialog({
           </div>
         </div>
 
-        <TextInput label="이름" value={name} onChange={setName} placeholder="예: 뚜니 청년도약" />
+        <TextInput label="이름" value={name} onChange={setName} placeholder="예: 청년도약적금" />
         <TextInput label="은행" value={bank} onChange={setBank} placeholder="예: 우리" />
 
         {/* 통화 */}

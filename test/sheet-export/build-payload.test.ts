@@ -100,12 +100,12 @@ describe("buildSheetPayload", () => {
     const input = empty();
     input.savings = buildSavingsVM([{
       id: "s1", category: "DEPOSIT", name: "청년도약", bank: "우리", amount: 18_900_000,
-      monthlyDeposit: 700_000, interestRate: 4.5, maturityDate: "2029-07-24",
+      monthlyDeposit: 700_000, interestRate: 4.5, maturityDate: "2030-01-15",
       sortOrder: 0, updatedAt: 1, source: "MANUAL",
     }], undefined);
     const rows = tab(buildSheetPayload(input), SHEET_TABS.assets).rows;
     expect(rows[0].slice(12)).toEqual(["월불입액", "이율", "만기", "상품구분"]);
-    expect(rows[1].slice(12)).toEqual([700_000, 0.045, "2029-07-24", ""]);
+    expect(rows[1].slice(12)).toEqual([700_000, 0.045, "2030-01-15", ""]);
   });
 
   it("부채 행: 카테고리 라벨·금리 소수·빈 값은 빈 문자열", () => {

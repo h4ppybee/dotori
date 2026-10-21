@@ -26,7 +26,7 @@ export function formatUsd(n: number): string {
 
 /**
  * 금액을 한글 단위(억·만·원)로 읽기 쉽게 포맷한다. 입력 보조 표기용.
- * 예) 700000 → "70만원", 177930 → "17만 7,930원", 265000000 → "2억 6,500만원"
+ * 예) 700000 → "70만원", 123450 → "12만 3,450원", 350000000 → "3억 5,000만원"
  */
 export function formatKoreanUnit(n: number): string {
   const sign = n < 0 ? "-" : "";

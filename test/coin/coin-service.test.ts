@@ -26,9 +26,9 @@ describe("buildCoinVM", () => {
 
   it("수량×단가로 손익을 계산하고 손실도 반영한다", () => {
     const vm = buildCoinVM([
-      c({ quantity: 0.02, buyPrice: 160598977, currentPrice: 84699700 }),
+      c({ quantity: 0.02, buyPrice: 150000000, currentPrice: 84699700 }),
     ]);
-    expect(vm.totalCostKrw).toBeCloseTo(0.02 * 160598977, 2);
+    expect(vm.totalCostKrw).toBeCloseTo(0.02 * 150000000, 2);
     expect(vm.totalValueKrw).toBeCloseTo(0.02 * 84699700, 2);
     expect(vm.totalPnlKrw).toBeLessThan(0);
     expect(vm.returnPct).toBeLessThan(0);

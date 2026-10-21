@@ -66,7 +66,7 @@ export type SavingsCategory = "DEPOSIT" | "CHECKING" | "BOND" | "ETC";
 export interface SavingsAccount {
   id: string;
   category: SavingsCategory;
-  name: string;            // 내용(계좌명) — 예: "뚜니 청년도약"
+  name: string;            // 내용(계좌명) — 예: "청년도약적금"
   bank?: string;           // 은행 — 예: "우리"
   amount: number;          // 총 금액 (currency 기준 통화)
   currency?: Currency;     // 통화. undefined === "KRW"(기본). 모든 카테고리에서 KRW/USD 선택 가능
