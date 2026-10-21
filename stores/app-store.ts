@@ -2,14 +2,23 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { saveSession, clearSession, AUTO_LOCK_MS } from "@/lib/db/session-vault";
 
+/** 마지막 시트 내보내기 결과. 자동(통합 갱신)·수동(설정) 모두 여기에 기록한다. */
+export interface SheetExportStatus {
+  at: number;
+  status: "ok" | "error";
+  message?: string;
+}
+
 interface AppState {
   locked: boolean;
   sessionKey: CryptoKey | null;
   lastRefreshAt: number | null;
+  lastSheetExport: SheetExportStatus | null;
   amountsRevealed: boolean; // 금액 숨기기 ON일 때 한 번 탭하면 전체 노출(세션 한정)
   unlock: (key: CryptoKey) => void;
   lock: () => void;
   setLastRefresh: (t: number) => void;
+  setLastSheetExport: (s: SheetExportStatus) => void;
   revealAmounts: () => void;
 }
 
@@ -20,7 +29,7 @@ interface AppState {
  * 만료시각과 함께 세션 볼트(IndexedDB)에 두지만, 원본 키 바이트는 영속화되지 않는다.
  * (lib/db/session-vault.ts, spec §6)
  *
- * `lastRefreshAt`만 localStorage에 영속화한다(`persist` + `partialize`). 시세 자체는
+ * `lastRefreshAt`·`lastSheetExport`만 localStorage에 영속화한다(`persist` + `partialize`). 시세 자체는
  * IndexedDB에 저장돼 새로고침 후에도 유지되므로, 마지막 갱신 시각을 함께 복원해야
  * "마지막 갱신 HH:MM" 표시와 10분 자동 갱신 판단이 정상 동작한다. 잠금 상태·세션 키
  * 등 민감/휘발 상태는 저장하지 않는다.
@@ -31,6 +40,7 @@ export const useAppStore = create<AppState>()(
       locked: true,
       sessionKey: null,
       lastRefreshAt: null,
+      lastSheetExport: null,
       amountsRevealed: false,
       unlock: (key) => {
         set({ locked: false, sessionKey: key });
@@ -43,12 +53,13 @@ export const useAppStore = create<AppState>()(
         void clearSession();
       },
       setLastRefresh: (t) => set({ lastRefreshAt: t }),
+      setLastSheetExport: (s) => set({ lastSheetExport: s }),
       revealAmounts: () => set({ amountsRevealed: true }),
     }),
     {
       name: "dotori-app",
-      // 마지막 갱신 시각만 저장한다. 잠금·세션 키·금액 노출은 매 세션 초기화한다.
-      partialize: (state) => ({ lastRefreshAt: state.lastRefreshAt }),
+      // 마지막 갱신 시각·마지막 시트 내보내기 결과만 저장한다. 잠금·세션 키·금액 노출은 매 세션 초기화한다.
+      partialize: (state) => ({ lastRefreshAt: state.lastRefreshAt, lastSheetExport: state.lastSheetExport }),
     },
   ),
 );

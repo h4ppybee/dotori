@@ -3,7 +3,7 @@ import { useAppStore } from "@/stores/app-store";
 import { deriveKey, makeSalt } from "@/lib/crypto/crypto";
 
 afterEach(() => {
-  useAppStore.setState({ locked: true, sessionKey: null, lastRefreshAt: null });
+  useAppStore.setState({ locked: true, sessionKey: null, lastRefreshAt: null, lastSheetExport: null });
 });
 
 describe("app-store", () => {
@@ -34,5 +34,12 @@ describe("app-store", () => {
   it("setLastRefresh updates the timestamp", () => {
     useAppStore.getState().setLastRefresh(1234);
     expect(useAppStore.getState().lastRefreshAt).toBe(1234);
+  });
+
+  it("setLastSheetExport는 마지막 결과를 기록하고 localStorage에 영속화한다", () => {
+    useAppStore.getState().setLastSheetExport({ at: 10, status: "error", message: "실패" });
+    expect(useAppStore.getState().lastSheetExport).toEqual({ at: 10, status: "error", message: "실패" });
+    const persisted = JSON.parse(localStorage.getItem("dotori-app") ?? "{}");
+    expect(persisted.state.lastSheetExport).toEqual({ at: 10, status: "error", message: "실패" });
   });
 });
