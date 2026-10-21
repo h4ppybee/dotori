@@ -1,15 +1,15 @@
-# 외부 API 연동 — 토스인베스트 · 업비트 (OpenAPI)
+# 외부 API 연동 — 토스인베스트 · 업비트 · 구글 시트 (OpenAPI)
 
-시세·보유·환율은 두 개의 외부 OpenAPI에서 가져온다. 시크릿·토큰은 **브라우저에서 외부로 직접 나가지 않고 서버(프록시 또는 릴레이)를 경유**한다. 클라이언트는 정규화된 결과만 받는다.
+시세·보유·환율은 두 개의 외부 OpenAPI에서 **가져온다(인바운드)**. 시크릿·토큰은 **브라우저에서 외부로 직접 나가지 않고 서버(프록시 또는 릴레이)를 경유**한다. 클라이언트는 정규화된 결과만 받는다. 반대로 구글 시트 내보내기는 앱 데이터를 사용자의 구글 시트로 **내보내는(아웃바운드) 단방향** 연동이며, 사용자 소유 비밀키만 쓰므로 프록시를 거치지 않는다(아래 [구글 시트 내보내기](#구글-시트-내보내기-apps-script-웹앱) 참고).
 
 | 소스 | 가져오는 것 | 인증 | 프록시 경로 |
 | --- | --- | --- | --- |
 | **토스인베스트** | 계좌·보유(주식)·시세(주식/연금)·USDKRW 환율 | OAuth2 client_credentials → Bearer 토큰 | `app/api/toss/*` |
 | **업비트** | 코인 보유·예수금(KRW)·현재가·마켓명 | Access/Secret 키 → 요청별 HS256 JWT | `app/api/upbit/*` |
 
-> 📄 이 문서는 외부 연동과 함께 유지한다. 프록시 경로·정규화·토큰/JWT·릴레이 분기·재시도 규칙을 바꾸면 **같은 작업에서 이 문서도 갱신**한다.
+> 📄 이 문서는 외부 연동과 함께 유지한다. 프록시 경로·정규화·토큰/JWT·릴레이 분기·재시도 규칙·구글 시트 내보내기 계약을 바꾸면 **같은 작업에서 이 문서도 갱신**한다.
 
-관련 파일: [lib/toss/](../lib/toss/) · [lib/upbit/](../lib/upbit/) · [lib/sync/](../lib/sync/) · [app/api/](../app/api/)
+관련 파일: [lib/toss/](../lib/toss/) · [lib/upbit/](../lib/upbit/) · [lib/sync/](../lib/sync/) · [app/api/](../app/api/) · [lib/sheet-export/](../lib/sheet-export/) · [integrations/apps-script/](../integrations/apps-script/)
 
 ---
 
@@ -127,3 +127,64 @@ USD 자산이 있을 때 환산이 막히는 문제를 해결한다.
 - 에러는 도메인 에러(`TossError`/`UpbitError`)의 `status`로 분기해 안정적인 코드(`invalid_credentials`, `upbit_error` 등)를 반환. 원문 시크릿·업스트림 본문을 그대로 흘리지 않는다.
 
 **새 엔드포인트를 추가할 때**: (1) `lib/{toss,upbit}/*-client.ts`에 호출·정규화 추가, (2) `app/api/**/route.ts` 프록시 추가, (3) `tossEndpoint`/`upbitEndpoint` 경로가 릴레이·로컬 양쪽에서 동일하게 매핑되는지 확인, (4) 이 문서 갱신.
+
+---
+
+## 구글 시트 내보내기 (Apps Script 웹앱)
+
+dotori의 자산·부채·통장 쪼개기 데이터를 사용자의 구글 시트로 **단방향(앱 → 시트)** 내보낸다. 시트에서 고친 값은 앱에 반영되지 않는다 — 시트는 보기 전용 출력물이다.
+
+관련 파일: [lib/sheet-export/build-payload.ts](../lib/sheet-export/build-payload.ts)(순수 빌더) · [lib/sheet-export/client.ts](../lib/sheet-export/client.ts)(웹앱 클라이언트) · [lib/sheet-export/export.ts](../lib/sheet-export/export.ts)(조립) · [lib/query/use-sheet-export.ts](../lib/query/use-sheet-export.ts) · [components/settings/SheetExportPanel.tsx](../components/settings/SheetExportPanel.tsx) · [integrations/apps-script/](../integrations/apps-script/)(Apps Script 원본·설치 안내)
+
+### 호출 경로 — 프록시 없이 브라우저가 직접 POST
+
+위 토스·업비트와 달리 이 연동은 **프록시를 거치지 않는다.**
+
+- 숨겨야 할 dotori 소유 시크릿이 없다. 대상은 사용자가 자신의 구글 계정으로 직접 배포한 Apps Script 웹앱이고, 쓰는 비밀키(`DOTORI_SECRET`)도 사용자가 그 스크립트 속성에 직접 넣은 값이다.
+- Apps Script 웹앱은 CORS preflight(`OPTIONS`)를 처리하지 못한다. `postSheetExport`(`lib/sheet-export/client.ts`)는 `Content-Type: text/plain;charset=utf-8`으로 보내 preflight를 피한다.
+- Apps Script는 HTTP 상태 코드를 지정할 수 없어 **항상 200 + 본문 `{ ok, ... }`** 으로 성공 여부를 판정한다. 타임아웃은 15초(`SHEET_EXPORT_TIMEOUT_MS`), `AbortController`로 제어.
+
+### 페이로드 계약
+
+```json
+{
+  "version": 1,
+  "secret": "<공유 비밀키>",
+  "tabs": [
+    { "name": "dotori_자산", "rows": [["자산군", "구분", "..."], ["주식", "NASDAQ", "..."]] }
+  ]
+}
+```
+
+- 셀 값은 `string | number`만 허용(빈 칸은 `""`). 문자열 셀은 스크립트가 쓰기 전 대상 범위에 텍스트 서식(`"@"`)을 걸어 `"005930"` → `5930`, `"=1+1"` → 수식 실행으로 바뀌지 않게 한다. 숫자 셀은 숫자 서식(`"General"`)으로 되돌린다. 셀 타입은 앱이 보낸 JS 타입(string/number)으로 그대로 결정된다.
+- 탭 이름이 `dotori_` 접두사로 시작하는 것만 스크립트가 허용한다(다른 탭 덮어쓰기 방지). 현재 앱이 보내는 탭은 `SHEET_TABS`(`lib/sheet-export/build-payload.ts`) 기준 `dotori_자산`·`dotori_부채`·`dotori_통장쪼개기`·`dotori_meta`.
+- `buildSheetPayload`는 순수 함수다 — DB·비동기·`Date` 없이 VM 5종(portfolio·savings·pension·coin·debt) + 통장 쪼개기 항목만으로 탭별 2차원 배열을 만든다. 화면과 같은 VM 빌더를 쓰므로 시트 금액과 앱 화면 금액이 일치한다.
+
+### 응답과 오류 메시지 매핑
+
+스크립트 응답 `{ ok: true, writtenAt }` 또는 `{ ok: false, error: "UNAUTHORIZED" | "BAD_REQUEST" | "BUSY" | "<message>" }`를 `postSheetExport`가 `SheetExportResult`로 정규화하고, `SHEET_EXPORT_MESSAGES`(`lib/sheet-export/client.ts`)로 사용자 메시지에 매핑한다.
+
+| 상황 | 사용자 메시지 |
+| --- | --- |
+| fetch 실패·타임아웃(네트워크) | "시트에 연결하지 못했어요." |
+| HTTP 비정상 응답, 또는 JSON 파싱 실패, 또는 `error`가 `BAD_REQUEST`·그 외 문자열이 아닌 값 | "시트 스크립트 응답을 읽지 못했어요. 스크립트를 최신 버전으로 배포했는지 확인해 주세요." |
+| `error: "UNAUTHORIZED"`(비밀키 불일치·미설정) | "비밀키가 스크립트 설정과 달라요." |
+| `error: "BUSY"`(`LockService.tryLock` 10초 초과) | "다른 내보내기가 진행 중이에요. 잠시 후 다시 시도해 주세요." |
+| 그 외 문자열 `error`(스크립트 런타임 오류 등) | "시트에 쓰지 못했어요. `<스크립트가 보낸 메시지>`" |
+
+### 보안
+
+- 웹앱은 "액세스: 모든 사용자"로 배포하므로 **비밀키가 유일한 보호 수단**이다. 비밀키를 아는 사람은 누구나 해당 URL에 써넣을 수 있다.
+- 앱은 비밀키를 평문으로 저장하지 않는다 — 세션 키(CryptoKey)로 암호화해 `sheetExport` 테이블의 `secretEnc`에 저장한다(`lib/db/local-store.ts`의 `getSheetExportConfig`/`saveSheetExportConfig`). PIN·비밀번호 변경 시 `rekeyVault`(`lib/crypto/rekey.ts`)가 재암호화한다.
+- 스크립트는 `dotori_*` 탭만 쓰므로, 비밀키가 유출돼도 시트의 기존 탭(수식·대시보드 등)은 덮이지 않는다.
+- 시트에는 평문 금액이 그대로 올라간다. 시트 공유 범위는 사용자 책임 — 설정 패널 안내 문구에 명시돼 있다.
+
+### 호출 시점
+
+- 통합 갱신(`useAssetsRefresh`) 성공 시 **기다리지 않고(fire-and-forget)** 내보낸다(`runSheetExport`) — 갱신 스피너·쿼리 무효화가 내보내기 때문에 늦어지지 않게 하기 위함. 일부 연결이 실패해도(`failures` 있음) DB의 마지막 값으로 내보낸다.
+- 설정 화면 [SheetExportPanel](../components/settings/SheetExportPanel.tsx)의 "지금 내보내기" 버튼(수동, `useSheetExportNow`).
+- 두 경로 모두 `runSheetExport`를 거쳐 결과를 `stores/app-store.ts`의 `lastSheetExport`에 기록한다(자동·수동 공용 단일 원천). 설정이 없으면 `{ status: "skipped" }`로 조용히 넘어가고 기록하지 않는다.
+
+### 설치
+
+Apps Script 원본과 설치 절차·수동 확인 체크리스트는 [integrations/apps-script/README.md](../integrations/apps-script/README.md) 참고.

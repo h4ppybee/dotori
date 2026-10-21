@@ -52,9 +52,10 @@ GitHub `h4ppybee/dotori` ↔ Vercel 프로젝트가 **Git 연동**되어 있다.
   - `assets/snapshots`(전체 목록)·`assets/snapshots/[id]`(상세 표+삭제) — 수동 전체 자산 스냅샷 화면
   - `plan/realty` — 부동산 조달계획(플레이스홀더)
   - `api/toss/*`·`api/upbit/*` — 서버 프록시(토스·업비트)
-- `components/` — `ui/`(디자인 프리미티브·`DonutChart` 등), `portfolio/`, `holdings/`, `savings/`, `pension/`, `coin/`, `debt/`, `snapshot/`(스냅샷 섹션·목록 행·추이 콤보 차트), `goal/`(목표 카드·폼·빈상태·진행률 링), `envelope/`(통장 쪼개기: `ProfileSegment`·`RollupCard`·`EnvelopeItemRow`·`EnvelopeItemDialog`), `nav/`(탭 바, `NestedTabBar` — 자산·계획 공용), `settings/`
-- `lib/` — 자산 소스: `toss/`·`upbit/`·`sync/`(동기화 — 토스·업비트·예적금 자동 증가). 도메인 서비스(순수 계산): `portfolio/`·`savings/`·`pension/`·`coin/`·`debt/`·`goal/`(순자산 목표 진척 순수 계산)·`envelope/`(통장 쪼개기 집계·태그색·프리셋). 공통: `db/`(Dexie·CRUD), `sector/`, `crypto/`, `snapshot/`(수동 전체 자산 스냅샷 — 캡처·순수 빌더·추이 헬퍼), `backup/`, `nav/`, `query/`(자산별 훅, `use-asset-snapshots`·`use-goal`·`use-net-worth`·`use-envelope` 포함)
-- `stores/` — `app-store.ts`(잠금·세션 키·마지막 갱신), `nav-store.ts`(탭 복귀 지점)
+- `components/` — `ui/`(디자인 프리미티브·`DonutChart` 등), `portfolio/`, `holdings/`, `savings/`, `pension/`, `coin/`, `debt/`, `snapshot/`(스냅샷 섹션·목록 행·추이 콤보 차트), `goal/`(목표 카드·폼·빈상태·진행률 링), `envelope/`(통장 쪼개기: `ProfileSegment`·`RollupCard`·`EnvelopeItemRow`·`EnvelopeItemDialog`), `nav/`(탭 바, `NestedTabBar` — 자산·계획 공용), `settings/`(연동 폼·백업 패널·`SheetExportPanel` — 구글 시트 내보내기 연결/해제/지금 내보내기)
+- `lib/` — 자산 소스: `toss/`·`upbit/`·`sync/`(동기화 — 토스·업비트·예적금 자동 증가). 도메인 서비스(순수 계산): `portfolio/`·`savings/`·`pension/`·`coin/`·`debt/`·`goal/`(순자산 목표 진척 순수 계산)·`envelope/`(통장 쪼개기 집계·태그색·프리셋). 공통: `db/`(Dexie·CRUD), `sector/`, `crypto/`, `snapshot/`(수동 전체 자산 스냅샷 — 캡처·순수 빌더·추이 헬퍼), `sheet-export/`(구글 시트 내보내기 — 순수 빌더·웹앱 클라이언트), `backup/`, `nav/`, `query/`(자산별 훅, `use-asset-snapshots`·`use-goal`·`use-net-worth`·`use-envelope`·`use-sheet-export` 포함)
+- `stores/` — `app-store.ts`(잠금·세션 키·마지막 갱신·`lastSheetExport`), `nav-store.ts`(탭 복귀 지점)
+- `integrations/apps-script/` — 구글 시트 내보내기 Apps Script 원본(`sheet-export.gs`)과 설치 안내(`README.md`)
 - `test/` — 모듈 구조를 미러링한 테스트
 
 ## 핵심 규칙
@@ -69,6 +70,7 @@ GitHub `h4ppybee/dotori` ↔ Vercel 프로젝트가 **Git 연동**되어 있다.
 - **예적금 자동 증가**: 저축 `DEPOSIT` 계좌는 금액 기준일 `balanceAsOf` 이후 지난 납입일(만기일 다음 날의 일자)마다 월 불입액만큼 늘어난다. 계산은 `lib/savings/deposit-accrual`(순수), 실행은 통합 갱신(`useAssetsRefresh` → `lib/sync/refresh-savings`). 기준일은 금액이 바뀔 때만 갱신한다.
 - **goal 테이블**: Dexie v8에서 추가된 `goal` 테이블(스키마: `{ id:"goal", targetNetWorthKrw, targetDate, createdAt }`)은 단일 행으로 순자산 목표를 저장한다. 사용자가 직접 입력하는 수동 데이터이므로 백업(payload v6)에 포함된다.
 - **envelope 테이블**: Dexie v9에서 추가된 `envelopeItems`(통장 쪼개기 항목: 프로필·태그·은행·금액)·`envelopeConfig`(커스텀 태그·은행 프리셋) 테이블은 수동 데이터이므로 백업(payload v7)에 포함된다.
+- **sheetExport 테이블**: Dexie v10, 웹앱 URL·암호화된 비밀키 단일 행. 기기별 민감 설정이므로 백업 제외, PIN·비밀번호 변경 시 `rekeyVault`가 재암호화한다.
 - **섹터**: 화면 표시는 항상 `resolveSector(symbol, sectorOverrides)` 기반(우선순위 overrides > seed > "미분류"). `sectorOverrides`는 symbol을 키로 저장해 AUTO·MANUAL 모두에 적용된다. 기본 목록은 `KNOWN_SECTORS`(테마형).
 - **Next 16**: 동적 라우트 `params`는 Promise → 클라이언트에서 `use(params)`. 네비게이션은 `next/navigation`. IndexedDB는 서버/SSR에서 접근 금지.
 - 📄 **문서 동기화 (필수)**: 기능을 추가·변경할 때는 관련 문서를 **코드와 같은 작업에서 함께 갱신**한다. 문서가 코드와 어긋난 채로 남기지 않는다. 무엇을 만졌는지에 따라:
