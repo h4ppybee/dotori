@@ -32,8 +32,8 @@ function a(over: Partial<SavingsAccount>): SavingsAccount {
 }
 
 const ACCOUNTS: SavingsAccount[] = [
-  a({ id: "1", category: "DEPOSIT", name: "뚜니 청년도약", bank: "우리", amount: 15400000, interestRate: 4.5, maturityDate: "2029-07-24" }),
-  a({ id: "2", category: "CHECKING", name: "수연 파킹", bank: "케이뱅크", amount: 8900000, interestRate: 1.7 }),
+  a({ id: "1", category: "DEPOSIT", name: "청년도약적금", bank: "우리", amount: 12000000, interestRate: 4.5, maturityDate: "2030-01-15" }),
+  a({ id: "2", category: "CHECKING", name: "파킹통장", bank: "케이뱅크", amount: 5000000, interestRate: 1.7 }),
   a({ id: "3", category: "BOND", name: "미국 국채", amount: 1000, currency: "USD" }),
 ];
 
@@ -42,8 +42,8 @@ describe("SavingsSummaryHero", () => {
     const vm = buildSavingsVM(ACCOUNTS, 1500);
     renderWithQuery(<SavingsSummaryHero vm={vm} />);
     expect(screen.getByText("저축/현금성 자산")).toBeInTheDocument();
-    // 15,400,000 + 8,900,000 + 1000*1500 = 25,800,000
-    expect(screen.getByText("₩25,800,000")).toBeInTheDocument();
+    // 12,000,000 + 5,000,000 + 1000*1500 = 18,500,000
+    expect(screen.getByText("₩18,500,000")).toBeInTheDocument();
     expect(screen.getByText(/총 3개 계좌/)).toBeInTheDocument();
   });
 });
@@ -67,8 +67,8 @@ describe("SavingsManageList", () => {
   it("계좌명·이율·만기 메타와 금액을 보여준다", () => {
     const vm = buildSavingsVM(ACCOUNTS, 1500);
     renderWithQuery(<SavingsManageList vm={vm} />);
-    expect(screen.getByText("뚜니 청년도약")).toBeInTheDocument();
-    expect(screen.getByText("우리 · 연 4.5% · 만기 2029-07-24")).toBeInTheDocument();
+    expect(screen.getByText("청년도약적금")).toBeInTheDocument();
+    expect(screen.getByText("우리 · 연 4.5% · 만기 2030-01-15")).toBeInTheDocument();
     expect(screen.getByText("케이뱅크 · 연 1.7%")).toBeInTheDocument();
   });
 
@@ -83,7 +83,7 @@ describe("SavingsManageList", () => {
     const vm = buildSavingsVM(ACCOUNTS, 1500);
     renderWithQuery(<SavingsManageList vm={vm} initialCat="BOND" />);
     expect(screen.getByText("미국 국채")).toBeInTheDocument();
-    expect(screen.queryByText("뚜니 청년도약")).toBeNull();
+    expect(screen.queryByText("청년도약적금")).toBeNull();
   });
 
   it("업비트 AUTO 예수금 행은 출처 배지와 잠금 안내를 보여준다", () => {
@@ -101,8 +101,8 @@ describe("SavingsManageList", () => {
     const vm = buildSavingsVM([...ACCOUNTS, auto], 1500);
     renderWithQuery(<SavingsManageList vm={vm} initialCat="CHECKING" />);
     await userEvent.click(screen.getByRole("button", { name: "편집" }));
-    // MANUAL 계좌(수연 파킹)는 금액 입력이 생긴다.
-    expect(screen.getByLabelText("수연 파킹 금액")).toBeInTheDocument();
+    // MANUAL 계좌(파킹통장)는 금액 입력이 생긴다.
+    expect(screen.getByLabelText("파킹통장 금액")).toBeInTheDocument();
     // AUTO 행은 입력·삭제 컨트롤이 없다.
     expect(screen.queryByLabelText("업비트 예수금 금액")).toBeNull();
     expect(screen.queryByLabelText("업비트 예수금 삭제")).toBeNull();

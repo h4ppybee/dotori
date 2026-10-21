@@ -4,13 +4,13 @@ import { formatKrw, formatUsd, formatPct, signClass, formatKoreanUnit, formatDat
 describe("formatKoreanUnit", () => {
   it("만 단위로 읽기 쉽게 표기한다", () => {
     expect(formatKoreanUnit(700000)).toBe("70만원");
-    expect(formatKoreanUnit(8900000)).toBe("890만원");
-    expect(formatKoreanUnit(15400000)).toBe("1,540만원");
+    expect(formatKoreanUnit(5000000)).toBe("500만원");
+    expect(formatKoreanUnit(12000000)).toBe("1,200만원");
   });
 
   it("만 미만 잔액과 억 단위를 함께 표기한다", () => {
-    expect(formatKoreanUnit(177930)).toBe("17만 7,930원");
-    expect(formatKoreanUnit(265000000)).toBe("2억 6,500만원");
+    expect(formatKoreanUnit(123450)).toBe("12만 3,450원");
+    expect(formatKoreanUnit(350000000)).toBe("3억 5,000만원");
     expect(formatKoreanUnit(368749202)).toBe("3억 6,874만 9,202원");
   });
 

@@ -73,6 +73,11 @@ GitHub `h4ppybee/dotori` ↔ Vercel 프로젝트가 **Git 연동**되어 있다.
 - **sheetExport 테이블**: Dexie v10, 웹앱 URL·암호화된 비밀키 단일 행. 기기별 민감 설정이므로 백업 제외, PIN·비밀번호 변경 시 `rekeyVault`가 재암호화한다.
 - **섹터**: 화면 표시는 항상 `resolveSector(symbol, sectorOverrides)` 기반(우선순위 overrides > seed > "미분류"). `sectorOverrides`는 symbol을 키로 저장해 AUTO·MANUAL 모두에 적용된다. 기본 목록은 `KNOWN_SECTORS`(테마형).
 - **Next 16**: 동적 라우트 `params`는 Promise → 클라이언트에서 `use(params)`. 네비게이션은 `next/navigation`. IndexedDB는 서버/SSR에서 접근 금지.
+- 🔒 **개인정보 금지 (필수, 공개 저장소)**: 이 저장소는 **공개(PUBLIC)** 다. 코드·주석·placeholder·테스트 데이터·문서(`docs/`)·커밋 메시지·PR 본문에 **사용자의 실제 데이터를 넣지 않는다.**
+  - 금지: 실명·별명(가족 호칭 포함), 실제 계좌명·잔액·매수가·수량·만기일·금리, 계좌번호, 이메일·전화번호, 구글 시트 ID·Apps Script 웹앱 URL·비밀키, 릴레이 주소·시크릿 등 실제 값.
+  - 예시가 필요하면 **일반 예시**를 쓴다: 계좌명 `청년도약적금`·`파킹통장`, 금액은 `1,200만`·`500만`처럼 둥근 가상 값, 날짜도 가상 값.
+  - 사용자가 대화에서 공유한 실제 값(시트 내용, 스크린샷, 금액)을 테스트·문서 예시로 옮기지 않는다. 설계·계획 같은 개인 작업 노트는 저장소 밖(개인 문서)에 둔다.
+  - 시크릿이 필요한 설정 예시(`.env.example` 등)는 `change-me` 같은 자리표시자만 쓴다.
 - 📄 **문서 동기화 (필수)**: 기능을 추가·변경할 때는 관련 문서를 **코드와 같은 작업에서 함께 갱신**한다. 문서가 코드와 어긋난 채로 남기지 않는다. 무엇을 만졌는지에 따라:
   - **서비스 구조**(새 라우트/탭·`lib` 모듈·`components` 디렉토리·데이터 흐름·자산 종류) → 이 **AGENTS.md**와 **[docs/architecture.md](docs/architecture.md)**.
   - **백업**(`lib/backup`, 새 Dexie 테이블/영속 데이터) → **[docs/backup.md](docs/backup.md)** + `lib/backup`의 export/import.
