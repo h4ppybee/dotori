@@ -1,7 +1,7 @@
 import Dexie, { type Table } from "dexie";
 import type {
   Member, Connection, TokenCache, Holding, PriceCache, FxRate, DailySnapshot, Settings, SavingsAccount,
-  PensionAccount, CoinHolding, LoanAccount, AssetSnapshot, Goal, EnvelopeItem, EnvelopeConfig,
+  PensionAccount, CoinHolding, LoanAccount, AssetSnapshot, Goal, EnvelopeItem, EnvelopeConfig, SheetExportConfig,
 } from "@/lib/types";
 
 /**
@@ -33,6 +33,7 @@ export class DotoriDB extends Dexie {
   goal!: Table<Goal, string>; // key: id (순자산 목표, 단일 행)
   envelopeItems!: Table<EnvelopeItem, string>;    // key: id (통장 쪼개기 항목)
   envelopeConfig!: Table<EnvelopeConfig, string>; // key: id (커스텀 태그·은행)
+  sheetExport!: Table<SheetExportConfig, string>; // key: id (구글 시트 내보내기 설정, 단일 행)
 
   constructor() {
     super("dotori");
@@ -81,6 +82,10 @@ export class DotoriDB extends Dexie {
     this.version(9).stores({
       envelopeItems: "id, profile, sortOrder",
       envelopeConfig: "id",
+    });
+    // v10: 구글 시트 내보내기 설정 테이블 추가 (기기별, 백업 제외)
+    this.version(10).stores({
+      sheetExport: "id",
     });
   }
 }
