@@ -28,6 +28,8 @@ interface RefreshBarProps {
   usdKrwRate?: number;
   /** 마지막 갱신에서 동기화에 실패한 항목들 (있으면 경고 배너 + 상세 표시). */
   failures?: RefreshFailure[];
+  /** 마지막 시트 내보내기가 실패했으면 그 메시지. */
+  sheetExportError?: string;
 }
 
 /** epoch(ms)를 HH:MM 으로 포맷. */
@@ -56,6 +58,7 @@ export function RefreshBar({
   lastRefreshAt,
   usdKrwRate,
   failures,
+  sheetExportError,
 }: RefreshBarProps) {
   const hasFailures = failures != null && failures.length > 0;
   const lastLabel = lastRefreshAt != null ? formatTime(lastRefreshAt) : null;
@@ -118,6 +121,17 @@ export function RefreshBar({
             ))}
           </ul>
         </div>
+      )}
+
+      {sheetExportError != null && (
+        <p
+          className="px-1 text-[13px] leading-[1.45] tracking-[-0.1px]"
+          style={{ color: "#9A6700" }}
+          role="status"
+        >
+          <span className="font-semibold">시트 내보내기 실패</span>
+          <span className="opacity-80"> · {sheetExportError}</span>
+        </p>
       )}
     </div>
   );

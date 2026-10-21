@@ -40,6 +40,7 @@ export default function AssetsOverviewPage() {
   const refresh = useAssetsRefresh();
   const lastRefreshAt = useAppStore((s) => s.lastRefreshAt);
   const sessionKey = useAppStore((s) => s.sessionKey);
+  const lastSheetExport = useAppStore((s) => s.lastSheetExport);
 
   // 자산 탭 진입(또는 잠금 해제) 시, 마지막 갱신에서 10분이 지났으면 자동으로 전체 갱신한다.
   // 잠금 상태·이미 갱신 중·마지막 갱신 기록 없음(첫 방문)이면 건너뛴다.
@@ -79,6 +80,7 @@ export default function AssetsOverviewPage() {
           pending={refresh.isPending}
           lastRefreshAt={lastRefreshAt}
           failures={refresh.data?.failures}
+          sheetExportError={lastSheetExport?.status === "error" ? lastSheetExport.message : undefined}
         />
 
         <Card variant="hero" className="flex flex-col gap-2">
