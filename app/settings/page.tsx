@@ -11,6 +11,7 @@ import { Switch } from "@/components/ui/Switch";
 import { ConnectionForm } from "@/components/settings/ConnectionForm";
 import { BackupPanel } from "@/components/settings/BackupPanel";
 import { SheetExportPanel } from "@/components/settings/SheetExportPanel";
+import { DeviceSyncPanel } from "@/components/settings/DeviceSyncPanel";
 import { getSettings, putSettings } from "@/lib/db/local-store";
 import { useSettings } from "@/lib/query/use-settings";
 import { useQueryClient } from "@tanstack/react-query";
@@ -213,6 +214,7 @@ function PinSection() {
 function DeleteAllSection() {
   const lock = useAppStore((s) => s.lock);
   const clearLastSheetExport = useAppStore((s) => s.clearLastSheetExport);
+  const clearLastDeviceSync = useAppStore((s) => s.clearLastDeviceSync);
   const router = useRouter();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -223,8 +225,9 @@ function DeleteAllSection() {
       await db.delete();
       await db.open();
       lock();
-      // 시트 내보내기 설정도 함께 사라졌으니 지난 성공/실패 기록이 남지 않게 지운다.
+      // 시트 내보내기·기기 동기화 설정도 함께 사라졌으니 지난 성공/실패 기록이 남지 않게 지운다.
       clearLastSheetExport();
+      clearLastDeviceSync();
       router.push("/");
     } catch {
       setDeleting(false);
@@ -281,6 +284,7 @@ export default function SettingsPage() {
           <ConnectionForm />
           <BackupPanel />
           <SheetExportPanel />
+          <DeviceSyncPanel />
           <PrivacySection />
           <PinSection />
           <DeleteAllSection />

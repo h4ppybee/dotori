@@ -6,7 +6,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 # dotori 프로젝트 가이드
 
-토스 스타일 **로컬 퍼스트 PWA 개인 자산 관리 앱**. 주식·저축/현금성·연금·코인 자산과 부채를 합쳐 **순자산**을 보여준다. 토스인베스트 Open API(주식·연금 시세·환율)와 업비트 API(코인·예수금)로 시세를 가져와 직접 입력한 자산과 합친다. 계획(`plan`) 탭은 **통장 쪼개기(envelope budgeting)** 화면이다(하위 부동산 탭은 플레이스홀더). 가계부(`ledger`)는 탭만 있고 아직 플레이스홀더(`DummyPage`)다. 모든 데이터는 브라우저 IndexedDB에 저장되고, 민감정보는 비밀번호 파생 키로 암호화한다. **서버 DB 없음.** (패키지명 `dotori`)
+토스 스타일 **로컬 퍼스트 PWA 개인 자산 관리 앱**. 주식·저축/현금성·연금·코인 자산과 부채를 합쳐 **순자산**을 보여준다. 토스인베스트 Open API(주식·연금 시세·환율)와 업비트 API(코인·예수금)로 시세를 가져와 직접 입력한 자산과 합친다. 계획(`plan`) 탭은 **통장 쪼개기(envelope budgeting)** 화면이다(하위 부동산 탭은 플레이스홀더). 가계부(`ledger`)는 탭만 있고 아직 플레이스홀더(`DummyPage`)다. 여러 기기(본인·가족)가 수동 데이터를 공유하는 **기기 동기화**(E2E 암호화, Apps Script 경유)도 지원한다. 모든 데이터는 브라우저 IndexedDB에 저장되고, 민감정보는 비밀번호 파생 키로 암호화한다. **서버 DB 없음.** (패키지명 `dotori`)
 
 홈 탭(`app/page.tsx`)은 **순자산**과 **목표 자산** 섹션을 보여준다. 목표 자산 섹션에서 목표 금액·목표일을 설정하면 월 필요 저축액·잔여 금액·달성률 진행 링을 표시한다.
 
@@ -52,10 +52,10 @@ GitHub `h4ppybee/dotori` ↔ Vercel 프로젝트가 **Git 연동**되어 있다.
   - `assets/snapshots`(전체 목록)·`assets/snapshots/[id]`(상세 표+삭제) — 수동 전체 자산 스냅샷 화면
   - `plan/realty` — 부동산 조달계획(플레이스홀더)
   - `api/toss/*`·`api/upbit/*` — 서버 프록시(토스·업비트)
-- `components/` — `ui/`(디자인 프리미티브·`DonutChart` 등), `portfolio/`, `holdings/`, `savings/`, `pension/`, `coin/`, `debt/`, `snapshot/`(스냅샷 섹션·목록 행·추이 콤보 차트), `goal/`(목표 카드·폼·빈상태·진행률 링), `envelope/`(통장 쪼개기: `ProfileSegment`·`RollupCard`·`EnvelopeItemRow`·`EnvelopeItemDialog`), `nav/`(탭 바, `NestedTabBar` — 자산·계획 공용), `settings/`(연동 폼·백업 패널·`SheetExportPanel` — 구글 시트 내보내기 연결/해제/지금 내보내기)
-- `lib/` — 자산 소스: `toss/`·`upbit/`·`sync/`(동기화 — 토스·업비트·예적금 자동 증가). 도메인 서비스(순수 계산): `portfolio/`·`savings/`·`pension/`·`coin/`·`debt/`·`goal/`(순자산 목표 진척 순수 계산)·`envelope/`(통장 쪼개기 집계·태그색·프리셋). 공통: `db/`(Dexie·CRUD), `sector/`, `crypto/`, `snapshot/`(수동 전체 자산 스냅샷 — 캡처·순수 빌더·추이 헬퍼), `sheet-export/`(구글 시트 내보내기 — 순수 빌더·웹앱 클라이언트), `backup/`, `nav/`, `query/`(자산별 훅, `use-asset-snapshots`·`use-goal`·`use-net-worth`·`use-envelope`·`use-sheet-export` 포함)
-- `stores/` — `app-store.ts`(잠금·세션 키·마지막 갱신·`lastSheetExport`), `nav-store.ts`(탭 복귀 지점)
-- `integrations/apps-script/` — 구글 시트 내보내기 Apps Script 원본(`sheet-export.gs`)과 설치 안내(`README.md`)
+- `components/` — `ui/`(디자인 프리미티브·`DonutChart` 등), `portfolio/`, `holdings/`, `savings/`, `pension/`, `coin/`, `debt/`, `snapshot/`(스냅샷 섹션·목록 행·추이 콤보 차트), `goal/`(목표 카드·폼·빈상태·진행률 링), `envelope/`(통장 쪼개기: `ProfileSegment`·`RollupCard`·`EnvelopeItemRow`·`EnvelopeItemDialog`), `nav/`(탭 바, `NestedTabBar` — 자산·계획 공용), `sync/`(`SyncConflictDialog` — 기기 동기화 충돌 선택), `settings/`(연동 폼·백업 패널·`SheetExportPanel` — 구글 시트 내보내기 연결/해제/지금 내보내기·`DeviceSyncPanel` — 기기 동기화 설정)
+- `lib/` — 자산 소스: `toss/`·`upbit/`·`sync/`(동기화 — 토스·업비트·예적금 자동 증가). 도메인 서비스(순수 계산): `portfolio/`·`savings/`·`pension/`·`coin/`·`debt/`·`goal/`(순자산 목표 진척 순수 계산)·`envelope/`(통장 쪼개기 집계·태그색·프리셋). 공통: `db/`(Dexie·CRUD), `sector/`, `crypto/`, `snapshot/`(수동 전체 자산 스냅샷 — 캡처·순수 빌더·추이 헬퍼), `sheet-export/`(구글 시트 내보내기 — 순수 빌더·웹앱 클라이언트), `device-sync/`(기기 동기화 — 키·봉투·수집/해시·적용·엔진; 시세 갱신하는 `sync/`와는 다른 모듈), `apps-script/`(Apps Script 공용 요청 — 시트 내보내기·기기 동기화 공유), `backup/`, `nav/`, `query/`(자산별 훅, `use-asset-snapshots`·`use-goal`·`use-net-worth`·`use-envelope`·`use-sheet-export`·`use-device-sync` 포함)
+- `stores/` — `app-store.ts`(잠금·세션 키·마지막 갱신·`lastSheetExport`·`lastDeviceSync`·`syncConflict`·`dismissedConflictRevision`), `nav-store.ts`(탭 복귀 지점)
+- `integrations/apps-script/` — 구글 시트 내보내기 + 기기 동기화 저장소 겸용 Apps Script 원본(`sheet-export.gs`)과 설치 안내(`README.md`)
 - `test/` — 모듈 구조를 미러링한 테스트
 
 ## 핵심 규칙
@@ -71,6 +71,8 @@ GitHub `h4ppybee/dotori` ↔ Vercel 프로젝트가 **Git 연동**되어 있다.
 - **goal 테이블**: Dexie v8에서 추가된 `goal` 테이블(스키마: `{ id:"goal", targetNetWorthKrw, targetDate, createdAt }`)은 단일 행으로 순자산 목표를 저장한다. 사용자가 직접 입력하는 수동 데이터이므로 백업(payload v6)에 포함된다.
 - **envelope 테이블**: Dexie v9에서 추가된 `envelopeItems`(통장 쪼개기 항목: 프로필·태그·은행·금액)·`envelopeConfig`(커스텀 태그·은행 프리셋) 테이블은 수동 데이터이므로 백업(payload v7)에 포함된다.
 - **sheetExport 테이블**: Dexie v10, 웹앱 URL·암호화된 비밀키 단일 행. 기기별 민감 설정이므로 백업 제외, PIN·비밀번호 변경 시 `rekeyVault`가 재암호화한다.
+- **syncConfig 테이블**: Dexie v11, 동기화 키(세션 키 암호화)·keyId·기기 이름·lastRevision·lastSyncedHash 단일 행. 기기별 민감 설정이므로 백업·동기화 제외, PIN 변경 시 rekeyVault가 재암호화한다(실패 시 삭제). v11 upgrade가 savings·coin의 빠진 source를 MANUAL로 채운다.
+- **기기 동기화**: 잠금 해제 → 받기(pullIfNewer) → 갱신(awaitPendingPull 대기) 순서를 지킨다. 동기화 대상 테이블에 새 휘발성(시세·자동 갱신) 필드를 추가하면 HASH_EXCLUDED_FIELDS(lib/device-sync/collect)도 갱신하고, 새 수동 테이블은 SYNC_TABLES·applySyncPayload에도 넣는다. 상세 docs/device-sync.md.
 - **섹터**: 화면 표시는 항상 `resolveSector(symbol, sectorOverrides)` 기반(우선순위 overrides > seed > "미분류"). `sectorOverrides`는 symbol을 키로 저장해 AUTO·MANUAL 모두에 적용된다. 기본 목록은 `KNOWN_SECTORS`(테마형).
 - **Next 16**: 동적 라우트 `params`는 Promise → 클라이언트에서 `use(params)`. 네비게이션은 `next/navigation`. IndexedDB는 서버/SSR에서 접근 금지.
 - 🔒 **개인정보 금지 (필수, 공개 저장소)**: 이 저장소는 **공개(PUBLIC)** 다. 코드·주석·placeholder·테스트 데이터·문서(`docs/`)·커밋 메시지·PR 본문에 **사용자의 실제 데이터를 넣지 않는다.**
@@ -82,8 +84,10 @@ GitHub `h4ppybee/dotori` ↔ Vercel 프로젝트가 **Git 연동**되어 있다.
   - **서비스 구조**(새 라우트/탭·`lib` 모듈·`components` 디렉토리·데이터 흐름·자산 종류) → 이 **AGENTS.md**와 **[docs/architecture.md](docs/architecture.md)**.
   - **백업**(`lib/backup`, 새 Dexie 테이블/영속 데이터) → **[docs/backup.md](docs/backup.md)** + `lib/backup`의 export/import.
   - **외부 OpenAPI 연동**(`lib/{toss,upbit,sync}`, `app/api/*`, 프록시·릴레이·토큰) → **[docs/external-api.md](docs/external-api.md)**.
+  - **기기 동기화**(lib/device-sync, lib/apps-script, Apps Script sync.*) → docs/device-sync.md + docs/external-api.md
   - **디자인 토큰·UI 규칙** → [DESIGN.md](DESIGN.md)(위 디자인 규칙 참조).
   - 새 주제 영역이 생기면 `docs/`에 문서를 추가하고 [docs/README.md](docs/README.md) 카탈로그에 등록한다.
+  - `CLAUDE.md`는 `@AGENTS.md` 한 줄로 이 AGENTS.md를 그대로 가리키므로 따로 수정하지 않는다(두 파일 내용 일치 규칙은 이것으로 충족된다).
 
 ## 코딩 스타일
 

@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import { db } from "@/lib/db/schema";
 import { upsertConnection, upsertManualHolding } from "@/lib/db/local-store";
 import { putSettings } from "@/lib/db/local-store";
@@ -318,5 +318,83 @@ describe("exportAll / importAll", () => {
 
     await importAll(json, { mode: "overwrite" });
     expect((await db.sheetExport.get("sheet"))?.secretEnc).toBe("iv.ciphertext-marker");
+  });
+
+  it("기기 동기화 설정은 백업에 포함되지 않고, 덮어쓰기 불러오기 후에도 유지된다", async () => {
+    await db.syncConfig.put({
+      id: "sync", syncKeyEnc: "iv.sync-key-marker", keyId: "0011223344556677",
+      deviceName: "테스트 기기", lastRevision: 1, lastSyncedHash: "h", updatedAt: 1,
+    });
+    const json = await exportAll();
+    expect(json).not.toContain("sync-key-marker");
+    expect(json).not.toContain("syncConfig");
+
+    await importAll(json, { mode: "overwrite" });
+    expect((await db.syncConfig.get("sync"))?.syncKeyEnc).toBe("iv.sync-key-marker");
+  });
+
+  it("exportAll 출력은 테이블 순서·필터·형식이 그대로다(수집 함수 추출 회귀)", async () => {
+    const memberRow = { id: "m1", name: "나" };
+    const manualConn = { id: "man1", memberId: "m1", type: "MANUAL" as const, label: "증권사A", createdAt: 1, updatedAt: 1 };
+    const apiConn = { id: "api1", memberId: "m1", type: "TOSS_API" as const, label: "토스", clientId: "cid",
+      clientSecretEnc: "enc", createdAt: 1, updatedAt: 1 };
+    const manualHolding = { id: "h1", connectionId: "man1", market: "KRX", symbol: "000001", name: "종목A",
+      sector: "미분류", currency: "KRW" as const, quantity: 10, avgBuyPrice: 10_000, source: "MANUAL" as const, updatedAt: 1 };
+    const autoHolding = { ...manualHolding, id: "h2", connectionId: "api1", source: "AUTO" as const };
+    const snapshot = { date: "2026-01-01", totalCostKrw: 0, totalValueKrw: 0, totalPnlKrw: 0, returnPct: 0,
+      bySectorJson: "{}", byHoldingJson: "{}" };
+    const sector = { symbol: "000001", sector: "반도체" };
+    const manualSavings = { id: "s1", category: "CHECKING" as const, name: "파킹통장", amount: 1_000_000,
+      sortOrder: 0, updatedAt: 1, source: "MANUAL" as const };
+    const autoSavings = { ...manualSavings, id: "s2", source: "AUTO" as const, connectionId: "api1" };
+    const pensionRow = { id: "p1", category: "PERSONAL" as const, name: "연금ETF", quantity: 1, buyPrice: 10_000,
+      currentPrice: 10_000, sortOrder: 0, updatedAt: 1 };
+    const manualCoin = { id: "c1", name: "코인A", quantity: 1, buyPrice: 100, currentPrice: 100, sortOrder: 0,
+      updatedAt: 1, source: "MANUAL" as const };
+    const autoCoin = { ...manualCoin, id: "c2", source: "AUTO" as const, connectionId: "api1", market: "KRW-AAA" };
+    const debt = { id: "d1", category: "CREDIT" as const, name: "신용대출", balance: 1_000_000, sortOrder: 0, updatedAt: 1 };
+    const assetSnap = makeSnap("as1", 1);
+    const goalRow = { id: "goal" as const, targetNetWorthKrw: 100_000_000, targetDate: "2030-12-31", createdAt: 1 };
+    const envelopeItem = { id: "e1", profile: "wife" as const, tag: "저축", account: "은행A", name: "청년도약적금",
+      amountKrw: 500_000, sortOrder: 0, createdAt: 1 };
+    const envelopeConfig = { id: "envelope" as const, customTags: ["여행"], customAccounts: [] };
+
+    await db.members.put(memberRow);
+    await db.connections.bulkPut([manualConn, apiConn]);
+    await db.holdings.bulkPut([manualHolding, autoHolding]);
+    await db.snapshots.put(snapshot);
+    await db.sectorOverrides.put(sector);
+    await db.savings.bulkPut([manualSavings, autoSavings]);
+    await db.pension.put(pensionRow);
+    await db.coin.bulkPut([manualCoin, autoCoin]);
+    await db.debts.put(debt);
+    await db.assetSnapshots.put(assetSnap);
+    await db.goal.put(goalRow);
+    await db.envelopeItems.put(envelopeItem);
+    await db.envelopeConfig.put(envelopeConfig);
+
+    vi.spyOn(Date, "now").mockReturnValue(1_000);
+    const json = await exportAll();
+    vi.restoreAllMocks();
+
+    expect(json).toBe(JSON.stringify({
+      schemaVersion: 7,
+      exportedAt: 1_000,
+      data: {
+        members: [memberRow],
+        connections: [manualConn],
+        holdings: [manualHolding],
+        snapshots: [snapshot],
+        sectorOverrides: [sector],
+        savings: [manualSavings],
+        pension: [pensionRow],
+        coin: [manualCoin],
+        debts: [debt],
+        assetSnapshots: [assetSnap],
+        goal: [goalRow],
+        envelopeItems: [envelopeItem],
+        envelopeConfig: [envelopeConfig],
+      },
+    }));
   });
 });

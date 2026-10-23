@@ -66,6 +66,11 @@ describe("SettingsPage — 섹션 제목 렌더링", () => {
     expect(screen.getByRole("heading", { level: 2, name: "로컬 데이터 전체 삭제" })).toBeInTheDocument();
   });
 
+  it("기기 동기화 섹션이 렌더링된다", async () => {
+    await renderSettings();
+    expect(screen.getByRole("heading", { level: 2, name: "기기 동기화" })).toBeInTheDocument();
+  });
+
   it("내보내기 버튼이 렌더링된다", async () => {
     await renderSettings();
     expect(screen.getByRole("button", { name: "내보내기" })).toBeInTheDocument();

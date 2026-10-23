@@ -2,7 +2,7 @@ import { db, priceKey } from "@/lib/db/schema";
 import type {
   Connection, Holding, PriceCache, FxRate, Settings, Member, SavingsAccount, SavingsCategory,
   PensionAccount, PensionCategory, CoinHolding, LoanAccount, LoanCategory, AssetSnapshot, Goal,
-  EnvelopeItem, EnvelopeConfig, EnvelopeProfile, SheetExportConfig,
+  EnvelopeItem, EnvelopeConfig, EnvelopeProfile, SheetExportConfig, SyncConfig,
 } from "@/lib/types";
 import { toLocalYmd } from "@/lib/format";
 import { encrypt } from "@/lib/crypto/crypto";
@@ -349,3 +349,40 @@ export async function saveSheetExportConfig(
 }
 
 export const clearSheetExportConfig = () => db.sheetExport.delete("sheet");
+
+// ── 기기 동기화 설정 (기기별, 단일 행) ─────────────────────────────────────
+export const getSyncConfig = () => db.syncConfig.get("sync");
+
+/** 동기화 키는 세션 키로 암호화해 저장한다(원문 키는 영속화하지 않음). */
+export async function saveSyncConfig(
+  key: CryptoKey,
+  input: {
+    syncKeyText: string;
+    keyId: string;
+    deviceName: string;
+    lastRevision: number;
+    lastSyncedHash: string | null;
+  },
+): Promise<SyncConfig> {
+  const rec: SyncConfig = {
+    id: "sync",
+    syncKeyEnc: await encrypt(key, input.syncKeyText),
+    keyId: input.keyId,
+    deviceName: input.deviceName,
+    lastRevision: input.lastRevision,
+    lastSyncedHash: input.lastSyncedHash,
+    updatedAt: now(),
+  };
+  await db.syncConfig.put(rec);
+  return rec;
+}
+
+/** 받기·올리기 성공 직후 마지막 revision·내용 해시를 기록한다. */
+export async function updateSyncState(patch: { lastRevision: number; lastSyncedHash: string }): Promise<void> {
+  await db.syncConfig.update("sync", { ...patch, updatedAt: now() });
+}
+
+export const clearSyncConfig = () => db.syncConfig.delete("sync");
+
+/** 읽어 둔 설정 행을 그대로 되돌린다("새 키로 다시 시작" 실패 시 이전 키·revision·해시 복원). */
+export const restoreSyncConfig = (rec: SyncConfig) => db.syncConfig.put(rec);

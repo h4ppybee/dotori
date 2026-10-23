@@ -3,6 +3,7 @@ import { Analytics } from "@vercel/analytics/next";
 import { QueryProvider } from "@/lib/query/client";
 import { LockGate } from "@/components/LockGate";
 import { ServiceWorkerRegister } from "@/components/ServiceWorkerRegister";
+import { SyncConflictDialog } from "@/components/sync/SyncConflictDialog";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -29,6 +30,8 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col">
         <QueryProvider>
           <LockGate>{children}</LockGate>
+          {/* 기기 동기화 충돌 선택 — 화면과 무관하게 한 번만 마운트한다(잠금 중에는 그리지 않음). */}
+          <SyncConflictDialog />
         </QueryProvider>
         <ServiceWorkerRegister />
         <Analytics />
