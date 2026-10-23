@@ -2,6 +2,7 @@ import Dexie, { type Table } from "dexie";
 import type {
   Member, Connection, TokenCache, Holding, PriceCache, FxRate, DailySnapshot, Settings, SavingsAccount,
   PensionAccount, CoinHolding, LoanAccount, AssetSnapshot, Goal, EnvelopeItem, EnvelopeConfig, SheetExportConfig,
+  SyncConfig,
 } from "@/lib/types";
 
 /**
@@ -34,6 +35,7 @@ export class DotoriDB extends Dexie {
   envelopeItems!: Table<EnvelopeItem, string>;    // key: id (통장 쪼개기 항목)
   envelopeConfig!: Table<EnvelopeConfig, string>; // key: id (커스텀 태그·은행)
   sheetExport!: Table<SheetExportConfig, string>; // key: id (구글 시트 내보내기 설정, 단일 행)
+  syncConfig!: Table<SyncConfig, string>; // key: id (기기 동기화 설정, 단일 행)
 
   constructor() {
     super("dotori");
@@ -86,6 +88,20 @@ export class DotoriDB extends Dexie {
     // v10: 구글 시트 내보내기 설정 테이블 추가 (기기별, 백업 제외)
     this.version(10).stores({
       sheetExport: "id",
+    });
+    // v11: 기기 동기화 설정 테이블 추가 (기기별, 백업 제외).
+    // savings·coin 중 source가 없는 예전 행을 MANUAL로 채운다 — 인덱스 조회
+    // where("source").equals("MANUAL")에서 빠지면 동기화 수집·교체가 어긋난다.
+    this.version(11).stores({
+      syncConfig: "id",
+    }).upgrade(async (tx) => {
+      const backfill = (row: { source?: string }) => {
+        if (row.source === undefined) {
+          row.source = "MANUAL";
+        }
+      };
+      await tx.table("savings").toCollection().modify(backfill);
+      await tx.table("coin").toCollection().modify(backfill);
     });
   }
 }

@@ -226,3 +226,21 @@ export interface SheetExportConfig {
   secretEnc: string;    // 공유 비밀키 (세션 키로 암호화, base64)
   updatedAt: number;
 }
+
+/** 기기 동기화 설정(단일 행). 기기별 민감 설정 → 백업·동기화 대상 아님. */
+export interface SyncConfig {
+  id: "sync";                    // 고정 키
+  syncKeyEnc: string;            // 동기화 키(Crockford 표기 문자열)를 세션 키로 암호화(iv.ciphertext)
+  keyId: string;                 // SHA-256(키) 앞 8바이트 hex — 서버 메타와 대조
+  deviceName: string;            // 출처 표시용 기기 이름
+  lastRevision: number;          // 마지막으로 성공한 받기·올리기의 서버 revision (빈 서버 = 0)
+  lastSyncedHash: string | null; // 마지막 성공 직후 로컬에서 다시 계산한 내용 해시
+  updatedAt: number;
+}
+
+/** 동기화 서버에 저장된 한 버전의 출처 정보. */
+export interface SyncRemoteMeta {
+  revision: number;
+  savedAt: string;    // ISO 시각(서버 기준)
+  deviceName: string;
+}
