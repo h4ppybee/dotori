@@ -317,6 +317,7 @@ function writeCurrent_(folder, text) {
 /**
  * v-<revision>.json 중 최신 10개만 남기고 휴지통으로 옮긴다(드라이브 휴지통에서 30일간 복구 가능).
  * keepId(방금 만든 버전 파일)는 번호가 더 큰 옛 파일이 남아 있어도 옮기지 않는다 — 메타가 가리킬 파일이다.
+ * 그 파일도 10개에 포함하므로 나머지는 최신 9개만 남긴다.
  */
 function pruneVersions_(folder, keepId) {
   const versions = [];
@@ -332,7 +333,8 @@ function pruneVersions_(folder, keepId) {
     }
   }
   versions.sort(function (a, b) { return b.revision - a.revision; });
-  versions.slice(SYNC_KEEP_VERSIONS).forEach(function (v) { v.file.setTrashed(true); });
+  const keepOthers = keepId ? SYNC_KEEP_VERSIONS - 1 : SYNC_KEEP_VERSIONS;
+  versions.slice(keepOthers).forEach(function (v) { v.file.setTrashed(true); });
 }
 
 function versionFileName_(revision) {
