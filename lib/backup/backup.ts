@@ -1,5 +1,8 @@
 import { db } from "@/lib/db/schema";
-import type { Connection, Holding, SavingsAccount, CoinHolding, HoldingSource } from "@/lib/types";
+import type {
+  Connection, Holding, SavingsAccount, CoinHolding, HoldingSource, Member, DailySnapshot,
+  PensionAccount, LoanAccount, AssetSnapshot, Goal, EnvelopeItem, EnvelopeConfig,
+} from "@/lib/types";
 
 // 백업 payload 버전(Dexie DB 버전과는 독립된 네임스페이스).
 // v2: 저축·연금·코인 포함. v3: 대출 포함.
@@ -33,26 +36,42 @@ interface BackupPayload {
   data: Partial<BackupData>;
 }
 
-export async function exportAll(): Promise<string> {
-  // 수동 데이터만 백업한다. 제외 대상:
+export interface SectorOverride {
+  symbol: string;
+  sector: string;
+}
+
+/**
+ * 수동 데이터 테이블 묶음. 백업(exportAll)과 기기 동기화(lib/device-sync/collect)가
+ * 같은 수집 결과를 쓴다 — 두 기능의 "수동 데이터" 범위가 어긋나지 않게 한곳에 둔다.
+ * 키 순서가 곧 백업 payload.data의 키 순서다(바꾸면 백업 파일 형식이 바뀐다).
+ */
+export interface ManualTables {
+  members: Member[];
+  connections: Connection[];   // type === "MANUAL"
+  holdings: Holding[];         // source === "MANUAL"
+  snapshots: DailySnapshot[];
+  sectorOverrides: SectorOverride[];
+  savings: SavingsAccount[];   // source === "MANUAL"
+  pension: PensionAccount[];
+  coin: CoinHolding[];         // source === "MANUAL"
+  debts: LoanAccount[];
+  assetSnapshots: AssetSnapshot[];
+  goal: Goal[];
+  envelopeItems: EnvelopeItem[];
+  envelopeConfig: EnvelopeConfig[];
+}
+
+export async function readManualTables(): Promise<ManualTables> {
+  // 수동 데이터만 모은다. 제외 대상:
   //  - API 설정: connections(TOSS_API/UPBIT_API), tokenCache — 기기별 민감정보
   //  - 자동 데이터: holdings/savings/coin 중 source==="AUTO" — 재연결+새로고침으로 복구
   //  - 재조회 캐시: priceCache, fxRates
   //  - 보안 앵커: settings(kdfSalt/verifier) — 보존된 API 연결 복호화 키가 이 salt에 묶여 있어 덮으면 손상
+  //  - 기기별 설정: sheetExport, syncConfig, session
   const [
-    members,
-    connections,
-    holdings,
-    snapshots,
-    sectorOverrides,
-    savings,
-    pension,
-    coin,
-    debts,
-    assetSnapshots,
-    goal,
-    envelopeItems,
-    envelopeConfig,
+    members, connections, holdings, snapshots, sectorOverrides, savings, pension, coin, debts,
+    assetSnapshots, goal, envelopeItems, envelopeConfig,
   ] = await Promise.all([
     db.members.toArray(),
     db.connections.where("type").equals("MANUAL").toArray(),
@@ -68,27 +87,19 @@ export async function exportAll(): Promise<string> {
     db.envelopeItems.toArray(),
     db.envelopeConfig.toArray(),
   ]);
+  return {
+    members, connections, holdings, snapshots, sectorOverrides, savings, pension, coin, debts,
+    assetSnapshots, goal, envelopeItems, envelopeConfig,
+  };
+}
 
+export async function exportAll(): Promise<string> {
+  const data = await readManualTables();
   const payload: BackupPayload = {
     schemaVersion: SCHEMA_VERSION,
     exportedAt: Date.now(),
-    data: {
-      members,
-      connections,
-      holdings,
-      snapshots,
-      sectorOverrides,
-      savings,
-      pension,
-      coin,
-      debts,
-      assetSnapshots,
-      goal,
-      envelopeItems,
-      envelopeConfig,
-    },
+    data,
   };
-
   return JSON.stringify(payload);
 }
 
