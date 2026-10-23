@@ -11,6 +11,7 @@ import { Switch } from "@/components/ui/Switch";
 import { ConnectionForm } from "@/components/settings/ConnectionForm";
 import { BackupPanel } from "@/components/settings/BackupPanel";
 import { SheetExportPanel } from "@/components/settings/SheetExportPanel";
+import { DeviceSyncPanel } from "@/components/settings/DeviceSyncPanel";
 import { getSettings, putSettings } from "@/lib/db/local-store";
 import { useSettings } from "@/lib/query/use-settings";
 import { useQueryClient } from "@tanstack/react-query";
@@ -283,6 +284,7 @@ export default function SettingsPage() {
           <ConnectionForm />
           <BackupPanel />
           <SheetExportPanel />
+          <DeviceSyncPanel />
           <PrivacySection />
           <PinSection />
           <DeleteAllSection />
