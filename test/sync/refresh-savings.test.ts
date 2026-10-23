@@ -1,9 +1,9 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import { db } from "@/lib/db/schema";
 import { refreshSavingsAccrual } from "@/lib/sync/refresh-savings";
 import type { SavingsAccount } from "@/lib/types";
 
-afterEach(async () => { await db.delete(); await db.open(); });
+afterEach(async () => { vi.restoreAllMocks(); await db.delete(); await db.open(); });
 
 const row = (over: Partial<SavingsAccount>): SavingsAccount => ({
   id: "x",
@@ -43,5 +43,29 @@ describe("refreshSavingsAccrual", () => {
     await refreshSavingsAccrual({ today: "2026-10-14" });
     expect(await refreshSavingsAccrual({ today: "2026-10-14" })).toBe(0);
     expect((await db.savings.get("dep"))?.amount).toBe(1_200_000);
+  });
+
+  it("행 전체를 다시 쓰지 않고 금액·기준일·updatedAt만 갱신한다", async () => {
+    await db.savings.bulkPut([row({ id: "dep", note: "메모", bank: "은행A" })]);
+    const bulkPutSpy = vi.spyOn(db.savings, "bulkPut");
+
+    expect(await refreshSavingsAccrual({ today: "2026-10-14" })).toBe(1);
+
+    expect(bulkPutSpy).not.toHaveBeenCalled();
+    const dep = await db.savings.get("dep");
+    expect(dep).toMatchObject({ note: "메모", bank: "은행A", balanceAsOf: "2026-10-14" });
+    expect(dep?.amount).toBeGreaterThan(1_000_000);
+  });
+
+  it("갱신과 동시에 들어온 다른 필드 변경을 잃지 않는다", async () => {
+    await db.savings.bulkPut([row({ id: "dep" })]);
+
+    const running = refreshSavingsAccrual({ today: "2026-10-14" });
+    await db.savings.update("dep", { note: "동기화로 받은 메모" });
+    await running;
+
+    const dep = await db.savings.get("dep");
+    expect(dep?.note).toBe("동기화로 받은 메모");
+    expect(dep?.balanceAsOf).toBe("2026-10-14");
   });
 });
