@@ -54,7 +54,7 @@ GitHub `h4ppybee/dotori` ↔ Vercel 프로젝트가 **Git 연동**되어 있다.
   - `api/toss/*`·`api/upbit/*` — 서버 프록시(토스·업비트)
 - `components/` — `ui/`(디자인 프리미티브·`DonutChart` 등), `portfolio/`, `holdings/`, `savings/`, `pension/`, `coin/`, `debt/`, `snapshot/`(스냅샷 섹션·목록 행·추이 콤보 차트), `goal/`(목표 카드·폼·빈상태·진행률 링), `envelope/`(통장 쪼개기: `ProfileSegment`·`RollupCard`·`EnvelopeItemRow`·`EnvelopeItemDialog`), `nav/`(탭 바, `NestedTabBar` — 자산·계획 공용), `sync/`(`SyncConflictDialog` — 기기 동기화 충돌 선택), `settings/`(연동 폼·백업 패널·`SheetExportPanel` — 구글 시트 내보내기 연결/해제/지금 내보내기·`DeviceSyncPanel` — 기기 동기화 설정)
 - `lib/` — 자산 소스: `toss/`·`upbit/`·`sync/`(동기화 — 토스·업비트·예적금 자동 증가). 도메인 서비스(순수 계산): `portfolio/`·`savings/`·`pension/`·`coin/`·`debt/`·`goal/`(순자산 목표 진척 순수 계산)·`envelope/`(통장 쪼개기 집계·태그색·프리셋). 공통: `db/`(Dexie·CRUD), `sector/`, `crypto/`, `snapshot/`(수동 전체 자산 스냅샷 — 캡처·순수 빌더·추이 헬퍼), `sheet-export/`(구글 시트 내보내기 — 순수 빌더·웹앱 클라이언트), `device-sync/`(기기 동기화 — 키·봉투·수집/해시·적용·엔진; 시세 갱신하는 `sync/`와는 다른 모듈), `apps-script/`(Apps Script 공용 요청 — 시트 내보내기·기기 동기화 공유), `backup/`, `nav/`, `query/`(자산별 훅, `use-asset-snapshots`·`use-goal`·`use-net-worth`·`use-envelope`·`use-sheet-export`·`use-device-sync` 포함)
-- `stores/` — `app-store.ts`(잠금·세션 키·마지막 갱신·`lastSheetExport`·`lastDeviceSync`·`syncConflict`), `nav-store.ts`(탭 복귀 지점)
+- `stores/` — `app-store.ts`(잠금·세션 키·마지막 갱신·`lastSheetExport`·`lastDeviceSync`·`syncConflict`·`dismissedConflictRevision`), `nav-store.ts`(탭 복귀 지점)
 - `integrations/apps-script/` — 구글 시트 내보내기 + 기기 동기화 저장소 겸용 Apps Script 원본(`sheet-export.gs`)과 설치 안내(`README.md`)
 - `test/` — 모듈 구조를 미러링한 테스트
 

@@ -8,7 +8,7 @@ import { refreshSavingsAccrual } from "@/lib/sync/refresh-savings";
 import { ensureFxFallback } from "@/lib/sync/fx-fallback";
 import { toLocalYmd } from "@/lib/format";
 import { runSheetExport } from "@/lib/query/use-sheet-export";
-import { awaitPendingPull, pushIfChanged } from "@/lib/device-sync/engine";
+import { awaitPendingPull, syncNow } from "@/lib/device-sync/engine";
 
 interface RefreshFailure {
   connectionId: string;
@@ -23,7 +23,7 @@ interface RefreshFailure {
  * 시작 시 오늘자 USDKRW가 없으면 공개 환율 API로 폴백한다(lib/sync/fx-fallback).
  * 성공 시 portfolio·pension·coin·savings 쿼리를 무효화한다.
  * 성공 후 시트 내보내기 설정이 있으면 기다리지 않고 내보낸다(결과는 app-store.lastSheetExport).
- * 잠금 해제 직후 시작된 기기 동기화 받기가 있으면 먼저 기다리고(최대 10초), 성공 후 바뀐 내용을 기다리지 않고 올린다.
+ * 잠금 해제 직후 시작된 기기 동기화 받기가 있으면 먼저 기다리고(최대 10초), 성공 후 기다리지 않고 받기→올리기(syncNow)를 한다.
  */
 export function useAssetsRefresh() {
   const sessionKey = useAppStore((s) => s.sessionKey);
@@ -63,8 +63,9 @@ export function useAssetsRefresh() {
       const currentSessionKey = useAppStore.getState().sessionKey;
       if (currentSessionKey !== null) {
         void runSheetExport(currentSessionKey);
-        // 납입일 자동 증가 등으로 바뀐 내용을 바로 올려 다른 기기와의 충돌을 줄인다(해시가 같으면 요청 없음).
-        void pushIfChanged();
+        // 받기 → 올리기. 대기 타임아웃으로 보류된 받기를 다시 시도하고, 납입일 자동 증가 등으로 바뀐 내용을
+        // 바로 올려 다른 기기와의 충돌을 줄인다(받을 것·바뀐 것이 없으면 meta 요청 하나로 끝난다).
+        void syncNow();
       }
     },
   });

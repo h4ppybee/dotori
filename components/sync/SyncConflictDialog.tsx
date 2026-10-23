@@ -9,7 +9,8 @@ import { resolveConflict, dismissConflict } from "@/lib/device-sync/engine";
 
 /**
  * 기기 동기화 충돌 선택. app/layout.tsx에서 한 번만 마운트하고 app-store.syncConflict를 읽는다.
- * 닫기 = 보류(다음 동기화 때 다시 묻는다). 잠금 상태에서는 그리지 않는다.
+ * 닫기 = 보류. 같은 원격 revision은 자동 동기화에서 다시 띄우지 않고, 설정의 "지금 동기화하기"나 새 revision이 오면 다시 묻는다.
+ * 잠금 상태에서는 그리지 않는다.
  */
 export function SyncConflictDialog() {
   const conflict = useAppStore((s) => s.syncConflict);
@@ -56,7 +57,7 @@ export function SyncConflictDialog() {
             {pending === "local" ? "올리는 중..." : "이 기기 내용으로 덮기"}
           </Button>
         </div>
-        <p className="text-[13px] text-muted leading-[1.45]">닫으면 다음에 동기화할 때 다시 물어봐요.</p>
+        <p className="text-[13px] text-muted leading-[1.45]">닫아도 설정의 &apos;지금 동기화하기&apos;에서 다시 고를 수 있어요.</p>
       </div>
     </Dialog>
   );

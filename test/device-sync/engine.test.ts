@@ -6,7 +6,7 @@ import { generateSyncKey } from "@/lib/device-sync/key";
 import { DEVICE_SYNC_MESSAGES } from "@/lib/device-sync/messages";
 import {
   pullIfNewer, pushIfChanged, syncNow, resolveConflict, awaitPendingPull, pendingPullPromise,
-  startDeviceSync, setDeviceSyncQueryClient,
+  startDeviceSync, setDeviceSyncQueryClient, dismissConflict,
 } from "@/lib/device-sync/engine";
 import { createFakeSyncServer } from "@/test/device-sync/fake-server";
 import { seedSyncedDevice, localHash, makeSessionKey, TEST_SECRET } from "@/test/device-sync/helpers";
@@ -22,7 +22,7 @@ beforeEach(() => {
 afterEach(async () => {
   vi.unstubAllGlobals();
   setDeviceSyncQueryClient(null);
-  useAppStore.setState({ locked: true, sessionKey: null, lastDeviceSync: null, syncConflict: null });
+  useAppStore.setState({ locked: true, sessionKey: null, lastDeviceSync: null, syncConflict: null, dismissedConflictRevision: null });
   await db.delete();
   await db.open();
 });
@@ -87,6 +87,24 @@ describe("pullIfNewer", () => {
     });
     expect((await db.savings.get("s1"))?.amount).toBe(1_000_000);
     expect((await getSyncConfig())?.lastRevision).toBe(0);
+  });
+
+  it("받는 도중 잠기면 충돌 다이얼로그를 띄우지 않는다(기록만 남긴다)", async () => {
+    const key = generateSyncKey();
+    await server.remotePut(key, syncDataWith({ savings: [savings("s1", 2_000_000)] }));
+    await seedSyncedDevice({ key, lastSyncedHash: "old-hash" });
+    await db.savings.put(savings("s1", 1_000_000));
+    let release!: () => void;
+    server.hooks.beforeGet = () => new Promise<void>((resolve) => { release = resolve; });
+
+    const pulling = pullIfNewer();
+    await vi.waitFor(() => expect(server.calls).toContain("sync.get"));
+    useAppStore.getState().lock();
+    release();
+
+    expect((await pulling).status).toBe("conflict");
+    expect(useAppStore.getState().syncConflict).toBeNull();
+    expect(useAppStore.getState().lastDeviceSync).toMatchObject({ status: "conflict" });
   });
 
   it("meta와 get 사이에 다른 기기가 올리면 get 응답의 revision을 기록한다", async () => {
@@ -199,6 +217,38 @@ describe("syncNow", () => {
     await db.savings.put(savings("s1", 1_000_000));
     expect((await syncNow()).status).toBe("pushed");
     expect(server.calls).toEqual(["sync.meta", "sync.put"]);
+  });
+});
+
+describe("충돌 다이얼로그 닫기(보류)", () => {
+  async function seedConflict() {
+    const key = generateSyncKey();
+    await server.remotePut(key, syncDataWith({ savings: [savings("s1", 2_000_000)] }));
+    await seedSyncedDevice({ key, lastSyncedHash: "old-hash" });
+    await db.savings.put(savings("s1", 1_000_000));
+    expect((await pullIfNewer()).status).toBe("conflict");
+    return key;
+  }
+
+  it("닫은 revision은 자동 동기화에서 다시 띄우지 않고, 새 revision이 오면 다시 띄운다", async () => {
+    const key = await seedConflict();
+    dismissConflict();
+
+    expect((await pullIfNewer()).status).toBe("conflict");
+    expect(useAppStore.getState().syncConflict).toBeNull();
+    expect(useAppStore.getState().lastDeviceSync).toMatchObject({ status: "conflict" });
+
+    await server.remotePut(key, syncDataWith({ savings: [savings("s1", 3_000_000)] }));
+    expect((await pullIfNewer()).status).toBe("conflict");
+    expect(useAppStore.getState().syncConflict?.remote.revision).toBe(2);
+  });
+
+  it("'지금 동기화하기'(사용자 요청)는 닫은 revision이어도 다시 띄운다", async () => {
+    await seedConflict();
+    dismissConflict();
+
+    expect((await syncNow({ reopenDismissedConflict: true })).status).toBe("conflict");
+    expect(useAppStore.getState().syncConflict?.remote.revision).toBe(1);
   });
 });
 

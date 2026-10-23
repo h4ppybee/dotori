@@ -43,8 +43,9 @@ export function useConnectDevice() {
   });
 }
 
+/** 사용자가 직접 누른 "지금 동기화하기" — 닫아 둔 충돌도 다시 묻는다. */
 export function useSyncNow() {
-  return useMutation({ mutationFn: () => syncNow() });
+  return useMutation({ mutationFn: () => syncNow({ reopenDismissedConflict: true }) });
 }
 
 export function useDisableDeviceSync() {

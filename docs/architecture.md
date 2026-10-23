@@ -133,7 +133,7 @@ docs/                      본 문서 + superpowers/(스펙·플랜)
 ```
 [unlock()] → useAppStore.subscribe(sessionKey null→값) → pullIfNewer()  (동기 시작, pendingPull)
 [useAssetsRefresh·useRefresh mutationFn] → awaitPendingPull(10s, 타임아웃이면 그 받기 보류) → 갱신
-[useAssetsRefresh 성공] → runSheetExport + pushIfChanged (fire-and-forget)
+[useAssetsRefresh 성공] → runSheetExport + syncNow (fire-and-forget, 받기 → 올리기)
 [설정 "지금 동기화"] → syncNow = pullIfNewer → pushIfChanged
 [결과] → app-store.lastDeviceSync(persist) · syncConflict(비영속 → SyncConflictDialog)
 ```
@@ -145,7 +145,7 @@ docs/                      본 문서 + superpowers/(스펙·플랜)
 - **예적금 자동 증가**: 저축 계좌는 금액 기준일 `balanceAsOf`("YYYY-MM-DD")를 가진다. 새 계좌이거나 금액이 바뀔 때만 `upsertSavings`/`bulkUpdateSavings`가 오늘로 찍는다. 통합 갱신 때 [refreshSavingsAccrual](../lib/sync/refresh-savings.ts)이 MANUAL 예적금(`DEPOSIT`·KRW·월 불입액·만기일 있음)에 순수 함수 [accrueDeposit](../lib/savings/deposit-accrual.ts)을 적용한다. 납입일은 만기일 다음 날의 일자(만기 07-24 → 매월 25일, 만기가 말일이면 1일, 그 달에 없는 일자는 말일로 보정)이고, `기준일 < 납입일 ≤ min(오늘, 만기일)`인 횟수만큼 월 불입액을 더한 뒤 기준일을 오늘로 옮긴다. 기준일이 없는 기존 행은 소급하지 않고 기준일만 초기화한다.
 - **자산 스냅샷(수동 전체)**: 자동 갱신 흐름과 별개로, 자산 탭 하단 [SnapshotSection](../components/snapshot/SnapshotSection.tsx)의 "+ 지금 기록" 버튼을 누르면 [captureAssetSnapshot](../lib/snapshot/capture.ts)이 DB 상태를 화면과 동일한 VM 5종(주식·저축·연금·코인·부채)으로 계산해 순수 빌더 [buildAssetSnapshot](../lib/snapshot/asset-snapshot.ts)에 넘기고, 결과 1건을 `assetSnapshots` 테이블에 저장한다. 이전의 주식 전용 일별 자동 스냅샷(`snapshots` 테이블, `Settings.lastSnapshotDate`)은 제거되어 이 수동 전체 스냅샷으로 일원화됐다 — `snapshots` 테이블과 과거 데이터는 하위호환을 위해 보존만 되고 더 이상 기록되지 않는다. 추이는 [SnapshotTrendChart](../components/snapshot/SnapshotTrendChart.tsx)가 최신 20건을 [buildTrendData](../lib/snapshot/trend.ts)로 가공해 순자산 선(상단 밴드) + 직전 대비 변화량 막대(하단 밴드)로 보여준다. 목록·상세는 `/assets/snapshots`, `/assets/snapshots/[id]`.
 - **구글 시트 내보내기**: `useAssetsRefresh`의 `onSuccess`에서 설정(`sheetExport` 테이블)이 있으면 [runSheetExport](../lib/query/use-sheet-export.ts)를 기다리지 않고(fire-and-forget) 실행한다 — 갱신 스피너·쿼리 무효화가 내보내기 때문에 늦어지지 않게 하기 위함. [exportToSheet](../lib/sheet-export/export.ts)는 설정 복호화 → DB 읽기 → 화면과 같은 VM 빌더로 [buildSheetPayload](../lib/sheet-export/build-payload.ts) → Apps Script 웹앱에 POST 순으로 조립하며, 어떤 실패도 throw하지 않고 `{ status: "error", message }`로 돌려준다. 결과는 자동·수동(설정 화면의 "지금 내보내기") 공용으로 `stores/app-store.ts`의 `lastSheetExport`에 기록되고, 자산 탭의 [RefreshBar](../components/portfolio/RefreshBar.tsx)와 설정의 [SheetExportPanel](../components/settings/SheetExportPanel.tsx)이 여기서 읽는다. 내보내기 실패는 갱신 실패로 취급하지 않는다. 상세 계약·오류 코드는 [external-api.md](external-api.md).
-- **기기 동기화**: 여러 기기가 같은 수동 데이터(`snapshots` 제외)를 공유한다. 잠금 해제 순간 `startDeviceSync`가 받기(`pullIfNewer`)를 동기적으로 시작하고, 통합 갱신·주식 갱신은 그 받기를 `awaitPendingPull`로 최대 10초 기다린 뒤 진행한다. 통합 갱신 성공 후에는 `pushIfChanged`로 바뀐 내용을 기다리지 않고 올린다. 결과는 `app-store.lastDeviceSync`(설정 패널)와 `syncConflict`(충돌 시 [SyncConflictDialog](../components/sync/SyncConflictDialog.tsx))에 기록된다. 수집·해시·암호화·적용 규칙 상세는 [device-sync.md](device-sync.md).
+- **기기 동기화**: 여러 기기가 같은 수동 데이터(`snapshots` 제외)를 공유한다. 잠금 해제 순간 `startDeviceSync`가 받기(`pullIfNewer`)를 동기적으로 시작하고, 통합 갱신·주식 갱신은 그 받기를 `awaitPendingPull`로 최대 10초 기다린 뒤 진행한다. 통합 갱신 성공 후에는 `syncNow`(받기 → 올리기)를 기다리지 않고 실행해 보류된 받기를 다시 시도하고 바뀐 내용을 올린다. 결과는 `app-store.lastDeviceSync`(설정 패널)와 `syncConflict`(충돌 시 [SyncConflictDialog](../components/sync/SyncConflictDialog.tsx))에 기록된다. 수집·해시·암호화·적용 규칙 상세는 [device-sync.md](device-sync.md).
 
 ---
 

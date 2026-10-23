@@ -37,9 +37,12 @@ interface AppState {
   revealAmounts: () => void;
   lastDeviceSync: DeviceSyncStatus | null;
   syncConflict: SyncConflictState | null;
+  /** 사용자가 충돌 다이얼로그를 닫은(보류한) 원격 revision. 같은 revision은 자동 동기화에서 다시 띄우지 않는다(비영속). */
+  dismissedConflictRevision: number | null;
   setLastDeviceSync: (s: DeviceSyncStatus) => void;
   clearLastDeviceSync: () => void;
   setSyncConflict: (c: SyncConflictState | null) => void;
+  setDismissedConflictRevision: (revision: number | null) => void;
 }
 
 /**
@@ -64,6 +67,7 @@ export const useAppStore = create<AppState>()(
       amountsRevealed: false,
       lastDeviceSync: null,
       syncConflict: null,
+      dismissedConflictRevision: null,
       unlock: (key) => {
         set({ locked: false, sessionKey: key });
         // 자동 잠금용 세션 영속화 (fire-and-forget). 잠금 해제 = 활동으로 보고 만료시각을 연장한다.
@@ -83,6 +87,7 @@ export const useAppStore = create<AppState>()(
       // 동기화를 끄거나 전체 삭제했을 때 지난 기록이 남지 않게 지운다.
       clearLastDeviceSync: () => set({ lastDeviceSync: null }),
       setSyncConflict: (c) => set({ syncConflict: c }),
+      setDismissedConflictRevision: (revision) => set({ dismissedConflictRevision: revision }),
     }),
     {
       name: "dotori-app",

@@ -383,3 +383,6 @@ export async function updateSyncState(patch: { lastRevision: number; lastSyncedH
 }
 
 export const clearSyncConfig = () => db.syncConfig.delete("sync");
+
+/** 읽어 둔 설정 행을 그대로 되돌린다("새 키로 다시 시작" 실패 시 이전 키·revision·해시 복원). */
+export const restoreSyncConfig = (rec: SyncConfig) => db.syncConfig.put(rec);

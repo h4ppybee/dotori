@@ -42,7 +42,8 @@ function InfoRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-const SECRET_NOTICE = "채팅이나 메모 앱에 남기지 말고 다른 기기에 직접 입력해 주세요.";
+// 복사 버튼과 맞춘 안내: 복사는 다른 기기에 바로 붙여넣는 용도로만 쓰고, 어딘가에 보관하지 않게 한다.
+const SECRET_NOTICE = "복사했다면 다른 기기에 붙여넣은 뒤 클립보드를 비워 주세요. 채팅이나 메모 앱에는 남기지 않는 게 안전해요.";
 
 function KeyNotice({ keyText }: { keyText: string }) {
   const [copied, setCopied] = useState(false);
@@ -199,7 +200,11 @@ export function DeviceSyncPanel() {
   async function handleDisable() {
     setConfirmDisable(false);
     setError(null);
-    await disable.mutateAsync();
+    const result = await disable.mutateAsync();
+    if (result.status === "error") {
+      setError(result.message);
+      return;
+    }
     setCreatedKey(null);
     setInfo(null);
   }

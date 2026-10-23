@@ -16,5 +16,6 @@ export const DEVICE_SYNC_MESSAGES = {
   notEnabled: "기기 동기화가 꺼져 있어요.",
   invalidKey: "동기화 키 형식이 아니에요. 다른 기기에서 본 키를 그대로 입력해 주세요.",
   notStarted: "아직 동기화를 시작한 기기가 없어요. '이 기기에서 처음 시작하기'를 눌러 주세요.",
+  setupPushFailed: "동기화 내용을 올리지 못했어요. 잠시 후 다시 시도해 주세요.",
   unexpected: "동기화 중 문제가 생겼어요.",
 } as const;

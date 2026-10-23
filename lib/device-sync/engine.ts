@@ -2,7 +2,7 @@ import type { QueryClient } from "@tanstack/react-query";
 import { useAppStore } from "@/stores/app-store";
 import { decrypt } from "@/lib/crypto/crypto";
 import {
-  getSheetExportConfig, getSyncConfig, saveSyncConfig, clearSyncConfig, updateSyncState,
+  getSheetExportConfig, getSyncConfig, saveSyncConfig, clearSyncConfig, updateSyncState, restoreSyncConfig,
 } from "@/lib/db/local-store";
 import { parseSyncKey, generateSyncKey, formatSyncKey, keyIdOf, type SyncKeyBytes } from "@/lib/device-sync/key";
 import { seal, open, SyncKeyError } from "@/lib/device-sync/envelope";
@@ -20,8 +20,10 @@ import type { SyncRemoteMeta } from "@/lib/types";
 /**
  * 기기 동기화 엔진(1단계: 잠금 해제 시 받기 · "지금 동기화" · 통합 갱신 후 올리기 · 충돌 해소).
  * - 어떤 공개 함수도 throw하지 않는다. 결과는 SyncOutcome으로 돌려주고 app-store.lastDeviceSync에 기록한다.
- * - 모든 작업은 모듈 큐(exclusive)로 한 번에 하나씩 실행한다. 받기·올리기가 이미 진행 중이면
+ * - 모든 작업은 모듈 큐(enqueue)로 한 번에 하나씩 실행한다. 받기·올리기가 이미 진행 중이면
  *   그 프로미스를 그대로 돌려준다(탭 내 single-flight. 탭 간은 2단계 navigator.locks).
+ *   syncConfig를 바꾸는 설정 흐름(처음 시작·연결·새 키·끄기)도 같은 큐에서 실행한다 — 진행 중인 받기가
+ *   끈 뒤에 적용되거나, 설정 저장 전에 시작된 올리기 결과를 첫 올리기로 착각하지 않게.
  * - 판단은 lib/device-sync/decide(순수), 적용은 lib/device-sync/apply(단일 트랜잭션).
  * 흐름·규칙: docs/device-sync.md
  */
@@ -70,7 +72,10 @@ function errorMessage(err: unknown): string {
   return DEVICE_SYNC_MESSAGES.unexpected;
 }
 
-/** 결과를 app-store에 기록한다. skipped·deferred는 기록하지 않는다(아무 일도 일어나지 않았으므로). */
+/**
+ * 결과를 app-store에 기록한다. skipped·deferred는 기록하지 않는다(아무 일도 일어나지 않았으므로).
+ * 충돌은 다이얼로그를 띄우되, 잠긴 상태이거나 사용자가 이미 닫은(보류한) revision이면 기록만 남긴다.
+ */
 function record(outcome: SyncOutcome): SyncOutcome {
   const store = useAppStore.getState();
   const at = Date.now();
@@ -83,22 +88,41 @@ function record(outcome: SyncOutcome): SyncOutcome {
   }
   if (outcome.status === "conflict") {
     store.setLastDeviceSync({ at, status: "conflict", remote: outcome.remote });
+    if (store.sessionKey === null) {
+      return outcome; // 받는 도중 잠겼다 — 잠금 화면 위에 다이얼로그를 띄우지 않는다(다음 잠금 해제 받기에서 다시 판단)
+    }
+    if (store.dismissedConflictRevision === outcome.remote.revision) {
+      return outcome;
+    }
+    store.setDismissedConflictRevision(null);
     store.setSyncConflict({ remote: outcome.remote });
     return outcome;
   }
   store.setLastDeviceSync({ at, status: "ok", remote: outcome.remote ?? store.lastDeviceSync?.remote });
   store.setSyncConflict(null);
+  store.setDismissedConflictRevision(null);
   return outcome;
 }
 
-/** 큐에 넣어 하나씩 실행한다. 예외는 error 결과로 바꾸고 결과를 기록한다 — 반환 프로미스는 reject되지 않는다. */
-function exclusive(task: () => Promise<SyncOutcome>): Promise<SyncOutcome> {
-  const run = queue
-    .then(task)
-    .catch((err): SyncOutcome => ({ status: "error", message: errorMessage(err) }))
-    .then(record);
-  queue = run;
+/** 모듈 큐에 넣어 하나씩 실행한다. task의 reject는 반환 프로미스로만 전달하고 큐는 끊기지 않는다. */
+function enqueue<T>(task: () => Promise<T>): Promise<T> {
+  const run = queue.then(task);
+  queue = run.catch(() => undefined);
   return run;
+}
+
+/** 예외를 error 결과로 바꾼다(기록하지 않음). 큐 안에서 다른 동기화 작업을 직접 실행할 때 쓴다. */
+async function settle(task: () => Promise<SyncOutcome>): Promise<SyncOutcome> {
+  try {
+    return await task();
+  } catch (err) {
+    return { status: "error", message: errorMessage(err) };
+  }
+}
+
+/** 큐에 넣어 실행하고 결과를 기록한다 — 반환 프로미스는 reject되지 않는다. */
+function exclusive(task: () => Promise<SyncOutcome>): Promise<SyncOutcome> {
+  return enqueue(async () => record(await settle(task)));
 }
 
 async function loadContext(): Promise<ContextResult> {
@@ -137,14 +161,17 @@ async function loadContext(): Promise<ContextResult> {
   };
 }
 
+/** 지금 저장된 설정으로 컨텍스트를 읽어 task를 실행한다(큐에 넣지 않는다 — 큐 안에서 부른다). */
+async function inContext(task: (ctx: SyncContext) => Promise<SyncOutcome>): Promise<SyncOutcome> {
+  const loaded = await loadContext();
+  if (!loaded.ok) {
+    return loaded.outcome;
+  }
+  return task(loaded.ctx);
+}
+
 function withContext(task: (ctx: SyncContext) => Promise<SyncOutcome>): Promise<SyncOutcome> {
-  return exclusive(async () => {
-    const loaded = await loadContext();
-    if (!loaded.ok) {
-      return loaded.outcome;
-    }
-    return task(loaded.ctx);
-  });
+  return exclusive(() => inContext(task));
 }
 
 // ── 받기 ────────────────────────────────────────────────────────────────
@@ -338,8 +365,14 @@ export function pushIfChanged(): Promise<SyncOutcome> {
   return promise;
 }
 
-/** 설정의 "지금 동기화": 받기 → (충돌·오류·보류·꺼짐이 아니면) 올리기. */
-export async function syncNow(): Promise<SyncOutcome> {
+/**
+ * "지금 동기화"·통합 갱신 후: 받기 → (충돌·오류·보류·꺼짐이 아니면) 올리기. 받기가 먼저라 보류(deferred)된 받기도 다시 시도한다.
+ * reopenDismissedConflict: 사용자가 직접 누른 "지금 동기화하기" — 닫아 둔 충돌도 다시 묻는다.
+ */
+export async function syncNow(opts: { reopenDismissedConflict?: boolean } = {}): Promise<SyncOutcome> {
+  if (opts.reopenDismissedConflict) {
+    useAppStore.getState().setDismissedConflictRevision(null);
+  }
   const pulled = await pullIfNewer();
   if (pulled.status !== "noop" && pulled.status !== "applied" && pulled.status !== "autoResolved") {
     return pulled;
@@ -361,9 +394,14 @@ export function resolveConflict(choice: "local" | "remote"): Promise<SyncOutcome
   });
 }
 
-/** 충돌 다이얼로그 닫기 = 보류(다음 트리거에서 다시 판단한다 — lastRevision을 바꾸지 않았으므로). */
+/**
+ * 충돌 다이얼로그 닫기 = 보류. lastRevision을 바꾸지 않으므로 다음 트리거에서 다시 판단하지만,
+ * 같은 원격 revision이면 자동 동기화에서는 다시 띄우지 않는다(새 revision이 오거나 "지금 동기화하기"를 누르면 다시 묻는다).
+ */
 export function dismissConflict(): void {
-  useAppStore.getState().setSyncConflict(null);
+  const store = useAppStore.getState();
+  store.setDismissedConflictRevision(store.syncConflict?.remote.revision ?? null);
+  store.setSyncConflict(null);
 }
 
 /**
@@ -420,32 +458,50 @@ async function loadConnection(): Promise<ConnectionResult> {
   }
 }
 
-/** "이 기기에서 처음 시작": 빈 서버일 때만 키를 만들고 첫 올리기를 한다. */
-export async function startFirstDevice(input: { deviceName: string }): Promise<SetupResult> {
-  try {
-    const c = await loadConnection();
-    if (!c.ok) {
-      return { status: "error", message: c.message };
-    }
-    const meta = await syncMeta(c.conn);
-    if (meta.status === "error") {
-      return { status: "error", message: meta.message };
-    }
-    if (!meta.meta.empty) {
-      return { status: "alreadyStarted" };
-    }
-    const key = generateSyncKey();
-    const keyText = formatSyncKey(key);
-    await saveSyncConfig(c.sessionKey, {
-      syncKeyText: keyText, keyId: await keyIdOf(key), deviceName: input.deviceName,
-      lastRevision: 0, lastSyncedHash: null,
-    });
-    // 첫 올리기 결과는 lastDeviceSync에 기록된다. 실패해도 키는 만들어졌으니 보여주고 "지금 동기화"로 재시도한다.
-    await pushIfChanged();
-    return { status: "ok", keyText };
-  } catch (err) {
-    return { status: "error", message: errorMessage(err) };
+/** 설정 흐름의 실패 결과. 오류면 그 문구, 그 밖(충돌·noop 등 올리지 못함)은 일반 안내. */
+function setupFailure(outcome: SyncOutcome): { status: "error"; message: string } {
+  if (outcome.status === "error") {
+    return { status: "error", message: outcome.message };
   }
+  return { status: "error", message: DEVICE_SYNC_MESSAGES.setupPushFailed };
+}
+
+/**
+ * "이 기기에서 처음 시작": 빈 서버일 때만 키를 만들고 첫 올리기를 한다.
+ * 큐 안에서 설정 저장 → 올리기를 직접 실행한다 — 설정이 생기기 전에 시작된 올리기(skipped)를 재사용하지 않는다.
+ * 첫 올리기가 "pushed"가 아니면(다른 기기가 먼저 시작해 KEY_MISMATCH·네트워크 오류 등) 설정을 지우고 오류를 돌려준다.
+ */
+export function startFirstDevice(input: { deviceName: string }): Promise<SetupResult> {
+  return enqueue(async (): Promise<SetupResult> => {
+    try {
+      const c = await loadConnection();
+      if (!c.ok) {
+        return { status: "error", message: c.message };
+      }
+      const meta = await syncMeta(c.conn);
+      if (meta.status === "error") {
+        return { status: "error", message: meta.message };
+      }
+      if (!meta.meta.empty) {
+        return { status: "alreadyStarted" };
+      }
+      const key = generateSyncKey();
+      const keyText = formatSyncKey(key);
+      await saveSyncConfig(c.sessionKey, {
+        syncKeyText: keyText, keyId: await keyIdOf(key), deviceName: input.deviceName,
+        lastRevision: 0, lastSyncedHash: null,
+      });
+      const outcome = await settle(() => inContext(pushCore));
+      if (outcome.status !== "pushed") {
+        await clearSyncConfig();
+        return setupFailure(outcome);
+      }
+      record(outcome);
+      return { status: "ok", keyText };
+    } catch (err) {
+      return { status: "error", message: errorMessage(err) };
+    }
+  });
 }
 
 /** "다른 기기에서 연결" 1단계: 키 형식·서버 시작 여부·keyId를 확인하고, 이 기기에 수동 데이터가 있는지 알려준다. */
@@ -475,71 +531,95 @@ export async function prepareConnect(keyText: string): Promise<PrepareConnectRes
   }
 }
 
-/** "다른 기기에서 연결" 2단계: 설정을 저장하고 원격으로 교체한다. 받지 못하면 설정을 지운다. */
-export async function connectExistingDevice(input: { keyText: string; deviceName: string }): Promise<SyncOutcome> {
-  const key = parseSyncKey(input.keyText);
-  if (!key) {
-    return { status: "error", message: DEVICE_SYNC_MESSAGES.invalidKey };
-  }
-  const c = await loadConnection();
-  if (!c.ok) {
-    return { status: "error", message: c.message };
-  }
-  await saveSyncConfig(c.sessionKey, {
-    syncKeyText: formatSyncKey(key), keyId: await keyIdOf(key), deviceName: input.deviceName,
-    lastRevision: 0, lastSyncedHash: null,
+/** "다른 기기에서 연결" 2단계: 큐 안에서 설정을 저장하고 원격으로 교체한다. 받지 못하면 설정을 지운다. throw하지 않는다. */
+export function connectExistingDevice(input: { keyText: string; deviceName: string }): Promise<SyncOutcome> {
+  return enqueue(async (): Promise<SyncOutcome> => {
+    try {
+      const key = parseSyncKey(input.keyText);
+      if (!key) {
+        return { status: "error", message: DEVICE_SYNC_MESSAGES.invalidKey };
+      }
+      const c = await loadConnection();
+      if (!c.ok) {
+        return { status: "error", message: c.message };
+      }
+      await saveSyncConfig(c.sessionKey, {
+        syncKeyText: formatSyncKey(key), keyId: await keyIdOf(key), deviceName: input.deviceName,
+        lastRevision: 0, lastSyncedHash: null,
+      });
+      const outcome = await settle(() => inContext(receiveRemote));
+      if (outcome.status === "applied") {
+        return record(outcome);
+      }
+      // 반쯤 연결된 상태(lastSyncedHash 없음)로 남으면 다음 받기가 곧바로 충돌이 된다 → 처음 상태로 되돌린다.
+      await clearSyncConfig();
+      useAppStore.getState().clearLastDeviceSync();
+      return outcome;
+    } catch (err) {
+      return { status: "error", message: errorMessage(err) };
+    }
   });
-  const outcome = await withContext(receiveRemote);
-  if (outcome.status !== "applied") {
-    // 반쯤 연결된 상태(lastSyncedHash 없음)로 남으면 다음 받기가 곧바로 충돌이 된다 → 처음 상태로 되돌린다.
-    await clearSyncConfig();
-    useAppStore.getState().clearLastDeviceSync();
-  }
-  return outcome;
 }
 
-/** "새 키로 다시 시작": 새 키 + reset put(서버 revision은 이어가고 keyId만 교체, 이전 버전 파일은 보관 규칙대로). */
-export async function restartWithNewKey(): Promise<SetupResult> {
-  try {
-    const c = await loadConnection();
-    if (!c.ok) {
-      return { status: "error", message: c.message };
+/**
+ * "새 키로 다시 시작": 새 키 + reset put(서버 revision은 이어가고 keyId만 교체, 이전 버전 파일은 보관 규칙대로).
+ * reset put이 "pushed"가 아니면 이전 설정(키·revision·해시)을 그대로 되돌린다 — 서버 keyId도 그대로라 이어서 동기화된다.
+ */
+export function restartWithNewKey(): Promise<SetupResult> {
+  return enqueue(async (): Promise<SetupResult> => {
+    try {
+      const c = await loadConnection();
+      if (!c.ok) {
+        return { status: "error", message: c.message };
+      }
+      const prev = await getSyncConfig();
+      if (!prev) {
+        return { status: "error", message: DEVICE_SYNC_MESSAGES.notEnabled };
+      }
+      const meta = await syncMeta(c.conn);
+      if (meta.status === "error") {
+        return { status: "error", message: meta.message };
+      }
+      const baseRevision = meta.meta.empty ? 0 : meta.meta.revision;
+      const key = generateSyncKey();
+      const keyText = formatSyncKey(key);
+      await saveSyncConfig(c.sessionKey, {
+        syncKeyText: keyText, keyId: await keyIdOf(key), deviceName: prev.deviceName,
+        lastRevision: baseRevision, lastSyncedHash: null,
+      });
+      const outcome = await settle(() => inContext(async (ctx) => {
+        const local = await collectSyncData();
+        const localHash = await hashCanonical(canonicalize(local));
+        return putLocal(ctx, local, localHash, { baseRevision, reset: true });
+      }));
+      if (outcome.status !== "pushed") {
+        await restoreSyncConfig(prev);
+        return setupFailure(outcome);
+      }
+      record(outcome);
+      return { status: "ok", keyText };
+    } catch (err) {
+      return { status: "error", message: errorMessage(err) };
     }
-    const config = await getSyncConfig();
-    if (!config) {
-      return { status: "error", message: DEVICE_SYNC_MESSAGES.notEnabled };
-    }
-    const meta = await syncMeta(c.conn);
-    if (meta.status === "error") {
-      return { status: "error", message: meta.message };
-    }
-    const baseRevision = meta.meta.empty ? 0 : meta.meta.revision;
-    const key = generateSyncKey();
-    const keyText = formatSyncKey(key);
-    await saveSyncConfig(c.sessionKey, {
-      syncKeyText: keyText, keyId: await keyIdOf(key), deviceName: config.deviceName,
-      lastRevision: baseRevision, lastSyncedHash: null,
-    });
-    const outcome = await withContext(async (ctx) => {
-      const local = await collectSyncData();
-      const localHash = await hashCanonical(canonicalize(local));
-      return putLocal(ctx, local, localHash, { baseRevision, reset: true });
-    });
-    if (outcome.status === "error") {
-      return { status: "error", message: outcome.message };
-    }
-    return { status: "ok", keyText };
-  } catch (err) {
-    return { status: "error", message: errorMessage(err) };
-  }
+  });
 }
 
-/** "끄기": 이 기기의 동기화 설정과 기록만 지운다(서버 파일·다른 기기는 그대로). */
-export async function disableDeviceSync(): Promise<void> {
-  await clearSyncConfig();
-  const store = useAppStore.getState();
-  store.clearLastDeviceSync();
-  store.setSyncConflict(null);
+export type DisableResult = { status: "ok" } | { status: "error"; message: string };
+
+/** "끄기": 이 기기의 동기화 설정과 기록만 지운다(서버 파일·다른 기기는 그대로). 진행 중인 작업이 끝난 뒤 실행하고, throw하지 않는다. */
+export function disableDeviceSync(): Promise<DisableResult> {
+  return enqueue(async (): Promise<DisableResult> => {
+    try {
+      await clearSyncConfig();
+      const store = useAppStore.getState();
+      store.clearLastDeviceSync();
+      store.setSyncConflict(null);
+      store.setDismissedConflictRevision(null);
+      return { status: "ok" };
+    } catch (err) {
+      return { status: "error", message: errorMessage(err) };
+    }
+  });
 }
 
 /** "다른 기기 연결 정보 보기": 웹앱 URL·비밀키·동기화 키를 복호화해 보여준다. 꺼져 있으면 null. */
