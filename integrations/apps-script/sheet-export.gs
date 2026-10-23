@@ -4,7 +4,8 @@
  *   dotori_* 탭을 통째로 덮어쓴다(기존 동작 그대로 — 하위 호환).
  * - 기기 동기화(action "sync.meta" | "sync.get" | "sync.put"): 앱이 암호화한 봉투(blob)를 배포자 드라이브
  *   dotori-sync/ 폴더에 current.json + 최근 10개 버전(v-<revision>.json)으로 보관한다.
- *   스크립트는 봉투를 해독하지 못한다(키는 기기에만 있다). 메타(revision·저장 시각·기기 이름·keyId)는 스크립트 속성.
+ *   스크립트는 봉투를 해독하지 못한다(키는 기기에만 있다). 메타(revision·저장 시각·기기 이름·keyId·버전 파일 id)는
+ *   스크립트 속성.
  * 배포: 웹앱 / 실행: 나 / 액세스: 모든 사용자. 비밀키는 스크립트 속성 DOTORI_SECRET.
  * 원본: dotori 저장소 integrations/apps-script/sheet-export.gs — 시트에서 직접 고치지 말고 여기서 고친 뒤 붙여넣는다.
  * 앱 쪽 계약: docs/external-api.md, 테스트용 가짜 서버: test/device-sync/fake-server.ts(규칙을 함께 고친다).
@@ -143,7 +144,8 @@ function handleSyncGet_() {
     return json_({ ok: true, empty: true });
   }
   // 메타는 파일을 다 쓴 뒤 마지막에 갱신하므로, 메타가 가리키는 버전 파일은 항상 있다 → 락 없이 읽는다.
-  const file = findFile_(getSyncFolder_(), versionFileName_(meta.revision));
+  // 파일 id로 읽는다(같은 이름 파일이 여럿이어도 메타가 가리키는 바로 그 파일). fileId가 없는 예전 메타만 이름으로 찾는다.
+  const file = readVersionFile_(meta);
   if (!file) {
     return json_({ ok: false, error: "SYNC_FILE_MISSING" });
   }
@@ -185,13 +187,16 @@ function handleSyncPut_(body) {
     };
     const text = JSON.stringify(record);
     const folder = getSyncFolder_();
-    // 저장 순서: 새 버전 파일 → current.json → 오래된 버전 정리 → 마지막에 메타.
+    // 저장 순서: (같은 이름 옛 파일 휴지통) → 새 버전 파일 → current.json → 오래된 버전 정리 → 마지막에 메타.
     // 메타가 가리키는 revision의 파일은 항상 존재한다(중간에 실패하면 메타는 이전 revision 그대로).
-    folder.createFile(versionFileName_(record.revision), text, JSON_MIME);
+    const name = versionFileName_(record.revision);
+    trashFilesNamed_(folder, name);
+    const created = folder.createFile(name, text, JSON_MIME);
     writeCurrent_(folder, text);
-    pruneVersions_(folder);
+    pruneVersions_(folder, created.getId());
     PropertiesService.getScriptProperties().setProperty(SYNC_META_PROP, JSON.stringify({
       revision: record.revision, savedAt: record.savedAt, deviceName: record.deviceName, keyId: record.keyId,
+      fileId: created.getId(),
     }));
     return json_({ ok: true, revision: record.revision, savedAt: record.savedAt });
   } catch (err) {
@@ -238,10 +243,51 @@ function getSyncFolder_() {
       // 폴더가 지워졌거나 접근할 수 없으면 아래에서 다시 찾거나 만든다.
     }
   }
-  const found = DriveApp.getFoldersByName(SYNC_FOLDER_NAME);
-  const folder = found.hasNext() ? found.next() : DriveApp.createFolder(SYNC_FOLDER_NAME);
+  const folder = findFolder_(SYNC_FOLDER_NAME) || DriveApp.createFolder(SYNC_FOLDER_NAME);
   props.setProperty(SYNC_FOLDER_PROP, folder.getId());
   return folder;
+}
+
+/** 이름으로 폴더를 찾는다. 휴지통에 있는 폴더는 건너뛴다(지운 폴더에 계속 쓰지 않게). */
+function findFolder_(name) {
+  const it = DriveApp.getFoldersByName(name);
+  while (it.hasNext()) {
+    const folder = it.next();
+    if (!folder.isTrashed()) {
+      return folder;
+    }
+  }
+  return null;
+}
+
+/**
+ * 메타가 가리키는 버전 파일. fileId가 있으면 id로 읽고(지워졌거나 휴지통이면 없음으로 본다),
+ * fileId가 없는 예전 메타만 이름(v-<revision>.json)으로 찾는다.
+ */
+function readVersionFile_(meta) {
+  if (typeof meta.fileId === "string" && meta.fileId !== "") {
+    try {
+      const file = DriveApp.getFileById(meta.fileId);
+      return file.isTrashed() ? null : file;
+    } catch (err) {
+      return null;
+    }
+  }
+  return findFile_(getSyncFolder_(), versionFileName_(meta.revision));
+}
+
+/**
+ * 같은 이름의 휴지통 밖 파일을 모두 휴지통으로 옮긴다(방어용). 예전 실패로 남은 v-<revision>.json이 있어도
+ * 이름 조회가 새 파일 대신 옛 파일을 집지 않게 한다. 휴지통에서 30일간 복구할 수 있다.
+ */
+function trashFilesNamed_(folder, name) {
+  const it = folder.getFilesByName(name);
+  while (it.hasNext()) {
+    const file = it.next();
+    if (!file.isTrashed()) {
+      file.setTrashed(true);
+    }
+  }
 }
 
 /**
@@ -268,14 +314,17 @@ function writeCurrent_(folder, text) {
   folder.createFile(SYNC_CURRENT_FILE, text, JSON_MIME);
 }
 
-/** v-<revision>.json 중 최신 10개만 남기고 휴지통으로 옮긴다(드라이브 휴지통에서 30일간 복구 가능). */
-function pruneVersions_(folder) {
+/**
+ * v-<revision>.json 중 최신 10개만 남기고 휴지통으로 옮긴다(드라이브 휴지통에서 30일간 복구 가능).
+ * keepId(방금 만든 버전 파일)는 번호가 더 큰 옛 파일이 남아 있어도 옮기지 않는다 — 메타가 가리킬 파일이다.
+ */
+function pruneVersions_(folder, keepId) {
   const versions = [];
   const it = folder.getFiles();
   while (it.hasNext()) {
     const file = it.next();
-    if (file.isTrashed()) {
-      continue; // 이미 정리된 버전은 다시 세거나 옮기지 않는다
+    if (file.isTrashed() || file.getId() === keepId) {
+      continue; // 이미 정리된 버전은 다시 세거나 옮기지 않고, 방금 만든 버전은 남긴다
     }
     const match = SYNC_VERSION_FILE_RE.exec(file.getName());
     if (match) {

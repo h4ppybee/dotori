@@ -210,7 +210,7 @@ Apps Script 원본과 설치 절차·수동 확인 체크리스트는 [integrati
 | `sync.get` | 없음 | `{ ok, empty: true }` 또는 `{ ok, revision, savedAt, deviceName, keyId, blob }` | `{ ok: false, error: "SYNC_FILE_MISSING" }` |
 | `sync.put` | `{ baseRevision, keyId, deviceName, blob, force?, reset? }` | `{ ok, revision, savedAt }` | `{ ok: false, error: "CONFLICT", remote: { revision, savedAt, deviceName } }` \| `KEY_MISMATCH` \| `BUSY` \| `BAD_REQUEST` |
 
-- `sync.put` 규칙: 메타가 아예 없는 빈 서버는 첫 저장이라 `baseRevision`을 검사하지 않고 그대로 받는다(저장되는 `revision`은 1부터 시작 — 빈 서버의 현재 `revision`은 0으로 본다). 메타의 `keyId`와 요청의 `keyId`가 다르고 `reset`이 아니면 `KEY_MISMATCH`. `baseRevision`이 현재 `revision`과 다르고 `force`·`reset` 둘 다 아니면 `CONFLICT`(현재 메타를 `remote`로 돌려준다). 저장 순서는 "새 버전 파일(`v-<revision>.json`) → `current.json` → 10개 초과분 정리 → 메타 갱신" 순이라, 메타가 가리키는 revision의 파일은 항상 존재한다(중간 실패 시 메타는 이전 revision 그대로 남는다). `sync.put`은 `LockService.tryLock(5000)`을 구글 시트 내보내기와 공유한다. `sync.get`은 락 없이 메타가 가리키는 `v-<rev>.json`을 바로 읽는다(메타를 마지막에 쓰므로 그 파일은 항상 있다고 가정한다).
+- `sync.put` 규칙: 메타가 아예 없는 빈 서버는 첫 저장이라 `baseRevision`을 검사하지 않고 그대로 받는다(저장되는 `revision`은 1부터 시작 — 빈 서버의 현재 `revision`은 0으로 본다). 메타의 `keyId`와 요청의 `keyId`가 다르고 `reset`이 아니면 `KEY_MISMATCH`. `baseRevision`이 현재 `revision`과 다르고 `force`·`reset` 둘 다 아니면 `CONFLICT`(현재 메타를 `remote`로 돌려준다). 저장 순서는 "같은 이름의 옛 `v-<revision>.json` 휴지통 이동(방어용) → 새 버전 파일 → `current.json` → 10개 초과분 정리(방금 만든 파일은 제외) → 메타 갱신" 순이라, 메타가 가리키는 revision의 파일은 항상 존재한다(중간 실패 시 메타는 이전 revision 그대로 남는다). 메타에는 새 버전 파일의 드라이브 id(`fileId`)도 함께 저장한다. `sync.put`은 `LockService.tryLock(5000)`을 구글 시트 내보내기와 공유한다. `sync.get`은 락 없이 메타의 `fileId`로 그 파일을 바로 읽는다(`fileId`가 없는 예전 메타만 이름 `v-<rev>.json`으로 찾는다). 파일이 지워졌거나 휴지통에 있으면 `SYNC_FILE_MISSING`. `dotori-sync` 폴더·파일을 이름으로 찾을 때는 휴지통에 있는 것을 건너뛴다. 응답 형식(클라이언트 계약)은 바뀌지 않는다.
 - 오류 → 사용자 메시지(`DEVICE_SYNC_MESSAGES`, [lib/device-sync/messages.ts](../lib/device-sync/messages.ts)):
 
 | 상황 | 사용자 메시지 |
@@ -219,7 +219,7 @@ Apps Script 원본과 설치 절차·수동 확인 체크리스트는 [integrati
 | `error: "UNAUTHORIZED"`(비밀키 불일치) | "비밀키가 스크립트 설정과 달라요." |
 | `error: "BUSY"`(락 대기 초과) | "다른 기기가 저장하는 중이에요. 잠시 후 다시 시도해 주세요." |
 | `error: "KEY_MISMATCH"`, meta/get의 `keyId` 불일치, 봉투 복호화(인증) 실패 | "동기화 키가 맞지 않아요. 다른 기기의 키를 확인해 주세요." |
-| `sync.get`의 `error: "SYNC_FILE_MISSING"` | "동기화 파일을 찾지 못했어요. 다른 기기에서 다시 동기화해 주세요." |
+| `sync.get`의 `error: "SYNC_FILE_MISSING"` | "동기화 파일을 찾지 못했어요. 최신 내용이 있는 기기에서 '새 키로 다시 시작하기'를 눌러 주세요." |
 | HTTP 비정상·JSON 파싱 실패, 또는 `error`가 `BAD_REQUEST`·그 외 문자열이 아닌 값(예전 스크립트가 `sync.*` 분기 없이 `BAD_REQUEST`를 돌려주는 경우 포함) | "동기화 스크립트 응답을 읽지 못했어요. 스크립트를 최신 버전으로 배포했는지 확인해 주세요." → 재배포 안내 |
 | 그 밖의 문자열 `error`(스크립트 런타임 오류 등) | "동기화 파일을 저장하지 못했어요. `<스크립트가 보낸 메시지>`" |
 | `sync.put` 본문이 상한(5MB)을 넘음(`tooLarge`) | "동기화할 데이터가 너무 커요. 오래된 자산 스냅샷을 정리한 뒤 다시 시도해 주세요." |
