@@ -221,6 +221,11 @@ async function pullCore(ctx: SyncContext, flag: { deferred: boolean }): Promise<
       ? { status: "noop" }
       : { status: "noop", remote: { revision: meta.revision, savedAt: meta.savedAt, deviceName: meta.deviceName } };
   }
+  if (!meta.empty && meta.revision === useAppStore.getState().dismissedConflictRevision) {
+    // 사용자가 이미 닫은(보류한) 충돌의 revision — sync.get·복호화 없이 충돌 기록만 유지한다.
+    // "지금 동기화하기"(reopenDismissedConflict)는 받기 전에 이 값을 비우므로 여기로 오지 않는다.
+    return { status: "conflict", remote: { revision: meta.revision, savedAt: meta.savedAt, deviceName: meta.deviceName } };
+  }
 
   const canonicalBefore = canonicalize(await collectSyncData());
   const localHash = await hashCanonical(canonicalBefore);
@@ -373,7 +378,11 @@ export async function syncNow(opts: { reopenDismissedConflict?: boolean } = {}):
   if (opts.reopenDismissedConflict) {
     useAppStore.getState().setDismissedConflictRevision(null);
   }
-  const pulled = await pullIfNewer();
+  let pulled = await pullIfNewer();
+  if (pulled.status === "deferred") {
+    // 갱신 대기 타임아웃으로 보류된 받기에 합류했다 — 그 받기는 이미 정리됐으니 새 받기로 한 번 더 시도한다.
+    pulled = await pullIfNewer();
+  }
   if (pulled.status !== "noop" && pulled.status !== "applied" && pulled.status !== "autoResolved") {
     return pulled;
   }
@@ -458,6 +467,15 @@ async function loadConnection(): Promise<ConnectionResult> {
   }
 }
 
+/**
+ * 올리기 결과가 pushed가 아니어도, 서버 meta의 keyId가 방금 만든 키면 서버에는 저장된 것이다(응답만 유실).
+ * 이때는 설정을 지우거나 되돌리지 않는다 — lastSyncedHash가 비어 있어 다음 받기에서 내용 비교로 자동 해소된다.
+ */
+async function serverHasKey(conn: SyncConn, keyId: string): Promise<boolean> {
+  const meta = await syncMeta(conn);
+  return meta.status === "ok" && !meta.meta.empty && meta.meta.keyId === keyId;
+}
+
 /** 설정 흐름의 실패 결과. 오류면 그 문구, 그 밖(충돌·noop 등 올리지 못함)은 일반 안내. */
 function setupFailure(outcome: SyncOutcome): { status: "error"; message: string } {
   if (outcome.status === "error") {
@@ -487,12 +505,16 @@ export function startFirstDevice(input: { deviceName: string }): Promise<SetupRe
       }
       const key = generateSyncKey();
       const keyText = formatSyncKey(key);
+      const keyId = await keyIdOf(key);
       await saveSyncConfig(c.sessionKey, {
-        syncKeyText: keyText, keyId: await keyIdOf(key), deviceName: input.deviceName,
+        syncKeyText: keyText, keyId, deviceName: input.deviceName,
         lastRevision: 0, lastSyncedHash: null,
       });
       const outcome = await settle(() => inContext(pushCore));
       if (outcome.status !== "pushed") {
+        if (await serverHasKey(c.conn, keyId)) {
+          return { status: "ok", keyText };
+        }
         await clearSyncConfig();
         return setupFailure(outcome);
       }
@@ -583,8 +605,9 @@ export function restartWithNewKey(): Promise<SetupResult> {
       const baseRevision = meta.meta.empty ? 0 : meta.meta.revision;
       const key = generateSyncKey();
       const keyText = formatSyncKey(key);
+      const keyId = await keyIdOf(key);
       await saveSyncConfig(c.sessionKey, {
-        syncKeyText: keyText, keyId: await keyIdOf(key), deviceName: prev.deviceName,
+        syncKeyText: keyText, keyId, deviceName: prev.deviceName,
         lastRevision: baseRevision, lastSyncedHash: null,
       });
       const outcome = await settle(() => inContext(async (ctx) => {
@@ -593,6 +616,9 @@ export function restartWithNewKey(): Promise<SetupResult> {
         return putLocal(ctx, local, localHash, { baseRevision, reset: true });
       }));
       if (outcome.status !== "pushed") {
+        if (await serverHasKey(c.conn, keyId)) {
+          return { status: "ok", keyText };
+        }
         await restoreSyncConfig(prev);
         return setupFailure(outcome);
       }

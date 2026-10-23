@@ -212,6 +212,28 @@ describe("pushIfChanged", () => {
 });
 
 describe("syncNow", () => {
+  it("갱신 대기 타임아웃으로 보류된 받기에 합류하면 한 번 더 받아 원격을 적용한다", async () => {
+    const key = generateSyncKey();
+    await server.remotePut(key, syncDataWith({ savings: [savings("s1", 5_000_000)] }));
+    await seedSyncedDevice({ key, lastSyncedHash: await localHash() });
+    let release!: () => void;
+    server.hooks.beforeGet = () => {
+      server.hooks.beforeGet = undefined; // 첫 get만 붙잡는다
+      return new Promise<void>((resolve) => { release = resolve; });
+    };
+
+    const pulling = pullIfNewer();          // 잠금 해제 받기
+    await awaitPendingPull(10);             // 갱신이 기다리다 포기 → 보류
+    await vi.waitFor(() => expect(server.calls).toContain("sync.get"));
+    const synced = syncNow();               // 갱신 성공 후(보류된 받기가 아직 진행 중)
+    release();
+
+    expect(await pulling).toEqual({ status: "deferred" });
+    expect(await synced).toMatchObject({ status: "applied", remote: { revision: 1 } });
+    expect((await db.savings.get("s1"))?.amount).toBe(5_000_000);
+    expect((await getSyncConfig())?.lastRevision).toBe(1);
+  });
+
   it("빈 서버에서는 받을 것이 없으니 바로 올린다", async () => {
     await seedSyncedDevice();
     await db.savings.put(savings("s1", 1_000_000));
@@ -241,6 +263,16 @@ describe("충돌 다이얼로그 닫기(보류)", () => {
     await server.remotePut(key, syncDataWith({ savings: [savings("s1", 3_000_000)] }));
     expect((await pullIfNewer()).status).toBe("conflict");
     expect(useAppStore.getState().syncConflict?.remote.revision).toBe(2);
+  });
+
+  it("닫은 revision이면 meta만 보고 sync.get·복호화를 건너뛴다", async () => {
+    await seedConflict();
+    dismissConflict();
+    server.calls.length = 0;
+
+    expect((await pullIfNewer()).status).toBe("conflict");
+    expect(server.calls).toEqual(["sync.meta"]);
+    expect(useAppStore.getState().syncConflict).toBeNull();
   });
 
   it("'지금 동기화하기'(사용자 요청)는 닫은 revision이어도 다시 띄운다", async () => {

@@ -79,6 +79,21 @@ describe("startFirstDevice", () => {
     expect(server.revision()).toBe(0);
   });
 
+  it("서버는 저장했는데 응답만 유실되면(meta.keyId가 새 키) 설정을 유지하고 ok를 돌려준다", async () => {
+    await seedSheetOnly();
+    vi.stubGlobal("fetch", losePutResponseFetch());
+
+    const result = await startFirstDevice({ deviceName: "d" });
+
+    expect(result.status).toBe("ok");
+    expect(server.revision()).toBe(1);
+    const cfg = await getSyncConfig();
+    expect(cfg?.keyId).toBe(server.keyId());
+    if (result.status === "ok") {
+      expect(cfg?.keyId).toBe(await keyIdOf(parseOrThrow(result.keyText)));
+    }
+  });
+
   it("시트 연결이 없으면 안내 오류", async () => {
     useAppStore.setState({ locked: false, sessionKey: await makeSessionKey() });
     expect(await startFirstDevice({ deviceName: "d" })).toEqual({ status: "error", message: DEVICE_SYNC_MESSAGES.sheetRequired });
@@ -157,6 +172,20 @@ describe("restartWithNewKey", () => {
     expect(server.keyId()).toBe((await getSyncConfig())?.keyId);
   });
 
+  it("reset put 응답만 유실되고 서버 keyId가 새 키면 새 설정을 유지한다", async () => {
+    const oldKey = generateSyncKey();
+    await server.remotePut(oldKey, syncDataWith({}));
+    await seedSyncedDevice({ key: oldKey, lastRevision: 1, lastSyncedHash: await localHash() });
+    vi.stubGlobal("fetch", losePutResponseFetch());
+
+    const result = await restartWithNewKey();
+
+    expect(result.status).toBe("ok");
+    expect(server.revision()).toBe(2);
+    expect(server.keyId()).not.toBe(await keyIdOf(oldKey));
+    expect((await getSyncConfig())?.keyId).toBe(server.keyId());
+  });
+
   it("reset put이 실패하면 이전 설정(키·revision·해시)을 되돌리고 오류를 돌려준다", async () => {
     const oldKey = generateSyncKey();
     await server.remotePut(oldKey, syncDataWith({}));
@@ -213,6 +242,18 @@ describe("disableDeviceSync / revealConnectionInfo", () => {
     expect(useAppStore.getState().lastDeviceSync).toBeNull();
   });
 });
+
+/** sync.put을 서버에 저장한 뒤 응답만 잃어버리는 fetch(클라이언트는 네트워크 오류를 받는다). */
+function losePutResponseFetch() {
+  return vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body)) as { action?: string };
+    const res = await server.fetch(url, init);
+    if (body.action === "sync.put") {
+      throw new TypeError("Failed to fetch");
+    }
+    return res;
+  });
+}
 
 /** sync.put만 네트워크 오류로 실패시키는 fetch(나머지는 가짜 서버로). */
 function failPutFetch() {
