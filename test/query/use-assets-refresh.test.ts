@@ -12,12 +12,14 @@ vi.mock("@/lib/sync/refresh-upbit", () => ({ refreshUpbit: vi.fn() }));
 vi.mock("@/lib/sync/refresh-savings", () => ({ refreshSavingsAccrual: vi.fn() }));
 vi.mock("@/lib/sync/fx-fallback", () => ({ ensureFxFallback: vi.fn() }));
 vi.mock("@/lib/query/use-sheet-export", () => ({ runSheetExport: vi.fn() }));
+vi.mock("@/lib/device-sync/engine", () => ({ awaitPendingPull: vi.fn(), pushIfChanged: vi.fn() }));
 
 import { refreshAll, refreshPensionPrices } from "@/lib/sync/refresh";
 import { refreshUpbit } from "@/lib/sync/refresh-upbit";
 import { refreshSavingsAccrual } from "@/lib/sync/refresh-savings";
 import { ensureFxFallback } from "@/lib/sync/fx-fallback";
 import { runSheetExport } from "@/lib/query/use-sheet-export";
+import { awaitPendingPull, pushIfChanged } from "@/lib/device-sync/engine";
 import { useAssetsRefresh } from "@/lib/query/use-assets-refresh";
 
 /** resolve를 바깥에서 쥘 수 있는 제어 가능한 Promise. */
@@ -61,6 +63,7 @@ describe("useAssetsRefresh — 자동 시트 내보내기의 세션 키", () => 
     // onSuccess가 끝까지 실행됐음을 setLastRefresh 호출로 확인한다(언마운트 후엔 리렌더로 알 수 없음).
     await waitFor(() => expect(setLastRefreshSpy).toHaveBeenCalled());
     expect(runSheetExport).not.toHaveBeenCalled();
+    expect(pushIfChanged).not.toHaveBeenCalled();
   });
 
   it("세션 키가 유지되면 갱신 성공 후 자동 내보내기를 실행한다", async () => {
@@ -79,5 +82,31 @@ describe("useAssetsRefresh — 자동 시트 내보내기의 세션 키", () => 
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(runSheetExport).toHaveBeenCalledWith(key);
+  });
+});
+
+describe("useAssetsRefresh — 기기 동기화 순서", () => {
+  it("진행 중인 받기가 끝날 때까지 갱신을 시작하지 않고, 성공하면 바뀐 내용을 올린다", async () => {
+    const key = await deriveKey("pp", makeSalt());
+    useAppStore.setState({ locked: false, sessionKey: key });
+    vi.mocked(ensureFxFallback).mockResolvedValue(true);
+    vi.mocked(refreshAll).mockResolvedValue({ vm: {} as never, failures: [] });
+    vi.mocked(refreshPensionPrices).mockResolvedValue({ updated: 0, failures: [] });
+    vi.mocked(refreshUpbit).mockResolvedValue({ failures: [] } as never);
+    vi.mocked(refreshSavingsAccrual).mockResolvedValue(0);
+    vi.mocked(runSheetExport).mockResolvedValue({ status: "ok", writtenAt: "W" });
+    const pull = deferred<void>();
+    vi.mocked(awaitPendingPull).mockReturnValueOnce(pull.promise);
+
+    const { result } = renderHook(() => useAssetsRefresh(), { wrapper: QueryWrapper });
+    result.current.mutate();
+
+    await waitFor(() => expect(awaitPendingPull).toHaveBeenCalled());
+    expect(ensureFxFallback).not.toHaveBeenCalled();
+
+    pull.resolve();
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(ensureFxFallback).toHaveBeenCalled();
+    expect(pushIfChanged).toHaveBeenCalledTimes(1);
   });
 });

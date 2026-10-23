@@ -5,6 +5,7 @@ import { useAppStore } from "@/stores/app-store";
 import { listHoldings, listPrices, getFx, getSectorOverrides } from "@/lib/db/local-store";
 import { buildPortfolio } from "@/lib/portfolio/portfolio-service";
 import { refreshAll } from "@/lib/sync/refresh";
+import { awaitPendingPull } from "@/lib/device-sync/engine";
 
 const PORTFOLIO_KEY = ["portfolio"] as const;
 
@@ -45,6 +46,8 @@ export function useRefresh() {
       if (sessionKey === null) {
         throw new Error("잠금 해제 후 새로고침할 수 있어요.");
       }
+      // 통합 갱신과 같은 이유로 진행 중인 기기 동기화 받기를 먼저 기다린다(lib/query/use-assets-refresh 참고).
+      await awaitPendingPull();
       return refreshAll({ key: sessionKey });
     },
     onSuccess: () => {
