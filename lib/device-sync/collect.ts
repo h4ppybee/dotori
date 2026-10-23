@@ -4,7 +4,7 @@ import { readManualTables, type ManualTables } from "@/lib/backup/backup";
  * 기기 동기화 데이터 수집·정규화·해시.
  * - 범위: 백업과 같은 수동 데이터(readManualTables)에서 snapshots(과거 일일 스냅샷)만 뺀 12개 테이블.
  * - canonicalize: 순수·동기. 테이블 이름순, 테이블 안에서는 기본 키순, 객체 키는 사전순으로 정렬하고
- *   HASH_EXCLUDED_FIELDS를 뺀 JSON 문자열. 트랜잭션 안에서도 부를 수 있다(await 없음).
+ *   HASH_EXCLUDED_FIELDS(와 행 조건부 제외 — symbol 있는 연금의 currentPrice)를 뺀 JSON 문자열. 트랜잭션 안에서도 부를 수 있다(await 없음).
  * - 변경 판단은 hashCanonical(canonical) != lastSyncedHash. payload에는 모든 필드를 그대로 보내고
  *   해시에서만 휘발성 필드를 뺀다 → 시세 갱신만으로는 "변경 있음"이 되지 않는다.
  * ⚠️ 동기화 대상 테이블에 새 휘발성 필드(시세·자동 갱신 시각 등)를 추가하면 HASH_EXCLUDED_FIELDS도 갱신한다.
@@ -36,11 +36,26 @@ const PRIMARY_KEY: Record<SyncTable, string> = {
   sectorOverrides: "symbol",
 };
 
-/** 해시 정규화에서 빼는 행 필드. "*"는 모든 테이블. 테스트로 고정한다. */
+/** 해시 정규화에서 항상 빼는 행 필드. "*"는 모든 테이블. 테스트로 고정한다. */
 export const HASH_EXCLUDED_FIELDS: Readonly<Partial<Record<SyncTable | "*", readonly string[]>>> = {
   "*": ["updatedAt"],         // bulkUpdatePension·refreshSavingsAccrual 등이 기기마다 다른 시각을 찍는다
-  pension: ["currentPrice"],  // 통합 갱신이 쓰는 시세
 };
+
+/** 연금 시세 갱신(lib/sync/refresh.ts refreshPensionPrices)이 관리하는 행 — symbol이 공백이 아닌 문자열. */
+function isPriceManagedPension(row: Record<string, unknown>): boolean {
+  return typeof row.symbol === "string" && row.symbol.trim() !== "";
+}
+
+/**
+ * 행 조건에 따라 해시에서 빼는 필드. 연금 currentPrice는 시세 갱신이 기기마다 다른 값으로 채우는
+ * symbol 행에서만 뺀다 — symbol이 없는 행의 현재가는 사용자가 직접 입력한 값이라 변경으로 본다.
+ */
+function conditionalExcluded(table: SyncTable, row: Record<string, unknown>): readonly string[] {
+  if (table === "pension" && isPriceManagedPension(row)) {
+    return ["currentPrice"];
+  }
+  return [];
+}
 
 export function emptySyncData(): SyncData {
   return {
@@ -100,7 +115,10 @@ export function canonicalize(data: Partial<SyncData>): string {
     const excluded = new Set([...(HASH_EXCLUDED_FIELDS["*"] ?? []), ...(HASH_EXCLUDED_FIELDS[table] ?? [])]);
     const pk = PRIMARY_KEY[table];
     const rows = ((data[table] ?? []) as unknown as Record<string, unknown>[])
-      .map((row) => Object.fromEntries(Object.entries(row).filter(([k]) => !excluded.has(k))))
+      .map((row) => {
+        const rowExcluded = conditionalExcluded(table, row);
+        return Object.fromEntries(Object.entries(row).filter(([k]) => !excluded.has(k) && !rowExcluded.includes(k)));
+      })
       .sort((a, b) => compareKeys(String(a[pk]), String(b[pk])));
     out[table] = rows;
   }

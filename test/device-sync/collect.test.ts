@@ -42,8 +42,19 @@ describe("collectSyncData", () => {
 });
 
 describe("canonicalize", () => {
-  it("해시 제외 필드는 모든 테이블의 updatedAt과 pension.currentPrice다", () => {
-    expect(HASH_EXCLUDED_FIELDS).toEqual({ "*": ["updatedAt"], pension: ["currentPrice"] });
+  it("무조건 해시 제외 필드는 모든 테이블의 updatedAt이다", () => {
+    expect(HASH_EXCLUDED_FIELDS).toEqual({ "*": ["updatedAt"] });
+  });
+
+  it("연금 현재가는 시세 갱신 대상(symbol 있음) 행에서만 해시에서 뺀다", () => {
+    const withSymbol = (price: number) => syncDataWith({ pension: [pension("p1", price)] });
+    expect(canonicalize(withSymbol(12_345))).toBe(canonicalize(withSymbol(10_000)));
+
+    const manual = (price: number) => syncDataWith({ pension: [{ ...pension("p1", price), symbol: undefined }] });
+    expect(canonicalize(manual(12_345))).not.toBe(canonicalize(manual(10_000)));
+
+    const blank = (price: number) => syncDataWith({ pension: [{ ...pension("p1", price), symbol: "  " }] });
+    expect(canonicalize(blank(12_345))).not.toBe(canonicalize(blank(10_000)));
   });
 
   it("행 순서·키 순서·updatedAt·연금 현재가에 영향받지 않는다", () => {
