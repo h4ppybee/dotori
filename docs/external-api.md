@@ -1,15 +1,15 @@
-# 외부 API 연동 — 토스인베스트 · 업비트 · 구글 시트 (OpenAPI)
+# 외부 API 연동 — 토스인베스트 · 업비트 · 구글 Apps Script (OpenAPI)
 
-시세·보유·환율은 두 개의 외부 OpenAPI에서 **가져온다(인바운드)**. 시크릿·토큰은 **브라우저에서 외부로 직접 나가지 않고 서버(프록시 또는 릴레이)를 경유**한다. 클라이언트는 정규화된 결과만 받는다. 반대로 구글 시트 내보내기는 앱 데이터를 사용자의 구글 시트로 **내보내는(아웃바운드) 단방향** 연동이며, 사용자 소유 비밀키만 쓰므로 프록시를 거치지 않는다(아래 [구글 시트 내보내기](#구글-시트-내보내기-apps-script-웹앱) 참고).
+시세·보유·환율은 두 개의 외부 OpenAPI에서 **가져온다(인바운드)**. 시크릿·토큰은 **브라우저에서 외부로 직접 나가지 않고 서버(프록시 또는 릴레이)를 경유**한다. 클라이언트는 정규화된 결과만 받는다. 반대로 구글 시트 내보내기는 앱 데이터를 사용자의 구글 시트로 **내보내는(아웃바운드) 단방향** 연동이며, 사용자 소유 비밀키만 쓰므로 프록시를 거치지 않는다(아래 [구글 시트 내보내기](#구글-시트-내보내기-apps-script-웹앱) 참고). 같은 Apps Script 웹앱을 거쳐 여러 기기가 수동 데이터를 주고받는 **기기 동기화**(아웃바운드+인바운드, 암호문만 오간다)도 프록시 없이 브라우저가 직접 호출한다(아래 [기기 동기화](#기기-동기화-apps-script-sync) 참고).
 
 | 소스 | 가져오는 것 | 인증 | 프록시 경로 |
 | --- | --- | --- | --- |
 | **토스인베스트** | 계좌·보유(주식)·시세(주식/연금)·USDKRW 환율 | OAuth2 client_credentials → Bearer 토큰 | `app/api/toss/*` |
 | **업비트** | 코인 보유·예수금(KRW)·현재가·마켓명 | Access/Secret 키 → 요청별 HS256 JWT | `app/api/upbit/*` |
 
-> 📄 이 문서는 외부 연동과 함께 유지한다. 프록시 경로·정규화·토큰/JWT·릴레이 분기·재시도 규칙·구글 시트 내보내기 계약을 바꾸면 **같은 작업에서 이 문서도 갱신**한다.
+> 📄 이 문서는 외부 연동과 함께 유지한다. 프록시 경로·정규화·토큰/JWT·릴레이 분기·재시도 규칙·구글 시트 내보내기 계약·기기 동기화 `sync.*` 계약을 바꾸면 **같은 작업에서 이 문서도 갱신**한다.
 
-관련 파일: [lib/toss/](../lib/toss/) · [lib/upbit/](../lib/upbit/) · [lib/sync/](../lib/sync/) · [app/api/](../app/api/) · [lib/sheet-export/](../lib/sheet-export/) · [integrations/apps-script/](../integrations/apps-script/)
+관련 파일: [lib/toss/](../lib/toss/) · [lib/upbit/](../lib/upbit/) · [lib/sync/](../lib/sync/) · [app/api/](../app/api/) · [lib/sheet-export/](../lib/sheet-export/) · [lib/device-sync/](../lib/device-sync/) · [lib/apps-script/](../lib/apps-script/) · [integrations/apps-script/](../integrations/apps-script/)
 
 ---
 
@@ -143,6 +143,7 @@ dotori의 자산·부채·통장 쪼개기 데이터를 사용자의 구글 시�
 - 숨겨야 할 dotori 소유 시크릿이 없다. 대상은 사용자가 자신의 구글 계정으로 직접 배포한 Apps Script 웹앱이고, 쓰는 비밀키(`DOTORI_SECRET`)도 사용자가 그 스크립트 속성에 직접 넣은 값이다.
 - Apps Script 웹앱은 CORS preflight(`OPTIONS`)를 처리하지 못한다. `postSheetExport`(`lib/sheet-export/client.ts`)는 `Content-Type: text/plain;charset=utf-8`으로 보내 preflight를 피한다.
 - Apps Script는 HTTP 상태 코드를 지정할 수 없어 **항상 200 + 본문 `{ ok, ... }`** 으로 성공 여부를 판정한다. 타임아웃은 30초(`SHEET_EXPORT_TIMEOUT_MS`), `AbortController`로 제어 — 스크립트의 `LockService.tryLock`(5초) 대기 + 실제 탭 쓰기 시간을 넉넉히 포함하는 값이다(락 대기보다 짧으면 스크립트가 아직 쓰는 중인데 클라이언트가 먼저 네트워크 실패로 오판할 수 있다).
+- 전송·타임아웃·응답 파싱은 [lib/apps-script/request.ts](../lib/apps-script/request.ts)의 `postAppsScript`를 기기 동기화와 공유한다.
 
 ### 페이로드 계약
 
@@ -191,3 +192,35 @@ dotori의 자산·부채·통장 쪼개기 데이터를 사용자의 구글 시�
 ### 설치
 
 Apps Script 원본과 설치 절차·수동 확인 체크리스트는 [integrations/apps-script/README.md](../integrations/apps-script/README.md) 참고.
+
+---
+
+## 기기 동기화 (Apps Script sync.*)
+
+같은 Apps Script 웹앱이 구글 시트 내보내기와 **기기 동기화 저장소**를 겸한다. 여러 기기가 같은 웹앱 URL·`DOTORI_SECRET`으로 암호화 봉투를 올리고(`sync.put`) 받는다(`sync.meta`/`sync.get`). 봉투는 앱이 동기화 키로 암호화한 값이라 스크립트도 구글도 내용을 읽지 못한다. 상세 흐름·판단 규칙은 [device-sync.md](device-sync.md) 참고.
+
+관련 파일: [lib/device-sync/client.ts](../lib/device-sync/client.ts) · [lib/apps-script/request.ts](../lib/apps-script/request.ts) · [integrations/apps-script/sheet-export.gs](../integrations/apps-script/sheet-export.gs)
+
+- 공통: 구글 시트 내보내기와 같은 웹앱 URL·`DOTORI_SECRET`을 쓰고, 같은 `Content-Type: text/plain` POST로 호출한다. 본문 상한은 5MB — 앱이 `sync.put` 전송 전 `SYNC_MAX_BODY_CHARS`로 먼저 막고, 스크립트도 `MAX_BODY_CHARS`로 한 번 더 막는다. `doPost`의 분기 순서는 "본문 JSON 파싱 → 객체인지 검사 → 비밀키 대조 → `action` 분기 → 액션별 본문 검증"이다. `action`이 없거나 `"sheet.export"`면 기존 시트 내보내기 핸들러로 간다(하위 호환).
+- 요청·응답:
+
+| 액션 | 요청(추가 필드) | 성공 응답 | 그 외 |
+| --- | --- | --- | --- |
+| `sync.meta` | 없음 | `{ ok, empty: true }` 또는 `{ ok, revision, savedAt, deviceName, keyId }` | — |
+| `sync.get` | 없음 | `{ ok, empty: true }` 또는 `{ ok, revision, savedAt, deviceName, keyId, blob }` | `{ ok: false, error: "SYNC_FILE_MISSING" }` |
+| `sync.put` | `{ baseRevision, keyId, deviceName, blob, force?, reset? }` | `{ ok, revision, savedAt }` | `{ ok: false, error: "CONFLICT", remote: { revision, savedAt, deviceName } }` \| `KEY_MISMATCH` \| `BUSY` \| `BAD_REQUEST` |
+
+- `sync.put` 규칙: 메타가 아예 없는 빈 서버는 첫 저장이라 `baseRevision`을 검사하지 않고 그대로 받는다(저장되는 `revision`은 1부터 시작 — 빈 서버의 현재 `revision`은 0으로 본다). 메타의 `keyId`와 요청의 `keyId`가 다르고 `reset`이 아니면 `KEY_MISMATCH`. `baseRevision`이 현재 `revision`과 다르고 `force`·`reset` 둘 다 아니면 `CONFLICT`(현재 메타를 `remote`로 돌려준다). 저장 순서는 "새 버전 파일(`v-<revision>.json`) → `current.json` → 10개 초과분 정리 → 메타 갱신" 순이라, 메타가 가리키는 revision의 파일은 항상 존재한다(중간 실패 시 메타는 이전 revision 그대로 남는다). `sync.put`은 `LockService.tryLock(5000)`을 구글 시트 내보내기와 공유한다. `sync.get`은 락 없이 메타가 가리키는 `v-<rev>.json`을 바로 읽는다(메타를 마지막에 쓰므로 그 파일은 항상 있다고 가정한다).
+- 오류 → 사용자 메시지(`DEVICE_SYNC_MESSAGES`, [lib/device-sync/messages.ts](../lib/device-sync/messages.ts)):
+
+| 상황 | 사용자 메시지 |
+| --- | --- |
+| fetch 실패·타임아웃(네트워크) | "동기화 저장소에 연결하지 못했어요. 잠시 후 다시 시도해 주세요." |
+| `error: "UNAUTHORIZED"`(비밀키 불일치) | "비밀키가 스크립트 설정과 달라요." |
+| `error: "BUSY"`(락 대기 초과) | "다른 기기가 저장하는 중이에요. 잠시 후 다시 시도해 주세요." |
+| `error: "KEY_MISMATCH"`, meta/get의 `keyId` 불일치, 봉투 복호화(인증) 실패 | "동기화 키가 맞지 않아요. 다른 기기의 키를 확인해 주세요." |
+| `sync.get`의 `error: "SYNC_FILE_MISSING"` | "동기화 파일을 찾지 못했어요. 다른 기기에서 다시 동기화해 주세요." |
+| HTTP 비정상·JSON 파싱 실패, 또는 `error`가 `BAD_REQUEST`·그 외 문자열이 아닌 값(예전 스크립트가 `sync.*` 분기 없이 `BAD_REQUEST`를 돌려주는 경우 포함) | "동기화 스크립트 응답을 읽지 못했어요. 스크립트를 최신 버전으로 배포했는지 확인해 주세요." → 재배포 안내 |
+| 그 밖의 문자열 `error`(스크립트 런타임 오류 등) | "동기화 파일을 저장하지 못했어요. `<스크립트가 보낸 메시지>`" |
+| `sync.put` 본문이 상한(5MB)을 넘음(`tooLarge`) | "동기화할 데이터가 너무 커요. 오래된 자산 스냅샷을 정리한 뒤 다시 시도해 주세요." |
+| 원격 `syncVersion`이 앱보다 높음(`newerVersion`) | "앱을 새로고침해 최신 버전으로 업데이트해 주세요." |
