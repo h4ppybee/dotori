@@ -1,11 +1,14 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { useAppStore } from "@/stores/app-store";
 import { decrypt } from "@/lib/crypto/crypto";
-import { getSheetExportConfig, getSyncConfig, updateSyncState } from "@/lib/db/local-store";
-import { parseSyncKey, type SyncKeyBytes } from "@/lib/device-sync/key";
+import {
+  getSheetExportConfig, getSyncConfig, saveSyncConfig, clearSyncConfig, updateSyncState,
+} from "@/lib/db/local-store";
+import { parseSyncKey, generateSyncKey, formatSyncKey, keyIdOf, type SyncKeyBytes } from "@/lib/device-sync/key";
 import { seal, open, SyncKeyError } from "@/lib/device-sync/envelope";
 import {
   collectSyncData, canonicalize, hashCanonical, encodeSyncPayload, decodeSyncPayload, SyncVersionError,
+  isEffectivelyEmpty,
   type SyncData,
 } from "@/lib/device-sync/collect";
 import { applySyncPayload, ConflictDuringApply } from "@/lib/device-sync/apply";
@@ -386,4 +389,172 @@ export function startDeviceSync(client: QueryInvalidator): () => void {
       queryClientRef = null;
     }
   };
+}
+
+// ── 설정 흐름(설정 패널) ──────────────────────────────────────────────────
+export type SetupResult =
+  | { status: "ok"; keyText: string }
+  | { status: "alreadyStarted" }
+  | { status: "error"; message: string };
+
+export type PrepareConnectResult =
+  | { status: "ready"; hasLocalData: boolean }
+  | { status: "error"; message: string };
+
+type ConnectionResult = { ok: true; sessionKey: CryptoKey; conn: SyncConn } | { ok: false; message: string };
+
+/** 동기화 설정 없이 시트 연결(URL·비밀키)만으로 서버에 접근한다(처음 시작·연결 전 확인용). */
+async function loadConnection(): Promise<ConnectionResult> {
+  const sessionKey = useAppStore.getState().sessionKey;
+  if (sessionKey === null) {
+    return { ok: false, message: DEVICE_SYNC_MESSAGES.locked };
+  }
+  const sheet = await getSheetExportConfig();
+  if (!sheet) {
+    return { ok: false, message: DEVICE_SYNC_MESSAGES.sheetRequired };
+  }
+  try {
+    return { ok: true, sessionKey, conn: { url: sheet.webAppUrl, secret: await decrypt(sessionKey, sheet.secretEnc) } };
+  } catch {
+    return { ok: false, message: DEVICE_SYNC_MESSAGES.localDecrypt };
+  }
+}
+
+/** "이 기기에서 처음 시작": 빈 서버일 때만 키를 만들고 첫 올리기를 한다. */
+export async function startFirstDevice(input: { deviceName: string }): Promise<SetupResult> {
+  try {
+    const c = await loadConnection();
+    if (!c.ok) {
+      return { status: "error", message: c.message };
+    }
+    const meta = await syncMeta(c.conn);
+    if (meta.status === "error") {
+      return { status: "error", message: meta.message };
+    }
+    if (!meta.meta.empty) {
+      return { status: "alreadyStarted" };
+    }
+    const key = generateSyncKey();
+    const keyText = formatSyncKey(key);
+    await saveSyncConfig(c.sessionKey, {
+      syncKeyText: keyText, keyId: await keyIdOf(key), deviceName: input.deviceName,
+      lastRevision: 0, lastSyncedHash: null,
+    });
+    // 첫 올리기 결과는 lastDeviceSync에 기록된다. 실패해도 키는 만들어졌으니 보여주고 "지금 동기화"로 재시도한다.
+    await pushIfChanged();
+    return { status: "ok", keyText };
+  } catch (err) {
+    return { status: "error", message: errorMessage(err) };
+  }
+}
+
+/** "다른 기기에서 연결" 1단계: 키 형식·서버 시작 여부·keyId를 확인하고, 이 기기에 수동 데이터가 있는지 알려준다. */
+export async function prepareConnect(keyText: string): Promise<PrepareConnectResult> {
+  try {
+    const key = parseSyncKey(keyText);
+    if (!key) {
+      return { status: "error", message: DEVICE_SYNC_MESSAGES.invalidKey };
+    }
+    const c = await loadConnection();
+    if (!c.ok) {
+      return { status: "error", message: c.message };
+    }
+    const meta = await syncMeta(c.conn);
+    if (meta.status === "error") {
+      return { status: "error", message: meta.message };
+    }
+    if (meta.meta.empty) {
+      return { status: "error", message: DEVICE_SYNC_MESSAGES.notStarted };
+    }
+    if (meta.meta.keyId !== (await keyIdOf(key))) {
+      return { status: "error", message: DEVICE_SYNC_MESSAGES.keyMismatch };
+    }
+    return { status: "ready", hasLocalData: !isEffectivelyEmpty(await collectSyncData()) };
+  } catch (err) {
+    return { status: "error", message: errorMessage(err) };
+  }
+}
+
+/** "다른 기기에서 연결" 2단계: 설정을 저장하고 원격으로 교체한다. 받지 못하면 설정을 지운다. */
+export async function connectExistingDevice(input: { keyText: string; deviceName: string }): Promise<SyncOutcome> {
+  const key = parseSyncKey(input.keyText);
+  if (!key) {
+    return { status: "error", message: DEVICE_SYNC_MESSAGES.invalidKey };
+  }
+  const c = await loadConnection();
+  if (!c.ok) {
+    return { status: "error", message: c.message };
+  }
+  await saveSyncConfig(c.sessionKey, {
+    syncKeyText: formatSyncKey(key), keyId: await keyIdOf(key), deviceName: input.deviceName,
+    lastRevision: 0, lastSyncedHash: null,
+  });
+  const outcome = await withContext(receiveRemote);
+  if (outcome.status !== "applied") {
+    // 반쯤 연결된 상태(lastSyncedHash 없음)로 남으면 다음 받기가 곧바로 충돌이 된다 → 처음 상태로 되돌린다.
+    await clearSyncConfig();
+    useAppStore.getState().clearLastDeviceSync();
+  }
+  return outcome;
+}
+
+/** "새 키로 다시 시작": 새 키 + reset put(서버 revision은 이어가고 keyId만 교체, 이전 버전 파일은 보관 규칙대로). */
+export async function restartWithNewKey(): Promise<SetupResult> {
+  try {
+    const c = await loadConnection();
+    if (!c.ok) {
+      return { status: "error", message: c.message };
+    }
+    const config = await getSyncConfig();
+    if (!config) {
+      return { status: "error", message: DEVICE_SYNC_MESSAGES.notEnabled };
+    }
+    const meta = await syncMeta(c.conn);
+    if (meta.status === "error") {
+      return { status: "error", message: meta.message };
+    }
+    const baseRevision = meta.meta.empty ? 0 : meta.meta.revision;
+    const key = generateSyncKey();
+    const keyText = formatSyncKey(key);
+    await saveSyncConfig(c.sessionKey, {
+      syncKeyText: keyText, keyId: await keyIdOf(key), deviceName: config.deviceName,
+      lastRevision: baseRevision, lastSyncedHash: null,
+    });
+    const outcome = await withContext(async (ctx) => {
+      const local = await collectSyncData();
+      const localHash = await hashCanonical(canonicalize(local));
+      return putLocal(ctx, local, localHash, { baseRevision, reset: true });
+    });
+    if (outcome.status === "error") {
+      return { status: "error", message: outcome.message };
+    }
+    return { status: "ok", keyText };
+  } catch (err) {
+    return { status: "error", message: errorMessage(err) };
+  }
+}
+
+/** "끄기": 이 기기의 동기화 설정과 기록만 지운다(서버 파일·다른 기기는 그대로). */
+export async function disableDeviceSync(): Promise<void> {
+  await clearSyncConfig();
+  const store = useAppStore.getState();
+  store.clearLastDeviceSync();
+  store.setSyncConflict(null);
+}
+
+/** "다른 기기 연결 정보 보기": 웹앱 URL·비밀키·동기화 키를 복호화해 보여준다. 꺼져 있으면 null. */
+export async function revealConnectionInfo(): Promise<{ webAppUrl: string; secret: string; keyText: string } | null> {
+  const sessionKey = useAppStore.getState().sessionKey;
+  if (sessionKey === null) {
+    return null;
+  }
+  const [config, sheet] = await Promise.all([getSyncConfig(), getSheetExportConfig()]);
+  if (!config || !sheet) {
+    return null;
+  }
+  const [secret, keyText] = await Promise.all([
+    decrypt(sessionKey, sheet.secretEnc),
+    decrypt(sessionKey, config.syncKeyEnc),
+  ]);
+  return { webAppUrl: sheet.webAppUrl, secret, keyText };
 }
