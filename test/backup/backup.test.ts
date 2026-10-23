@@ -319,4 +319,17 @@ describe("exportAll / importAll", () => {
     await importAll(json, { mode: "overwrite" });
     expect((await db.sheetExport.get("sheet"))?.secretEnc).toBe("iv.ciphertext-marker");
   });
+
+  it("기기 동기화 설정은 백업에 포함되지 않고, 덮어쓰기 불러오기 후에도 유지된다", async () => {
+    await db.syncConfig.put({
+      id: "sync", syncKeyEnc: "iv.sync-key-marker", keyId: "0011223344556677",
+      deviceName: "테스트 기기", lastRevision: 1, lastSyncedHash: "h", updatedAt: 1,
+    });
+    const json = await exportAll();
+    expect(json).not.toContain("sync-key-marker");
+    expect(json).not.toContain("syncConfig");
+
+    await importAll(json, { mode: "overwrite" });
+    expect((await db.syncConfig.get("sync"))?.syncKeyEnc).toBe("iv.sync-key-marker");
+  });
 });
