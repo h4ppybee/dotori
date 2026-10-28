@@ -33,6 +33,10 @@ describe("isBiometricAvailable", () => {
     uninstallFakeWebAuthn();
     expect(await isBiometricAvailable()).toBe(false);
   });
+  it("플랫폼 UV 인증기가 없으면 false", async () => {
+    installFakeWebAuthn({ available: false });
+    expect(await isBiometricAvailable()).toBe(false);
+  });
 });
 
 describe("createCredential", () => {
@@ -55,6 +59,10 @@ describe("createCredential", () => {
     await expect(createCredential(salt, userId)).rejects.toBeInstanceOf(BiometricUnsupportedError);
     expect(fake.PKC.signalUnknownCredential).toHaveBeenCalled();
   });
+  it("create가 NotAllowedError로 실패하면 Cancelled로 바꾼다", async () => {
+    installFakeWebAuthn({ failCreateWith: "NotAllowedError" });
+    await expect(createCredential(salt, userId)).rejects.toBeInstanceOf(BiometricCancelledError);
+  });
 });
 
 describe("getPrfSecret", () => {
@@ -65,5 +73,9 @@ describe("getPrfSecret", () => {
   it("NotAllowedError는 Cancelled로 바꾼다", async () => {
     installFakeWebAuthn({ failGetWith: "NotAllowedError" });
     await expect(getPrfSecret("AQIDBA", salt)).rejects.toBeInstanceOf(BiometricCancelledError);
+  });
+  it("get 결과에 PRF가 없으면 Unsupported를 던진다", async () => {
+    installFakeWebAuthn({ prfOnGet: false });
+    await expect(getPrfSecret("AQIDBA", salt)).rejects.toBeInstanceOf(BiometricUnsupportedError);
   });
 });

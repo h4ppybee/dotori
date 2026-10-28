@@ -30,7 +30,14 @@ function lsSet(k: string, v: string): void {
 export function getDeviceUserId(): Uint8Array<ArrayBuffer> {
   const saved = lsGet(USER_ID_KEY);
   if (saved) {
-    return fromB64(saved);
+    try {
+      const decoded = fromB64(saved);
+      if (decoded.length === 16) {
+        return decoded;
+      }
+    } catch {
+      // 손상된 값 — 아래에서 새로 만든다
+    }
   }
   const id = crypto.getRandomValues(new Uint8Array(16));
   lsSet(USER_ID_KEY, toB64(id));

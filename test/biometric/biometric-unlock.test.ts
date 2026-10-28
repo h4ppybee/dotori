@@ -7,7 +7,7 @@ import {
   hasOfferedBiometric, markBiometricOffered, clearBiometricOffered, getDeviceUserId,
   BiometricInvalidError,
 } from "@/lib/biometric/biometric-unlock";
-import { BiometricCancelledError } from "@/lib/biometric/webauthn";
+import { BiometricCancelledError, BiometricUnsupportedError } from "@/lib/biometric/webauthn";
 
 afterEach(async () => {
   uninstallFakeWebAuthn();
@@ -34,6 +34,12 @@ describe("startEnrollment", () => {
     await res.finish();
     expect(fake.get).toHaveBeenCalledTimes(1);
     expect(await getBiometricConfig()).toBeDefined();
+  });
+
+  it("PRF 미지원 기기면 Unsupported를 던지고 행을 남기지 않는다", async () => {
+    installFakeWebAuthn({ prfOnCreate: "disabled" });
+    await expect(startEnrollment("123456")).rejects.toBeInstanceOf(BiometricUnsupportedError);
+    expect(await getBiometricConfig()).toBeUndefined();
   });
 });
 
@@ -64,6 +70,15 @@ describe("unlockWithBiometric", () => {
     installFakeWebAuthn({ prfSecret: new Uint8Array(32).fill(3) });
     await expect(unlockWithBiometric()).rejects.toBeInstanceOf(BiometricInvalidError);
   });
+
+  it("cfg를 직접 넘기면 DB 행이 지워져도 secret을 돌려준다", async () => {
+    installFakeWebAuthn();
+    await startEnrollment("123456");
+    const cfg = await getBiometricConfig();
+    await disableBiometric();
+    expect(await getBiometricConfig()).toBeUndefined();
+    expect(await unlockWithBiometric(cfg)).toBe("123456");
+  });
 });
 
 describe("기기 상태", () => {
@@ -76,6 +91,14 @@ describe("기기 상태", () => {
 
   it("device user.id는 한 번 만들면 유지된다", () => {
     expect(Array.from(getDeviceUserId())).toEqual(Array.from(getDeviceUserId()));
+  });
+
+  it("저장된 값이 손상됐으면 새로 만든다", () => {
+    localStorage.setItem("dotori.biometricUserId", "!!!not-base64!!!");
+    const id = getDeviceUserId();
+    expect(id.length).toBe(16);
+    // 새로 만든 값이 저장돼 이후 호출에서도 유지된다.
+    expect(Array.from(getDeviceUserId())).toEqual(Array.from(id));
   });
 
   it("제안 기록을 남기고 지울 수 있다", () => {
