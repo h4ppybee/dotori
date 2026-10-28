@@ -6,6 +6,7 @@ import type {
 } from "@/lib/types";
 import { toLocalYmd } from "@/lib/format";
 import { encrypt } from "@/lib/crypto/crypto";
+import { TAG_PRESETS, ACCOUNT_PRESETS } from "@/lib/envelope/presets";
 
 const now = () => Date.now();
 const uid = () => crypto.randomUUID();
@@ -329,6 +330,46 @@ const DEFAULT_ENVELOPE_CONFIG: EnvelopeConfig = { id: "envelope", customTags: []
 export const getEnvelopeConfig = async (): Promise<EnvelopeConfig> =>
   (await db.envelopeConfig.get("envelope")) ?? DEFAULT_ENVELOPE_CONFIG;
 export const putEnvelopeConfig = (c: EnvelopeConfig) => db.envelopeConfig.put(c);
+
+/** 시트에서 가져온 항목(id·순서·생성시각은 여기서 붙인다). */
+export type EnvelopeImportRow = Pick<EnvelopeItem, "profile" | "tag" | "account" | "name" | "amountKrw" | "note">;
+
+/**
+ * 통장 쪼개기 항목을 통째로 교체한다(시트 가져오기). 한 트랜잭션에서
+ * 기존 항목 삭제 → 프로필별 입력 순서대로 sortOrder 0..n → 프리셋·기존 커스텀에 없는 태그·통장을 커스텀에 추가.
+ */
+export async function replaceEnvelopeItems(rows: EnvelopeImportRow[]): Promise<void> {
+  await db.transaction("rw", db.envelopeItems, db.envelopeConfig, async () => {
+    const order: Record<EnvelopeProfile, number> = { wife: 0, husband: 0 };
+    const createdAt = now();
+    const items: EnvelopeItem[] = rows.map((r) => ({
+      ...r,
+      id: uid(),
+      sortOrder: order[r.profile]++,
+      createdAt,
+    }));
+    await db.envelopeItems.clear();
+    await db.envelopeItems.bulkAdd(items);
+
+    const cfg = await getEnvelopeConfig();
+    const addMissing = (presets: readonly string[], custom: string[], values: string[]) => {
+      const known = new Set([...presets, ...custom]);
+      const added = [...custom];
+      for (const v of values) {
+        if (!known.has(v)) {
+          known.add(v);
+          added.push(v);
+        }
+      }
+      return added;
+    };
+    await putEnvelopeConfig({
+      ...cfg,
+      customTags: addMissing(TAG_PRESETS, cfg.customTags, rows.map((r) => r.tag)),
+      customAccounts: addMissing(ACCOUNT_PRESETS, cfg.customAccounts, rows.map((r) => r.account)),
+    });
+  });
+}
 
 // ── 구글 시트 내보내기 설정 (기기별, 단일 행) ─────────────────────────────
 export const getSheetExportConfig = () => db.sheetExport.get("sheet");
