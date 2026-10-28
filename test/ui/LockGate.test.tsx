@@ -374,6 +374,39 @@ describe("LockGate — Face ID", { timeout: 20000 }, () => {
     expect(await getBiometricConfig()).toBeUndefined();
   });
 
+  it("앱 시작 때 지원 판정이 일시적으로 false였어도, PIN 검증 시점에 다시 확인해 등록을 제안한다", async () => {
+    const fake = installFakeWebAuthn();
+    // 잠금 화면 진입 때의 판정만 false — iOS 홈 화면 앱이 막 켜질 때를 재현한다
+    fake.PKC.isUserVerifyingPlatformAuthenticatorAvailable.mockResolvedValueOnce(false);
+    await seedPin("135790");
+    const user = userEvent.setup();
+    render(<LockGate><div>앱 콘텐츠</div></LockGate>);
+    await screen.findByRole("button", { name: "1" });
+    await tapPin(user, "135790");
+    expect(await screen.findByRole("button", { name: "괜찮아요" }, { timeout: 15000 })).toBeInTheDocument();
+  });
+
+  it("등록돼 있으면 앱 시작 때 지원 판정이 일시적으로 false여도 'Face ID로 열기' 버튼이 보인다", async () => {
+    const fake = installFakeWebAuthn();
+    await seedPin("135790");
+    await startEnrollment("135790");
+    fake.PKC.isUserVerifyingPlatformAuthenticatorAvailable.mockResolvedValueOnce(false);
+    fake.get.mockRejectedValueOnce(new DOMException("x", "NotAllowedError"));
+    render(<LockGate><div>앱 콘텐츠</div></LockGate>);
+    expect(await screen.findByRole("button", { name: "Face ID로 열기" })).toBeInTheDocument();
+  });
+
+  it("PIN 검증 시점에도 지원하지 않으면 제안 없이 바로 열린다", async () => {
+    installFakeWebAuthn({ available: false });
+    await seedPin("135790");
+    const user = userEvent.setup();
+    render(<LockGate><div>앱 콘텐츠</div></LockGate>);
+    await screen.findByRole("button", { name: "1" });
+    await tapPin(user, "135790");
+    await waitFor(() => expect(screen.getByText("앱 콘텐츠")).toBeInTheDocument(), { timeout: 15000 });
+    expect(screen.queryByRole("button", { name: "괜찮아요" })).not.toBeInTheDocument();
+  });
+
   it("등록 제안에서 'Face ID 켜기'를 누르면 등록 후 잠금이 풀린다", async () => {
     installFakeWebAuthn();
     await seedPin("135790");

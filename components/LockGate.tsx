@@ -114,8 +114,9 @@ export function LockGate({ children }: LockGateProps) {
       setMode("setup");
       return;
     }
-    const supported = await isBiometricAvailable();
-    const config = supported ? await getBiometricConfig() : undefined;
+    // 등록 여부는 지원 판정과 따로 읽는다 — iOS 홈 화면 앱은 막 켜질 때 판정이 일시적으로 false일 수 있는데,
+    // 이미 등록했다면 이 기기는 지원하는 것이므로 "Face ID로 열기"를 숨기지 않는다.
+    const [supported, config] = await Promise.all([isBiometricAvailable(), getBiometricConfig()]);
     if (isCancelled()) {
       return;
     }
@@ -324,7 +325,7 @@ export function LockGate({ children }: LockGateProps) {
       const valid = await checkVerifier(key, settings.verifier);
 
       if (valid) {
-        afterVerified(enteredPin, key);
+        await afterVerified(enteredPin, key);
       } else {
         setError("PIN이 일치하지 않아요. 다시 입력해 주세요.");
         setPin("");
@@ -338,13 +339,25 @@ export function LockGate({ children }: LockGateProps) {
   }
 
   /** PIN·비밀번호 검증이 끝난 뒤: 조건이 맞으면 Face ID 등록을 한 번 제안하고, 아니면 바로 연다. */
-  function afterVerified(secret: string, key: CryptoKey) {
-    if (bioSupported && bioConfig == null && !hasOfferedBiometric()) {
-      setPending({ secret, key });
-      setMode("offer-biometric");
+  async function afterVerified(secret: string, key: CryptoKey) {
+    if (bioConfig != null || hasOfferedBiometric()) {
+      useAppStore.getState().unlock(key);
       return;
     }
-    useAppStore.getState().unlock(key);
+    // iOS 홈 화면 앱은 막 켜질 때 지원 판정이 일시적으로 false로 나올 수 있다.
+    // 진입 때 false였다면 지금 다시 확인하고, 그때 읽지 않은 등록 여부도 함께 읽는다.
+    if (!bioSupported) {
+      const supported = await isBiometricAvailable();
+      const config = supported ? await getBiometricConfig() : undefined;
+      setBioSupported(supported);
+      setBioConfig(config);
+      if (!supported || config != null) {
+        useAppStore.getState().unlock(key);
+        return;
+      }
+    }
+    setPending({ secret, key });
+    setMode("offer-biometric");
   }
 
   /** 등록 제안 종료 — 결과와 상관없이 제안 기록을 남기고 연다. */
@@ -558,7 +571,7 @@ export function LockGate({ children }: LockGateProps) {
 
       if (valid) {
         setPassphrase("");
-        afterVerified(passphrase, key);
+        await afterVerified(passphrase, key);
       } else {
         setError("비밀번호가 일치하지 않아요. 다시 입력해 주세요.");
       }
