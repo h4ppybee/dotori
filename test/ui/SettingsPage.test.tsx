@@ -103,6 +103,13 @@ describe("SettingsPage — 섹션 제목 렌더링", () => {
     await waitFor(() => expect(localStorage.getItem("dotori.biometricOffered")).toBeNull());
   });
 
+  it("'지금 잠그기'를 누르면 바로 잠기고 세션 키를 버린다", async () => {
+    await renderSettings();
+    fireEvent.click(screen.getByRole("button", { name: "지금 잠그기" }));
+    expect(useAppStore.getState().locked).toBe(true);
+    expect(useAppStore.getState().sessionKey).toBeNull();
+  });
+
   it("프라이버시 섹션이 렌더링된다", async () => {
     await renderSettings();
     await waitFor(() => {
