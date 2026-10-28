@@ -19,7 +19,7 @@ import {
   BiometricInvalidError,
 } from "@/lib/biometric/biometric-unlock";
 import type { BiometricConfig } from "@/lib/types";
-import { loadSession } from "@/lib/db/session-vault";
+import { loadSession, AUTO_LOCK_MS } from "@/lib/db/session-vault";
 import { useAppStore } from "@/stores/app-store";
 import { useSessionGuard } from "@/lib/auth/use-session-guard";
 import { AppNav } from "@/components/nav/AppNav";
@@ -27,6 +27,12 @@ import { AppNav } from "@/components/nav/AppNav";
 const PIN_LENGTH = 6;
 
 type Mode = "loading" | "setup" | "unlock-pin" | "unlock-passphrase" | "offer-biometric";
+
+/** 잠금 수단별 안내 문구 조각 — 기존 문자 비밀번호 사용자에게 "PIN"이라고 말하지 않도록 나눈다. */
+const SECRET_WORDS = {
+  pin: { name: "PIN", subject: "PIN이", by: "PIN으로", object: "PIN을" },
+  passphrase: { name: "비밀번호", subject: "비밀번호가", by: "비밀번호로", object: "비밀번호를" },
+} as const;
 
 interface LockGateProps {
   children: ReactNode;
@@ -79,6 +85,11 @@ export function LockGate({ children }: LockGateProps) {
   const autoTriedRef = useRef(false);
   const bioFailRef = useRef(0);
   const prevLockedRef = useRef(locked);
+  // 검증·Face ID·등록 작업이 진행 중인지. submitting(state)은 화면 표시용이고, 동시 실행 차단은
+  // 렌더 시점 값에 묶이지 않는 이 ref로 한다(자동 시도 클로저가 오래된 submitting을 볼 수 있다).
+  const inFlightRef = useRef(false);
+  // 현재 잠금 수단 — 안내 문구를 PIN/비밀번호로 나눈다.
+  const [secretKind, setSecretKind] = useState<keyof typeof SECRET_WORDS>("pin");
 
   /** 설정·Face ID 등록 상태를 읽어 잠금 화면 모드를 정한다. */
   const resolveMode = useCallback(async (isCancelled: () => boolean) => {
@@ -87,6 +98,7 @@ export function LockGate({ children }: LockGateProps) {
       return;
     }
     setPin("");
+    setFirstPin(null);
     setError(null);
     if (settings == null) {
       setMode("setup");
@@ -99,6 +111,7 @@ export function LockGate({ children }: LockGateProps) {
     }
     setBioSupported(supported);
     setBioConfig(config);
+    setSecretKind(settings.lockType === "pin" ? "pin" : "passphrase");
     setMode(settings.lockType === "pin" ? "unlock-pin" : "unlock-passphrase");
   }, []);
 
@@ -178,6 +191,37 @@ export function LockGate({ children }: LockGateProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [locked, bioConfig, mode]);
 
+  // 등록 제안 화면은 아직 잠긴 상태(locked=true)라 자동 잠금(useSessionGuard)이 돌지 않는다.
+  // 방치하면 누구나 "괜찮아요"로 열 수 있고 검증된 PIN이 메모리에 남으므로, 10분이 지나거나
+  // 백그라운드로 가면 제안을 버리고 잠금 화면으로 돌아간다. Face ID 시트가 떠 있는 동안은 건드리지 않는다.
+  useEffect(() => {
+    if (mode !== "offer-biometric") {
+      return;
+    }
+    const expire = () => {
+      if (inFlightRef.current) {
+        return;
+      }
+      setPending(null);
+      setConfirmFinish(null);
+      setMode("loading");
+      // mode 변경으로 이 effect가 정리돼도 판정은 끝까지 해야 하므로 취소하지 않는다.
+      void resolveMode(() => false);
+    };
+    const timer = window.setTimeout(expire, AUTO_LOCK_MS);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        expire();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+    // confirmFinish가 생기면(한 번 더 확인 단계) 제한 시간을 다시 센다.
+  }, [mode, confirmFinish, resolveMode]);
+
   // 이미 잠금 해제된 경우 AppNav가 children과 하단 네비게이션을 조립한다.
   // (동적 하단 패딩·상세화면 네비 숨김은 모두 AppNav가 책임진다.)
   if (!locked) {
@@ -192,9 +236,26 @@ export function LockGate({ children }: LockGateProps) {
     );
   }
 
+  /** 진행 중인 작업이 없으면 시작 표시를 하고 true. 이미 진행 중이면 false(동시 실행 차단). */
+  function beginWork(): boolean {
+    if (inFlightRef.current) {
+      return false;
+    }
+    inFlightRef.current = true;
+    setSubmitting(true);
+    return true;
+  }
+
+  function endWork() {
+    inFlightRef.current = false;
+    setSubmitting(false);
+  }
+
   /** setup: 확인 단계까지 일치하면 salt/verifier를 만들고 잠금을 해제한다. */
   async function completeSetup(confirmedPin: string) {
-    setSubmitting(true);
+    if (!beginWork()) {
+      return;
+    }
     try {
       const salt = makeSalt();
       const key = await deriveKey(confirmedPin, salt);
@@ -213,19 +274,23 @@ export function LockGate({ children }: LockGateProps) {
         await upsertMember({ id: crypto.randomUUID(), name: "나" });
       }
 
+      // 확인용으로 들고 있던 평문 PIN을 지운 뒤 연다.
+      setFirstPin(null);
       useAppStore.getState().unlock(key);
     } catch {
       setError("설정 중 문제가 생겼어요. 다시 시도해 주세요.");
       setPin("");
       setFirstPin(null);
     } finally {
-      setSubmitting(false);
+      endWork();
     }
   }
 
   /** unlock-pin: 6자리가 차면 자동으로 검증한다. */
   async function verifyPin(enteredPin: string) {
-    setSubmitting(true);
+    if (!beginWork()) {
+      return;
+    }
     try {
       const settings = await getSettings();
       if (settings == null) {
@@ -247,7 +312,7 @@ export function LockGate({ children }: LockGateProps) {
       setError("잠금 해제 중 문제가 생겼어요. 다시 시도해 주세요.");
       setPin("");
     } finally {
-      setSubmitting(false);
+      endWork();
     }
   }
 
@@ -273,10 +338,9 @@ export function LockGate({ children }: LockGateProps) {
   }
 
   async function handleEnableFromOffer() {
-    if (!pending) {
+    if (!pending || !beginWork()) {
       return;
     }
-    setSubmitting(true);
     try {
       const res = await startEnrollment(pending.secret);
       if (res.status === "needs-confirm") {
@@ -286,19 +350,21 @@ export function LockGate({ children }: LockGateProps) {
     } catch {
       // 취소·미지원·기타 — 설정에서 다시 켤 수 있으니 잠금 해제는 그대로 진행한다
     } finally {
-      setSubmitting(false);
+      endWork();
     }
     finishOffer();
   }
 
   async function handleConfirmFinish() {
-    setSubmitting(true);
+    if (!beginWork()) {
+      return;
+    }
     try {
       await confirmFinish?.();
     } catch {
       // 위와 같음
     } finally {
-      setSubmitting(false);
+      endWork();
     }
     finishOffer();
   }
@@ -315,11 +381,11 @@ export function LockGate({ children }: LockGateProps) {
 
   /** Face ID로 저장된 PIN/비밀번호를 꺼내 기존 검증 경로로 연다. auto=true면 자동 시도. */
   async function handleBiometric(auto: boolean) {
-    if (submitting || bioConfig == null) {
+    if (bioConfig == null || !beginWork()) {
       return;
     }
-    setSubmitting(true);
     setError(null);
+    const words = SECRET_WORDS[secretKind];
     try {
       // 첫 await가 credentials.get이어야 한다(제스처 보존).
       const secret = await unlockWithBiometric(bioConfig);
@@ -331,7 +397,7 @@ export function LockGate({ children }: LockGateProps) {
       const key = settings ? await deriveKey(secret, settings.kdfSalt) : null;
       if (!settings || !key || !(await checkVerifier(key, settings.verifier))) {
         await dropBiometric();
-        setError("PIN이 바뀌어 Face ID를 쓸 수 없어요. PIN으로 연 뒤 설정에서 Face ID를 다시 켜 주세요.");
+        setError(`${words.subject} 바뀌어 Face ID를 쓸 수 없어요. ${words.by} 연 뒤 설정에서 Face ID를 다시 켜 주세요.`);
         return;
       }
       bioFailRef.current = 0;
@@ -344,25 +410,25 @@ export function LockGate({ children }: LockGateProps) {
         }
         bioFailRef.current += 1;
         if (bioFailRef.current >= 3) {
-          setError("Face ID로 열 수 없어요. PIN으로 연 뒤 설정에서 다시 켜 주세요.");
+          setError(`Face ID로 열 수 없어요. ${words.by} 연 뒤 설정에서 다시 켜 주세요.`);
         }
         return;
       }
       if (e instanceof BiometricInvalidError) {
         // 복호화 실패 — 등록이 망가진 것으로 보고 지운다
         await dropBiometric();
-        setError("Face ID를 다시 켜 주세요. 지금은 PIN으로 열어 주세요.");
+        setError(`Face ID를 다시 켜 주세요. 지금은 ${words.by} 열어 주세요.`);
         return;
       }
-      setError("Face ID로 열지 못했어요. PIN을 입력해 주세요.");
+      setError(`Face ID로 열지 못했어요. ${words.object} 입력해 주세요.`);
     } finally {
-      setSubmitting(false);
+      endWork();
     }
   }
 
   /** 넘버패드 숫자 입력 — 6자리가 차는 순간 모드에 따라 자동 진행한다. */
   function handleDigit(digit: string) {
-    if (submitting || pin.length >= PIN_LENGTH) {
+    if (inFlightRef.current || pin.length >= PIN_LENGTH) {
       return;
     }
     setError(null);
@@ -413,12 +479,13 @@ export function LockGate({ children }: LockGateProps) {
       return;
     }
 
-    setSubmitting(true);
+    if (!beginWork()) {
+      return;
+    }
     try {
       const settings = await getSettings();
       if (settings == null) {
         setError("설정 정보를 찾지 못했어요. 앱을 다시 시작해 주세요.");
-        setSubmitting(false);
         return;
       }
 
@@ -434,7 +501,7 @@ export function LockGate({ children }: LockGateProps) {
     } catch {
       setError("잠금 해제 중 문제가 생겼어요. 다시 시도해 주세요.");
     } finally {
-      setSubmitting(false);
+      endWork();
     }
   }
 
@@ -470,9 +537,12 @@ export function LockGate({ children }: LockGateProps) {
           {mode === "offer-biometric" ? (
             /* PIN·비밀번호로 연 직후 Face ID 등록 제안 */
             <div className="flex flex-col gap-4">
-              <p className="text-[17px] font-bold leading-[1.45] text-ink">다음부터 Face ID로 열까요?</p>
+              {/* 화면 전환을 보조기기가 읽도록 질문을 status로 알린다 */}
+              <p role="status" className="text-[17px] font-bold leading-[1.45] text-ink">
+                다음부터 Face ID로 열까요?
+              </p>
               <p className="text-[15px] font-normal leading-[1.5] text-body">
-                PIN 대신 얼굴로 바로 열 수 있어요. 설정에서 언제든 끌 수 있어요.
+                {SECRET_WORDS[secretKind].name} 대신 얼굴로 바로 열 수 있어요. 설정에서 언제든 끌 수 있어요.
               </p>
               {confirmFinish ? (
                 <Button variant="primary" className="w-full" disabled={submitting} onClick={handleConfirmFinish}>
