@@ -403,7 +403,7 @@ dotori는 토스(Toss)의 디자인 언어를 따른다 — 차분하고, 신뢰
 - 카드는 테두리 대신 `{shadows.card}`로 띄운다. hover 시 `{shadows.card-hover}`, 모달·플로팅은 `{shadows.floating}`.
 
 ### Motion
-- **하단 바 교차 슬라이드(`{motion.nested-bar-slide}`)**: 메인 탭 바와 자산 플로팅 바는 자산 진입/이탈 시 서로 교대한다. 둘 다 `transition-[transform,opacity] duration-[250ms] ease-out`로, 노출 시 `translate-y-0 opacity-100`, 숨김 시 아래로 슬라이드(`opacity-0`)한다 — 메인 바는 `translate-y-full`, 플로팅 pill은 `translate-y-[150%]`. 신규 애니메이션 의존성 없이 CSS transform/opacity만 토글한다.
+- **하단 바 순차 전환(`{motion.nested-bar-slide}`)**: 메인 탭 바와 플로팅 중첩 바(자산·계획)는 진입/이탈 시 **순차로** 교대한다(동시 교차 아님). 진입: 메인 바가 지연 없이 내려가고(`translate-y-full opacity-0`, 140ms ease-in) → ← 버튼만 담긴 56px 원이 떠오르고(160ms, 지연 60ms) → pill이 **왼쪽에서 오른쪽으로 펼쳐진다**(260ms, 지연 120ms, `cubic-bezier(0.22,1,0.36,1)`). 이탈은 역순: pill이 오→왼으로 원까지 접히고(160ms, 지연 0, `cubic-bezier(0.4,0,1,1)`) → 원이 내려가고(120ms, 지연 110ms) → 메인 바가 올라온다(200ms, 지연 150ms). 전체 0.4초 안쪽으로 빠릿하게 유지한다. 펼침은 배경 레이어 `width`(둥근 모서리·`{shadows.floating}` 유지) + 내용물 `clip-path`를 같은 타이밍으로 맞춘다. 숨김/노출 상태마다 duration·delay 클래스를 달리 붙여 방향별 타이밍을 만들고, `motion-reduce:transition-none`으로 모션 감소 설정을 존중한다. 신규 애니메이션 의존성 없이 CSS transition만 쓴다.
 
 ## Components (요약)
 

@@ -19,7 +19,7 @@ import {
  * - 중첩 경로(/assets/*·/plan/*): 메인 바는 사라지고 플로팅 중첩 바(pill)만 떠오름.
  *   서브탭·활성 키는 자산/계획 여부에 따라 골라 주입한다. 하단 패딩 = pill(56) + 여백
  * - 그 외: 메인 바만. 하단 패딩 56
- * 두 바 모두 항상 마운트하고 visible로 토글해 슬라이드 교차 애니메이션을 만든다.
+ * 두 바 모두 항상 마운트하고 visible로 토글해 순차 전환(메인 바 하강 → pill 펼침, 역순 복귀)을 만든다.
  */
 export function AppNav({ children }: { children: ReactNode }) {
   const pathname = usePathname();
