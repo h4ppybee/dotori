@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 // 잠금 해제 시 LockGate가 AppNav(하위에 MainTabBar/NestedTabBar)를 렌더링하므로
@@ -15,6 +15,10 @@ import { getSettings, putSettings, listMembers } from "@/lib/db/local-store";
 import { makeSalt, deriveKey, makeVerifier } from "@/lib/crypto/crypto";
 import { useAppStore } from "@/stores/app-store";
 import { useNavStore } from "@/stores/nav-store";
+import { saveSession, AUTO_LOCK_MS } from "@/lib/db/session-vault";
+import { installFakeWebAuthn, uninstallFakeWebAuthn } from "@/test/biometric/fake-webauthn";
+import { startEnrollment } from "@/lib/biometric/biometric-unlock";
+import { getBiometricConfig } from "@/lib/db/local-store";
 
 afterEach(async () => {
   // DB 초기화
@@ -23,6 +27,8 @@ afterEach(async () => {
   // 스토어 초기화
   useAppStore.setState({ locked: true, sessionKey: null, lastRefreshAt: null });
   useNavStore.setState({ lastMainTabPath: "/" });
+  uninstallFakeWebAuthn();
+  localStorage.clear();
 });
 
 // 테스트 전체에서 실제 Web Crypto를 사용한다 (no mocks).
@@ -293,5 +299,132 @@ describe("LockGate — 재진입 (기존 문자 비밀번호)", () => {
     const members = await listMembers();
     expect(members).toHaveLength(1);
     expect(members[0].name).toBe("기존 구성원");
+  });
+});
+
+/** PIN 잠금 설정을 심고 파생 키를 돌려준다. */
+async function seedPin(pin: string) {
+  const salt = makeSalt();
+  const key = await deriveKey(pin, salt);
+  await putSettings({ id: "app", kdfSalt: salt, verifier: await makeVerifier(key), schemaVersion: 1, lockType: "pin" });
+  return key;
+}
+
+describe("LockGate — Face ID", { timeout: 20000 }, () => {
+  it("등록돼 있으면 'Face ID로 열기' 버튼으로 잠금이 풀린다", async () => {
+    const fake = installFakeWebAuthn();
+    await seedPin("135790");
+    await startEnrollment("135790");
+    // 자동 시도는 거부되게 한다(iOS 제스처 제한 재현). 이후 버튼 탭은 성공한다.
+    fake.get.mockRejectedValueOnce(new DOMException("x", "NotAllowedError"));
+    const user = userEvent.setup();
+    render(<LockGate><div>앱 콘텐츠</div></LockGate>);
+    await waitFor(() => expect(fake.get).toHaveBeenCalledTimes(1));
+    const btn = await screen.findByRole("button", { name: "Face ID로 열기" });
+    await waitFor(() => expect(btn).not.toBeDisabled());
+    await user.click(btn);
+    await waitFor(() => expect(screen.getByText("앱 콘텐츠")).toBeInTheDocument(), { timeout: 15000 });
+    expect(fake.get).toHaveBeenCalledTimes(2);
+  });
+
+  it("마운트 시 자동으로 한 번 시도한다", async () => {
+    const fake = installFakeWebAuthn();
+    await seedPin("135790");
+    await startEnrollment("135790");
+    render(<LockGate><div>앱 콘텐츠</div></LockGate>);
+    await waitFor(() => expect(screen.getByText("앱 콘텐츠")).toBeInTheDocument(), { timeout: 15000 });
+    expect(fake.get).toHaveBeenCalledTimes(1);
+  });
+
+  it("자동 시도가 거부되면 조용히 넘버패드와 버튼이 남는다", async () => {
+    const fake = installFakeWebAuthn({ failGetWith: "NotAllowedError" });
+    await seedPin("135790");
+    await startEnrollment("135790");
+    render(<LockGate><div>앱 콘텐츠</div></LockGate>);
+    await waitFor(() => expect(fake.get).toHaveBeenCalledTimes(1));
+    expect(await screen.findByRole("button", { name: "Face ID로 열기" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "1" })).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("저장된 PIN이 맞지 않으면 등록을 지우고 안내한다", async () => {
+    installFakeWebAuthn();
+    await seedPin("135790");
+    await startEnrollment("000000"); // 다른 PIN으로 등록된 상태
+    render(<LockGate><div>앱 콘텐츠</div></LockGate>);
+    expect(await screen.findByText(/Face ID를 다시 켜 주세요/, undefined, { timeout: 15000 })).toBeInTheDocument();
+    expect(await getBiometricConfig()).toBeUndefined();
+    expect(screen.queryByRole("button", { name: "Face ID로 열기" })).not.toBeInTheDocument();
+  });
+
+  it("PIN으로 열면 등록 제안이 나오고, '괜찮아요'를 누르면 잠금이 풀리고 다시 묻지 않는다", async () => {
+    installFakeWebAuthn();
+    await seedPin("135790");
+    const user = userEvent.setup();
+    render(<LockGate><div>앱 콘텐츠</div></LockGate>);
+    await screen.findByRole("button", { name: "1" });
+    await tapPin(user, "135790");
+    await user.click(await screen.findByRole("button", { name: "괜찮아요" }, { timeout: 15000 }));
+    await waitFor(() => expect(screen.getByText("앱 콘텐츠")).toBeInTheDocument());
+    expect(localStorage.getItem("dotori.biometricOffered")).toBe("1");
+    expect(await getBiometricConfig()).toBeUndefined();
+  });
+
+  it("등록 제안에서 'Face ID 켜기'를 누르면 등록 후 잠금이 풀린다", async () => {
+    installFakeWebAuthn();
+    await seedPin("135790");
+    const user = userEvent.setup();
+    render(<LockGate><div>앱 콘텐츠</div></LockGate>);
+    await screen.findByRole("button", { name: "1" });
+    await tapPin(user, "135790");
+    await user.click(await screen.findByRole("button", { name: "Face ID 켜기" }, { timeout: 15000 }));
+    await waitFor(() => expect(screen.getByText("앱 콘텐츠")).toBeInTheDocument());
+    expect(await getBiometricConfig()).toBeDefined();
+    expect(localStorage.getItem("dotori.biometricOffered")).toBe("1");
+  });
+
+  it("이미 제안했으면 PIN으로 열 때 다시 묻지 않는다", async () => {
+    installFakeWebAuthn();
+    await seedPin("135790");
+    localStorage.setItem("dotori.biometricOffered", "1");
+    const user = userEvent.setup();
+    render(<LockGate><div>앱 콘텐츠</div></LockGate>);
+    await screen.findByRole("button", { name: "1" });
+    await tapPin(user, "135790");
+    await waitFor(() => expect(screen.getByText("앱 콘텐츠")).toBeInTheDocument(), { timeout: 15000 });
+  });
+
+  it("지원하지 않는 기기에서는 버튼도 제안도 없다", async () => {
+    installFakeWebAuthn({ available: false });
+    await seedPin("135790");
+    const user = userEvent.setup();
+    render(<LockGate><div>앱 콘텐츠</div></LockGate>);
+    await screen.findByRole("button", { name: "1" });
+    expect(screen.queryByRole("button", { name: "Face ID로 열기" })).not.toBeInTheDocument();
+    await tapPin(user, "135790");
+    await waitFor(() => expect(screen.getByText("앱 콘텐츠")).toBeInTheDocument(), { timeout: 15000 });
+  });
+
+  it("세션 복원 후 잠기면 로딩에 머물지 않고 PIN 화면이 나온다", async () => {
+    const key = await seedPin("135790");
+    // 마운트 시 세션 볼트로 자동 해제되는 상황(mode가 loading에 머문다)을 재현한다
+    await saveSession(key, Date.now() + AUTO_LOCK_MS);
+    render(<LockGate><div>앱 콘텐츠</div></LockGate>);
+    await screen.findByText("앱 콘텐츠");
+    act(() => useAppStore.getState().lock());
+    expect(await screen.findByRole("button", { name: "1" })).toBeInTheDocument();
+  });
+
+  it("세션 복원 후 잠기면 Face ID를 자동으로 다시 시도한다", async () => {
+    const fake = installFakeWebAuthn({ failGetWith: "NotAllowedError" });
+    const key = await seedPin("135790");
+    await startEnrollment("135790");
+    await saveSession(key, Date.now() + AUTO_LOCK_MS);
+    render(<LockGate><div>앱 콘텐츠</div></LockGate>);
+    await screen.findByText("앱 콘텐츠");
+    expect(fake.get).not.toHaveBeenCalled();
+    act(() => useAppStore.getState().lock());
+    await waitFor(() => expect(fake.get).toHaveBeenCalledTimes(1));
+    expect(await screen.findByRole("button", { name: "Face ID로 열기" })).toBeInTheDocument();
   });
 });
