@@ -191,6 +191,42 @@ describe("SettingsPage — 섹션 제목 렌더링", () => {
     expect(await getBiometricConfig()).toBeUndefined();
   });
 
+  it("Face ID 해제에 실패하면 PIN 변경 자체를 중단한다", async () => {
+    const PIN = "135790";
+    const salt = makeSalt();
+    const oldKey = await deriveKey(PIN, salt);
+    const oldVerifier = await makeVerifier(oldKey);
+    await putSettings({
+      id: "app", kdfSalt: salt, verifier: oldVerifier,
+      schemaVersion: 1, lockType: "pin",
+    });
+    await saveBiometricConfig({
+      credentialId: "cred-1", prfSalt: "salt", secretEnc: "iv.ct", createdAt: 1,
+    });
+    const deleteSpy = vi.spyOn(db.biometric, "delete").mockRejectedValueOnce(new Error("boom"));
+
+    await renderSettings();
+
+    const current = await screen.findByLabelText("현재 PIN");
+    fireEvent.change(current, { target: { value: PIN } });
+    fireEvent.change(screen.getByLabelText("새 PIN"), { target: { value: "246810" } });
+    fireEvent.change(screen.getByLabelText("새 PIN 확인"), { target: { value: "246810" } });
+    fireEvent.click(screen.getByRole("button", { name: "PIN 바꾸기" }));
+
+    expect(
+      await screen.findByText("Face ID 해제에 실패해 PIN을 바꾸지 못했어요. 다시 시도해 주세요.", {}, { timeout: 15000 }),
+    ).toBeInTheDocument();
+
+    // PIN이 바뀌지 않았어야 한다 — 이전 PIN으로 여전히 verifier가 통과한다
+    const stillSettings = await getSettings();
+    expect(stillSettings?.verifier).toBe(oldVerifier);
+    expect(await checkVerifier(oldKey, stillSettings!.verifier)).toBe(true);
+    // Face ID 등록도 지워지지 않은 채 남아 있다(삭제 자체가 실패했으므로)
+    expect(await getBiometricConfig()).toBeDefined();
+
+    deleteSpy.mockRestore();
+  });
+
   it("금액 숨기기 토글을 켜면 Settings에 저장된다", async () => {
     await putSettings({ id: "app", kdfSalt: "s", verifier: "v", schemaVersion: 1 });
     await renderSettings();

@@ -128,6 +128,8 @@ function PinSection() {
       const hadBiometric = (await getBiometricConfig()) != null;
       try {
         await disableBiometric();
+        // rekeyVault·putSettings가 이어서 실패해도 등록 해제 자체는 반영됐으니 바로 무효화한다.
+        await queryClient.invalidateQueries({ queryKey: BIOMETRIC_CONFIG_KEY });
       } catch {
         setError("Face ID 해제에 실패해 PIN을 바꾸지 못했어요. 다시 시도해 주세요.");
         return;
@@ -143,7 +145,6 @@ function PinSection() {
         lockType: "pin",
       });
       await queryClient.invalidateQueries({ queryKey: ["settings"] });
-      await queryClient.invalidateQueries({ queryKey: BIOMETRIC_CONFIG_KEY });
       // 세션 키를 새 키로 교체 — 잠금 해제 상태를 유지한다
       unlock(newKey);
 

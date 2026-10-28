@@ -66,6 +66,11 @@ export function BiometricPanel() {
       setAsking(true);
       return;
     }
+    // 아직 등록 전(asking 중이라 스위치만 켜져 보이는 상태)이면 끌 등록이 없다 — 폼만 닫는다.
+    if (!enabled) {
+      closeAsking();
+      return;
+    }
     void handleDisable();
   }
 
@@ -73,6 +78,8 @@ export function BiometricPanel() {
     setBusy(true);
     try {
       await disableBiometric();
+    } catch {
+      setError("Face ID를 끄지 못했어요. 다시 시도해 주세요.");
     } finally {
       setBusy(false);
       await queryClient.invalidateQueries({ queryKey: BIOMETRIC_CONFIG_KEY });
@@ -168,6 +175,20 @@ export function BiometricPanel() {
 
   return (
     <Card>
+      <h2 className="text-[19px] font-bold leading-[1.4] tracking-[-0.2px] text-ink mb-4">
+        Face ID
+      </h2>
+
+      {error != null && (
+        <div
+          className="rounded-[16px] px-4 py-[14px] mb-4 text-[15px] leading-[1.5]"
+          style={{ backgroundColor: "#FDECEE", color: "#F04452" }}
+          role="alert"
+        >
+          {error}
+        </div>
+      )}
+
       <div className="flex items-center justify-between gap-4">
         <div className="flex flex-col">
           <span className="text-[15px] font-medium leading-[1.5] text-ink">Face ID로 잠금 해제</span>
@@ -180,12 +201,6 @@ export function BiometricPanel() {
           disabled={busy}
         />
       </div>
-
-      {error != null && (
-        <p role="alert" className="text-[13px] leading-[1.45] mt-3" style={{ color: "#F04452" }}>
-          {error}
-        </p>
-      )}
 
       {asking && (
         <div className="flex flex-col gap-3 mt-4">
@@ -210,7 +225,7 @@ export function BiometricPanel() {
                 disabled={busy || secret === ""}
                 onClick={() => void handleVerify()}
               >
-                PIN 확인
+                {isPinLock ? "PIN 확인" : "비밀번호 확인"}
               </Button>
             </>
           )}
