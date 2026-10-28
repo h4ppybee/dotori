@@ -49,7 +49,7 @@ app/                       App Router 라우트 (모두 "use client")
   assets/crypto/page.tsx   코인 (+ crypto/manage)
   assets/snapshots         자산 스냅샷 전체 목록 (+ snapshots/[id] 상세 표+삭제)
   holdings/new, holdings/[id]  주식 직접 추가 / 상세·섹터 편집·MANUAL 수정·삭제
-  plan/page.tsx            통장 쪼개기 — 프로필(통합/아내/남편) · 태그·은행별 롤업 · 항목 관리(일괄 편집 모드 지원). 통합 뷰는 전체 항목을 아내/남편 섹션으로 나눠 리스트하며 항목 추가는 프로필 뷰에서만.
+  plan/page.tsx            통장 쪼개기 — 프로필(통합/아내/남편) · 태그·은행별 롤업 · 항목 관리(일괄 편집 모드 지원) · 시트에서 가져오기(시트 원본으로 덮어쓰기). 통합 뷰는 전체 항목을 아내/남편 섹션으로 나눠 리스트하며 항목 추가는 프로필 뷰에서만.
   plan/realty/page.tsx     부동산 조달계획 (플레이스홀더 DummyPage)
   ledger                   가계부 (플레이스홀더 DummyPage)
   settings/page.tsx        연동(토스·업비트) / 백업 / 구글 시트 내보내기 / PIN 설정·변경
@@ -69,7 +69,7 @@ components/
   savings/, pension/, coin/, debt/   자산별 위젯·관리 목록·입력 다이얼로그
   snapshot/                SnapshotSection(기록 버튼+차트+최근 목록), SnapshotListItem, SnapshotTrendChart(추이 콤보 차트)
   goal/                    GoalCard, GoalForm, GoalEmptyState, GoalProgressRing (목표 자산 섹션)
-  envelope/                ProfileSegment, RollupCard, EnvelopeItemRow, EnvelopeItemDialog (통장 쪼개기)
+  envelope/                ProfileSegment, RollupCard, EnvelopeItemRow, EnvelopeItemDialog, EnvelopeSheetImport (통장 쪼개기)
   holdings/HoldingForm.tsx 종목 추가/편집 폼
   nav/                     AppNav, MainTabBar, NestedTabBar(자산·계획 공용 플로팅 서브탭), DummyPage
   settings/                ConnectionForm, BackupPanel, SheetExportPanel(구글 시트 내보내기 연결/해제/지금 내보내기)
@@ -83,7 +83,7 @@ lib/
   portfolio/               순수 계산: portfolio-service(buildPortfolio), pnl, fx, merge, ratios, net-worth
   savings/, pension/, coin/, debt/   자산별 순수 서비스(VM 빌드·집계·카테고리 라벨). savings/deposit-accrual은 예적금 납입일 계산·자동 증가
   goal/                    순수 계산: goal-service(buildGoalProgress) — 순자산 목표 진척(월 필요 저축액·달성률)
-  envelope/                순수 계산: envelope-service(태그·은행·프로필별 롤업 집계), presets(태그·은행 기본 목록), tag-color(태그 팔레트 매핑)
+  envelope/                순수 계산: envelope-service(태그·은행·프로필별 롤업 집계), presets(태그·은행 기본 목록), tag-color(태그 팔레트 매핑), sheet-import(시트 그리드 → 항목 순수 파서). import-from-sheet(시트 읽기→파싱 조립, throw 없음). 상세 docs/external-api.md
   sector/                  seed(종목→섹터 시드), sector-map(resolveSector + KNOWN_SECTORS)
   crypto/                  crypto(PBKDF2/AES-GCM), rekey(비밀번호 변경 재암호화)
   snapshot/                수동 전체 자산 스냅샷 — capture(DB 상태→VM 5종→저장), asset-snapshot(순수 빌더), trend(추이 차트 데이터 헬퍼)

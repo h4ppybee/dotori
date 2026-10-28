@@ -1,6 +1,6 @@
 # 외부 API 연동 — 토스인베스트 · 업비트 · 구글 시트 (OpenAPI)
 
-시세·보유·환율은 두 개의 외부 OpenAPI에서 **가져온다(인바운드)**. 시크릿·토큰은 **브라우저에서 외부로 직접 나가지 않고 서버(프록시 또는 릴레이)를 경유**한다. 클라이언트는 정규화된 결과만 받는다. 반대로 구글 시트 내보내기는 앱 데이터를 사용자의 구글 시트로 **내보내는(아웃바운드) 단방향** 연동이며, 사용자 소유 비밀키만 쓰므로 프록시를 거치지 않는다(아래 [구글 시트 내보내기](#구글-시트-내보내기-apps-script-웹앱) 참고).
+시세·보유·환율은 두 개의 외부 OpenAPI에서 **가져온다(인바운드)**. 시크릿·토큰은 **브라우저에서 외부로 직접 나가지 않고 서버(프록시 또는 릴레이)를 경유**한다. 클라이언트는 정규화된 결과만 받는다. 반대로 구글 시트 내보내기는 앱 데이터를 사용자의 구글 시트로 **내보내는(아웃바운드)** 연동이고(예외: 통장 쪼개기는 같은 웹앱으로 시트 원본을 **가져올** 수 있다), 사용자 소유 비밀키만 쓰므로 프록시를 거치지 않는다(아래 [구글 시트 내보내기](#구글-시트-내보내기-apps-script-웹앱) 참고).
 
 | 소스 | 가져오는 것 | 인증 | 프록시 경로 |
 | --- | --- | --- | --- |
@@ -132,7 +132,7 @@ USD 자산이 있을 때 환산이 막히는 문제를 해결한다.
 
 ## 구글 시트 내보내기 (Apps Script 웹앱)
 
-dotori의 자산·부채·통장 쪼개기 데이터를 사용자의 구글 시트로 **단방향(앱 → 시트)** 내보낸다. 시트에서 고친 값은 앱에 반영되지 않는다 — 시트는 보기 전용 출력물이다.
+dotori의 자산·부채·통장 쪼개기 데이터를 사용자의 구글 시트로 내보낸다(앱 → 시트). `dotori_*` 탭에서 고친 값은 앱에 반영되지 않는다 — 출력물이다. 단, **통장 쪼개기는 시트의 `통장쪼개기` 원본 탭이 원본**이며 같은 웹앱으로 가져온다(아래 [통장 쪼개기 가져오기](#통장-쪼개기-가져오기-시트--앱)).
 
 관련 파일: [lib/sheet-export/build-payload.ts](../lib/sheet-export/build-payload.ts)(순수 빌더) · [lib/sheet-export/client.ts](../lib/sheet-export/client.ts)(웹앱 클라이언트) · [lib/sheet-export/export.ts](../lib/sheet-export/export.ts)(조립) · [lib/query/use-sheet-export.ts](../lib/query/use-sheet-export.ts) · [components/settings/SheetExportPanel.tsx](../components/settings/SheetExportPanel.tsx) · [integrations/apps-script/](../integrations/apps-script/)(Apps Script 원본·설치 안내)
 
@@ -179,6 +179,7 @@ dotori의 자산·부채·통장 쪼개기 데이터를 사용자의 구글 시�
 - 웹앱은 "액세스: 모든 사용자"로 배포하므로 **비밀키가 유일한 보호 수단**이다. 비밀키를 아는 사람은 누구나 해당 URL에 써넣을 수 있다.
 - 앱은 비밀키를 평문으로 저장하지 않는다 — 세션 키(CryptoKey)로 암호화해 `sheetExport` 테이블의 `secretEnc`에 저장한다(`lib/db/local-store.ts`의 `getSheetExportConfig`/`saveSheetExportConfig`). PIN·비밀번호 변경 시 `rekeyVault`(`lib/crypto/rekey.ts`)가 재암호화한다.
 - 스크립트는 `dotori_*` 탭만 쓰므로, 비밀키가 유출돼도 시트의 기존 탭(수식·대시보드 등)은 덮이지 않는다.
+- 단 비밀키를 아는 사람은 `readEnvelope`로 `통장쪼개기` 원본 탭 값을 **읽을 수 있다**. 읽기는 이 탭 하나로 한정된다(`ENVELOPE_SOURCE_TAB`).
 - 시트에는 평문 금액이 그대로 올라간다. 시트 공유 범위는 사용자 책임 — 설정 패널 안내 문구에 명시돼 있다.
 
 ### 호출 시점
@@ -191,3 +192,19 @@ dotori의 자산·부채·통장 쪼개기 데이터를 사용자의 구글 시�
 ### 설치
 
 Apps Script 원본과 설치 절차·수동 확인 체크리스트는 [integrations/apps-script/README.md](../integrations/apps-script/README.md) 참고.
+
+## 통장 쪼개기 가져오기 (시트 → 앱)
+
+통장 쪼개기 화면은 사용자 시트의 `통장쪼개기` 탭을 원본으로 둔다. 화면의 "시트에서 가져오기"(시트 연결이 있을 때만 보임)를 누르면 시트를 읽어 개수를 확인받고, 앱 항목을 **통째로 덮어쓴다**. 읽기·파싱이 실패하면 앱 데이터는 그대로다.
+
+관련 파일: [lib/sheet-export/client.ts](../lib/sheet-export/client.ts)(`postSheetRead`) · [lib/envelope/sheet-import.ts](../lib/envelope/sheet-import.ts)(순수 파서) · [lib/envelope/import-from-sheet.ts](../lib/envelope/import-from-sheet.ts)(조립, throw 없음) · `lib/db/local-store.ts`의 `replaceEnvelopeItems` · [components/envelope/EnvelopeSheetImport.tsx](../components/envelope/EnvelopeSheetImport.tsx)
+
+- **요청**: 내보내기와 같은 웹앱 URL·비밀키로 `{ version: 1, secret, action: "readEnvelope" }`를 POST(`text/plain`).
+- **응답**: `{ ok: true, values }` — 원본 탭의 `getDataRange().getValues()` 그대로(해석은 앱이 한다). 탭이 없으면 `{ ok: false, error: "NO_SOURCE_TAB" }` → "시트에 '통장쪼개기' 탭이 없어요." 그 밖의 오류 매핑은 내보내기와 같다(공통 `postWebApp`). 읽기 기능이 없는 예전 스크립트는 `BAD_REQUEST`를 돌려주므로 "최신 버전으로 배포했는지 확인" 메시지가 뜬다.
+- **표 해석**(`parseEnvelopeSheet`):
+  - 같은 행에 `태그`·`금액` 셀이 있으면 헤더. 열은 헤더 라벨로 찾는다 — `태그`, `은행` 또는 `위치`(→ 통장), `항목`, `금액`, `비고`.
+  - 헤더 순서대로 블록: 첫 번째 = 아내, 두 번째 = 남편. 블록은 다음 헤더 직전까지. 헤더가 2개 미만이면 "통장쪼개기 표를 찾지 못했어요."
+  - 태그·항목이 있고 금액이 0 이상 숫자인 행만 항목. 빈 행·합계 행·비율 열·옆 요약 칸은 무시한다.
+  - 금액은 **만원 단위** → `× 10,000` 반올림해 원으로 저장. 통장 칸이 비면 `기타`.
+- **적용**(`replaceEnvelopeItems`): 한 트랜잭션에서 기존 항목 삭제 → 시트 순서대로 프로필별 sortOrder 부여 → 프리셋·기존 커스텀에 없는 태그·통장을 커스텀 목록에 추가.
+

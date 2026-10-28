@@ -17,6 +17,7 @@ export const SHEET_EXPORT_MESSAGES = {
   badResponse: "시트 스크립트 응답을 읽지 못했어요. 스크립트를 최신 버전으로 배포했는지 확인해 주세요.",
   busy: "다른 내보내기가 진행 중이에요. 잠시 후 다시 시도해 주세요.",
   scriptError: "시트에 쓰지 못했어요.",
+  noSourceTab: "시트에 '통장쪼개기' 탭이 없어요.",
 } as const;
 
 const WEB_APP_URL_RE = /^https:\/\/script\.google\.com\/(a\/[^/]+\/)?macros\/s\/[\w-]+\/exec$/;
@@ -35,11 +36,29 @@ export type SheetExportResult =
   | { status: "ok"; writtenAt: string }
   | { status: "error"; message: string };
 
-export async function postSheetExport(
+/** 통장쪼개기 원본 탭 읽기 요청(같은 웹앱·비밀키). */
+export interface SheetReadBody {
+  version: 1;
+  secret: string;
+  action: "readEnvelope";
+}
+
+export type SheetReadResult =
+  | { status: "ok"; values: unknown[][] }
+  | { status: "error"; message: string };
+
+type WebAppOpts = { fetchImpl?: typeof fetch; timeoutMs?: number };
+type WebAppJson = { ok?: unknown; error?: unknown; [k: string]: unknown };
+
+/**
+ * 웹앱 POST 공통부: 전송·타임아웃·JSON 파싱과 ok:false 오류 매핑까지.
+ * ok:true면 json을 돌려주고, 성공 응답의 모양 검증은 호출부가 한다.
+ */
+async function postWebApp(
   url: string,
-  body: SheetExportBody,
-  opts: { fetchImpl?: typeof fetch; timeoutMs?: number } = {},
-): Promise<SheetExportResult> {
+  body: SheetExportBody | SheetReadBody,
+  opts: WebAppOpts,
+): Promise<{ kind: "ok"; json: WebAppJson } | { kind: "error"; message: string }> {
   const fetchImpl = opts.fetchImpl ?? fetch;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? SHEET_EXPORT_TIMEOUT_MS);
@@ -57,32 +76,70 @@ export async function postSheetExport(
     httpOk = res.ok;
     text = await res.text();
   } catch {
-    return { status: "error", message: SHEET_EXPORT_MESSAGES.network };
+    return { kind: "error", message: SHEET_EXPORT_MESSAGES.network };
   } finally {
     clearTimeout(timer);
   }
 
   if (!httpOk) {
-    return { status: "error", message: SHEET_EXPORT_MESSAGES.badResponse };
+    return { kind: "error", message: SHEET_EXPORT_MESSAGES.badResponse };
   }
-  let json: { ok?: unknown; writtenAt?: unknown; error?: unknown };
+  let json: WebAppJson;
   try {
     json = JSON.parse(text);
   } catch {
-    return { status: "error", message: SHEET_EXPORT_MESSAGES.badResponse };
+    return { kind: "error", message: SHEET_EXPORT_MESSAGES.badResponse };
+  }
+  if (!json || typeof json !== "object") {
+    return { kind: "error", message: SHEET_EXPORT_MESSAGES.badResponse };
   }
 
-  if (json.ok === true && typeof json.writtenAt === "string") {
-    return { status: "ok", writtenAt: json.writtenAt };
+  if (json.ok === true) {
+    return { kind: "ok", json };
   }
   if (json.error === "UNAUTHORIZED") {
-    return { status: "error", message: SHEET_EXPORT_MESSAGES.unauthorized };
+    return { kind: "error", message: SHEET_EXPORT_MESSAGES.unauthorized };
   }
   if (json.error === "BUSY") {
-    return { status: "error", message: SHEET_EXPORT_MESSAGES.busy };
+    return { kind: "error", message: SHEET_EXPORT_MESSAGES.busy };
+  }
+  if (json.error === "NO_SOURCE_TAB") {
+    return { kind: "error", message: SHEET_EXPORT_MESSAGES.noSourceTab };
   }
   if (json.error === "BAD_REQUEST" || typeof json.error !== "string") {
+    return { kind: "error", message: SHEET_EXPORT_MESSAGES.badResponse };
+  }
+  return { kind: "error", message: `${SHEET_EXPORT_MESSAGES.scriptError} ${json.error}` };
+}
+
+export async function postSheetExport(
+  url: string,
+  body: SheetExportBody,
+  opts: WebAppOpts = {},
+): Promise<SheetExportResult> {
+  const r = await postWebApp(url, body, opts);
+  if (r.kind === "error") {
+    return { status: "error", message: r.message };
+  }
+  if (typeof r.json.writtenAt !== "string") {
     return { status: "error", message: SHEET_EXPORT_MESSAGES.badResponse };
   }
-  return { status: "error", message: `${SHEET_EXPORT_MESSAGES.scriptError} ${json.error}` };
+  return { status: "ok", writtenAt: r.json.writtenAt };
+}
+
+/** 통장쪼개기 원본 탭 값을 읽는다. 예전 스크립트(읽기 미지원)는 BAD_REQUEST → badResponse. */
+export async function postSheetRead(
+  url: string,
+  body: SheetReadBody,
+  opts: WebAppOpts = {},
+): Promise<SheetReadResult> {
+  const r = await postWebApp(url, body, opts);
+  if (r.kind === "error") {
+    return { status: "error", message: r.message };
+  }
+  const values = r.json.values;
+  if (!Array.isArray(values) || !values.every(Array.isArray)) {
+    return { status: "error", message: SHEET_EXPORT_MESSAGES.badResponse };
+  }
+  return { status: "ok", values: values as unknown[][] };
 }

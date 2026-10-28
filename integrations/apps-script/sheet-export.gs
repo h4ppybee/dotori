@@ -1,6 +1,8 @@
 /**
  * dotori → 구글 시트 내보내기 웹앱.
  * 앱이 보낸 { version: 1, secret, tabs: [{ name, rows }] }를 받아 dotori_* 탭을 통째로 덮어쓴다.
+ * 가져오기: { version: 1, secret, action: "readEnvelope" }이면 통장쪼개기 원본 탭(ENVELOPE_SOURCE_TAB)의
+ * 값을 { ok: true, values }로 그대로 돌려준다(표 해석은 앱이 한다).
  * 배포: 웹앱 / 실행: 나 / 액세스: 모든 사용자. 비밀키는 스크립트 속성 DOTORI_SECRET.
  * 원본: dotori 저장소 integrations/apps-script/sheet-export.gs — 시트에서 직접 고치지 말고 여기서 고친 뒤 붙여넣는다.
  */
@@ -9,6 +11,8 @@ const SECRET_PROP = "DOTORI_SECRET";
 const TAB_PREFIX = "dotori_";
 const TEXT_FORMAT = "@";
 const NUMBER_FORMAT = "General";
+// 통장 쪼개기 원본 탭 이름. 시트에서 탭 이름을 바꾸면 여기만 고친다.
+const ENVELOPE_SOURCE_TAB = "통장쪼개기";
 
 function doPost(e) {
   let body;
@@ -26,6 +30,9 @@ function doPost(e) {
   const secret = PropertiesService.getScriptProperties().getProperty(SECRET_PROP);
   if (!secret || body.secret !== secret) {
     return json_({ ok: false, error: "UNAUTHORIZED" });
+  }
+  if (body.action === "readEnvelope") {
+    return json_(readEnvelope_());
   }
   if (!isValidBody_(body)) {
     return json_({ ok: false, error: "BAD_REQUEST" });
@@ -46,6 +53,15 @@ function doPost(e) {
     lock.releaseLock();
   }
   return json_({ ok: true, writtenAt: new Date().toISOString() });
+}
+
+/** 통장쪼개기 원본 탭의 값을 그대로 돌려준다. 읽기만 하므로 쓰기 락을 잡지 않는다(내보내기는 dotori_* 탭만 쓴다). */
+function readEnvelope_() {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(ENVELOPE_SOURCE_TAB);
+  if (!sheet) {
+    return { ok: false, error: "NO_SOURCE_TAB" };
+  }
+  return { ok: true, values: sheet.getDataRange().getValues() };
 }
 
 function isValidBody_(body) {
