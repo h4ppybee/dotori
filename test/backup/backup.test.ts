@@ -319,4 +319,17 @@ describe("exportAll / importAll", () => {
     await importAll(json, { mode: "overwrite" });
     expect((await db.sheetExport.get("sheet"))?.secretEnc).toBe("iv.ciphertext-marker");
   });
+
+  it("Face ID 등록(biometric)은 백업에 포함되지 않고, 덮어쓰기 불러오기 후에도 유지된다", async () => {
+    await db.biometric.put({
+      id: "biometric", credentialId: "cred-marker", prfSalt: "salt",
+      secretEnc: "iv.ciphertext-marker", createdAt: 1,
+    });
+    const json = await exportAll();
+    expect(json).not.toContain("ciphertext-marker");
+    expect(json).not.toContain("biometric");
+
+    await importAll(json, { mode: "overwrite" });
+    expect((await db.biometric.get("biometric"))?.secretEnc).toBe("iv.ciphertext-marker");
+  });
 });
