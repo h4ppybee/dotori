@@ -72,7 +72,7 @@ components/
   envelope/                ProfileSegment, RollupCard, EnvelopeItemRow, EnvelopeItemDialog, EnvelopeSheetImport (통장 쪼개기)
   holdings/HoldingForm.tsx 종목 추가/편집 폼
   nav/                     AppNav, MainTabBar, NestedTabBar(자산·계획 공용 플로팅 서브탭), DummyPage
-  settings/                ConnectionForm, BackupPanel, SheetExportPanel(구글 시트 내보내기 연결/해제/지금 내보내기)
+  settings/                ConnectionForm, BackupPanel, SheetExportPanel(구글 시트 내보내기 연결/해제/지금 내보내기), BiometricPanel(Face ID 잠금 해제 켜기/끄기)
   LockGate, ServiceWorkerRegister
 
 lib/
@@ -84,13 +84,14 @@ lib/
   savings/, pension/, coin/, debt/   자산별 순수 서비스(VM 빌드·집계·카테고리 라벨). savings/deposit-accrual은 예적금 납입일 계산·자동 증가
   goal/                    순수 계산: goal-service(buildGoalProgress) — 순자산 목표 진척(월 필요 저축액·달성률)
   envelope/                순수 계산: envelope-service(태그·은행·프로필별 롤업 집계), presets(태그·은행 기본 목록), tag-color(태그 팔레트 매핑), sheet-import(시트 그리드 → 항목 순수 파서). import-from-sheet(시트 읽기→파싱 조립, throw 없음). 상세 docs/external-api.md
+  biometric/               Face ID 잠금 해제 — webauthn(PRF 지원 판정·패스키 생성·PRF 조회), prf-key(PRF→HKDF→비추출 AES-GCM 키), biometric-unlock(등록·잠금 해제·해제 서비스, 기기별 user.id·제안 기록)
   sector/                  seed(종목→섹터 시드), sector-map(resolveSector + KNOWN_SECTORS)
   crypto/                  crypto(PBKDF2/AES-GCM), rekey(비밀번호 변경 재암호화)
   snapshot/                수동 전체 자산 스냅샷 — capture(DB 상태→VM 5종→저장), asset-snapshot(순수 빌더), trend(추이 차트 데이터 헬퍼)
   sheet-export/            구글 시트 내보내기 — build-payload(순수 빌더: VM 5종+envelope→탭별 2차원 배열), client(Apps Script 웹앱 POST·응답 정규화), export(설정·DB 읽기→빌더→전송 조립, throw 없음). 상세 docs/external-api.md
   backup/                  수동 데이터 export/import (JSON) — 상세 docs/backup.md
   nav/                     nav-config(탭 정의), active(활성 탭 판정)
-  query/                   client(QueryProvider), use-portfolio·use-savings·use-pension·use-coin·use-debt·use-settings, use-assets-refresh, use-asset-snapshots(목록/단건/기록·삭제 뮤테이션), use-goal(목표 조회·저장·삭제 뮤테이션), use-net-worth(순자산 합산 훅), use-envelope(항목·설정 CRUD + bulkUpdate 뮤테이션), use-sheet-export(설정 조회 + 저장·해제·지금 내보내기 뮤테이션, runSheetExport)
+  query/                   client(QueryProvider), use-portfolio·use-savings·use-pension·use-coin·use-debt·use-settings, use-assets-refresh, use-asset-snapshots(목록/단건/기록·삭제 뮤테이션), use-goal(목표 조회·저장·삭제 뮤테이션), use-net-worth(순자산 합산 훅), use-envelope(항목·설정 CRUD + bulkUpdate 뮤테이션), use-sheet-export(설정 조회 + 저장·해제·지금 내보내기 뮤테이션, runSheetExport), use-biometric(Face ID 등록 여부 조회, queryKey `["biometric"]`, 잠금 중엔 비활성)
   format.ts, types.ts
 
 stores/
@@ -106,6 +107,7 @@ docs/                      본 문서 + superpowers/(스펙·플랜)
 
 ```
 [LockGate] PIN(6자리 넘버패드)·비밀번호 잠금 해제 → sessionKey(CryptoKey) 메모리 + 세션 볼트(10분) 보관
+     │   (등록돼 있으면: 또는 Face ID 버튼(WebAuthn PRF) → 저장된 PIN/비밀번호 복호화 → 같은 deriveKey·checkVerifier 경로)
      │
 [useAssetsRefresh] 자산 통합 갱신 (자산 탭 진입 시 10분 경과하면 자동 실행)
      │   refreshAll   : 토스 토큰→보유→시세→환율→DB, prevClose 롤오버
@@ -115,7 +117,7 @@ docs/                      본 문서 + superpowers/(스펙·플랜)
      ▼
 [IndexedDB]  holdings · priceCache · fxRates · sectorOverrides · snapshots · settings
              · savings · pension · coin · debts · assetSnapshots · goal · session
-             · envelopeItems · envelopeConfig · sheetExport
+             · envelopeItems · envelopeConfig · sheetExport · biometric
      │
 [use-* 훅]   DB 로드 → 자산별 순수 서비스로 VM 빌드
      │   주식: buildPortfolio(merge+pnl+fx+ratios+resolveSector)
@@ -141,13 +143,15 @@ docs/                      본 문서 + superpowers/(스펙·플랜)
 
 ## 보안 모델
 
-- PIN/비밀번호는 **저장하지 않는다.** PBKDF2(310k, SHA-256)로 AES-GCM 256 키를 파생하고, `salt` + `verifier`만 `settings`에 저장한다 ([crypto.ts](../lib/crypto/crypto.ts), [LockGate](../components/LockGate.tsx)). 파생 키는 `extractable: false`(비추출)라 원본 키 바이트를 JS·디스크 어디로도 꺼낼 수 없다.
+- PIN/비밀번호는 **평문으로 저장하지 않는다.** PBKDF2(310k, SHA-256)로 AES-GCM 256 키를 파생하고, 잠금 확인용으로는 `salt` + `verifier`만 `settings`에 저장한다. 예외는 Face ID를 켠 경우뿐이며, 이때도 PRF 파생 키로 암호화한 PIN/비밀번호만 `biometric` 테이블에 둔다(아래 Face ID 항목) ([crypto.ts](../lib/crypto/crypto.ts), [LockGate](../components/LockGate.tsx)). 파생 키는 `extractable: false`(비추출)라 원본 키 바이트를 JS·디스크 어디로도 꺼낼 수 없다.
 - **잠금 수단은 `Settings.lockType`으로 구분한다** — `"pin"`(6자리 숫자, 넘버패드 UI)·`"passphrase"`(기존 문자 비밀번호). 필드가 없는 기존 데이터는 passphrase로 간주해 텍스트 입력으로 잠금 해제하고, 설정의 "PIN 설정"에서 `rekeyVault`를 거쳐 PIN으로 전환한다. 신규 설치는 처음부터 PIN으로 설정된다.
   - 트레이드오프: 6자리 PIN은 문자 비밀번호보다 오프라인 무차별 대입에 약하다(경우의 수 10^6). 로컬 퍼스트 특성상 서버 측 시도 제한이 없음을 인지하고 모바일 UX를 우선해 채택했다.
 - **세션 키(CryptoKey)는 평상시 메모리(zustand)에** 둔다. 자동 잠금(10분 유휴 슬라이딩)을 위해 비추출 핸들 + 만료시각을 세션 볼트(IndexedDB)에 동기화한다 ([session-vault.ts](../lib/db/session-vault.ts), [use-session-guard.ts](../lib/auth/use-session-guard.ts)). 만료 또는 잠금 시 폐기된다. 새로고침해도 만료 전이면 비밀번호 없이 자동 잠금 해제되지만, 원본 키 바이트는 평문으로 남지 않는다.
   - 트레이드오프: 만료 전(최대 10분)에는 **같은 기기·브라우저**에서 비밀번호 없이 복호화가 가능하다. 디스크/백업 유출이나 다른 origin·기기로부터는 여전히 보호된다(비추출 키 + same-origin).
 - 암호화 대상: `connections.clientSecretEnc`, `tokenCache.accessTokenEnc`. 형식은 `iv.ciphertext`(base64).
 - PIN·비밀번호 변경 시 [rekey.ts](../lib/crypto/rekey.ts)의 `rekeyVault`로 모든 암호값을 재암호화한다.
+- **Face ID 잠금 해제**(보조 수단, [lib/biometric/](../lib/biometric/)): WebAuthn PRF 확장으로 얻은 32바이트 비밀값을 HKDF(SHA-256)로 처리해 **비추출** AES-GCM 키를 파생하고, 이 키로 PIN/비밀번호 문자열 자체를 암호화해 `biometric` 테이블(단일 행)에 둔다. 새 키 체계가 아니다 — Face ID로 복호화한 PIN/비밀번호는 그대로 기존 `deriveKey` → `checkVerifier` → `unlock` 경로를 탄다. 패스키 `user.id`는 localStorage(`dotori.biometricUserId`)의 기기별 고정값이라, **이 값이 남아 있는 동안에는** 재등록해도 같은 키체인 항목을 덮어써 쌓이지 않는다. Safari의 저장소 정리나 사이트 데이터 삭제로 값이 사라지면 새 `user.id`로 만들어져 이전 패스키가 키체인에 남을 수 있다. "한 번 더 확인해 주세요" 단계(create에서 PRF를 못 받은 경우)를 버리거나(잠금 화면 "괜찮아요"·제한 시간 만료, 설정 패널 닫기) 마무리에 실패하면, 이미 만든 패스키를 `PublicKeyCredential.signalUnknownCredential`로 브라우저에 알려 정리를 요청한다(지원 브라우저에서만, 최선 노력). [LockGate](../components/LockGate.tsx)에서 "Face ID로 열기" 버튼이 기본 흐름이고, 잠금 화면 진입·포그라운드 복귀 시 자동 호출은 보조 동작이다(iOS가 사용자 제스처 없는 호출을 `NotAllowedError`로 거부할 수 있어 조용히 버튼 대기로 넘어간다). 자동 시도는 넘버패드·비밀번호 입력을 막지 않고, 응답을 기다리는 사이 PIN·비밀번호 입력을 시작하면 늦게 온 Face ID 결과는 버린다(PIN이 항상 이긴다). Face ID 요청 중에 생긴 `hidden`은 Face ID 시트 때문일 수 있어 백그라운드 전환으로 보지 않는다 — 취소 후 다시 뜨는 반복을 막기 위함. PIN·비밀번호로 연 직후 지원 기기·미등록·제안 기록 없음 조건이면 한 번 등록을 제안하고(`offer-biometric` 모드), 검증된 secret은 메모리에만 두며 유휴 10분 또는 백그라운드 전환 시 제안을 버린다. 등록 제안 기록(`dotori.biometricOffered`)은 localStorage와 메모리에 함께 남겨, 사생활 보호 모드처럼 저장이 안 되는 환경에서도 같은 페이지 세션 안에서는 다시 묻지 않는다. 설정 패널에서 "PIN 확인"과 "Face ID 켜기" 사이에 PIN·비밀번호가 바뀌면(설정의 salt·verifier 변경) 켜기 흐름을 닫아 이전 PIN이 등록되지 않게 한다. 기기가 Face ID를 지원하지 않게 됐어도 이미 켜져 있으면 끌 수 있게 스위치는 보여준다. **PIN·비밀번호 변경 시에는 `rekeyVault`보다 먼저 등록을 지운다** — 바뀌기 전 PIN이 담긴 `secretEnc`가 남지 않게 하기 위함이며, 삭제가 실패하면 변경 자체를 중단한다.
+  - 트레이드오프: Face ID 인증은 `userVerification: "required"`라 iOS에서는 Face ID에 실패하면 **기기 암호(iPhone 암호)로 대신 인증**할 수 있다. 즉 Face ID를 켜면 "iPhone 암호를 아는 사람"도 dotori를 열 수 있다. 웹에서 이 대체 경로를 막을 방법은 없으므로, 설정 패널 설명에 "Face ID에 실패하면 iPhone 암호로도 열 수 있어요."로 알린다.
 - 토스·업비트 시크릿/토큰은 브라우저에서 외부로 직접 보내지 않고 **`app/api/toss/*`·`app/api/upbit/*` 프록시**를 경유한다(`runtime = "nodejs"`, `force-dynamic`, `Cache-Control: no-store`). 업비트는 서버에서 JWT를 서명해 호출한다([upbit-jwt.ts](../lib/upbit/upbit-jwt.ts)). 프록시·릴레이·토큰 흐름 상세는 [external-api.md](external-api.md).
 
 ---

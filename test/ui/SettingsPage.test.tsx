@@ -4,7 +4,7 @@ import { useAppStore } from "@/stores/app-store";
 import { db } from "@/lib/db/schema";
 import { deriveKey, makeSalt, makeVerifier, checkVerifier, encrypt } from "@/lib/crypto/crypto";
 import { QueryWrapper } from "@/test/utils/query";
-import { putSettings, getSettings } from "@/lib/db/local-store";
+import { putSettings, getSettings, saveBiometricConfig, getBiometricConfig } from "@/lib/db/local-store";
 
 // next/navigation mock
 vi.mock("next/navigation", () => ({
@@ -22,6 +22,7 @@ afterEach(async () => {
   await db.open();
   useAppStore.setState({ locked: true, sessionKey: null, lastRefreshAt: null });
   vi.clearAllMocks();
+  localStorage.clear();
 });
 
 // 설정 페이지는 "use client" 클라이언트 컴포넌트이므로 동적 import 없이 직접 사용
@@ -94,6 +95,14 @@ describe("SettingsPage — 섹션 제목 렌더링", () => {
     await waitFor(() => expect(useAppStore.getState().lastSheetExport).toBeNull());
   });
 
+  it("모든 데이터를 삭제하면 Face ID 등록 제안 기록(dotori.biometricOffered)도 지운다", async () => {
+    localStorage.setItem("dotori.biometricOffered", "1");
+    await renderSettings();
+    fireEvent.click(screen.getByRole("button", { name: "모든 데이터 삭제" }));
+    fireEvent.click(await screen.findByRole("button", { name: "삭제하기" }));
+    await waitFor(() => expect(localStorage.getItem("dotori.biometricOffered")).toBeNull());
+  });
+
   it("프라이버시 섹션이 렌더링된다", async () => {
     await renderSettings();
     await waitFor(() => {
@@ -154,6 +163,68 @@ describe("SettingsPage — 섹션 제목 렌더링", () => {
       expect(screen.getByRole("alert")).toBeInTheDocument();
     });
     expect(screen.getByRole("alert").textContent).toContain("숫자 6자리");
+  });
+
+  it("PIN을 바꾸면 Face ID 등록이 해제된다", async () => {
+    const PIN = "135790";
+    const salt = makeSalt();
+    const oldKey = await deriveKey(PIN, salt);
+    await putSettings({
+      id: "app", kdfSalt: salt, verifier: await makeVerifier(oldKey),
+      schemaVersion: 1, lockType: "pin",
+    });
+    await saveBiometricConfig({
+      credentialId: "cred-1", prfSalt: "salt", secretEnc: "iv.ct", createdAt: 1,
+    });
+
+    await renderSettings();
+
+    const current = await screen.findByLabelText("현재 PIN");
+    fireEvent.change(current, { target: { value: PIN } });
+    fireEvent.change(screen.getByLabelText("새 PIN"), { target: { value: "246810" } });
+    fireEvent.change(screen.getByLabelText("새 PIN 확인"), { target: { value: "246810" } });
+    fireEvent.click(screen.getByRole("button", { name: "PIN 바꾸기" }));
+
+    expect(
+      await screen.findByText(/Face ID는 다시 켜 주세요/, {}, { timeout: 15000 }),
+    ).toBeInTheDocument();
+    expect(await getBiometricConfig()).toBeUndefined();
+  });
+
+  it("Face ID 해제에 실패하면 PIN 변경 자체를 중단한다", async () => {
+    const PIN = "135790";
+    const salt = makeSalt();
+    const oldKey = await deriveKey(PIN, salt);
+    const oldVerifier = await makeVerifier(oldKey);
+    await putSettings({
+      id: "app", kdfSalt: salt, verifier: oldVerifier,
+      schemaVersion: 1, lockType: "pin",
+    });
+    await saveBiometricConfig({
+      credentialId: "cred-1", prfSalt: "salt", secretEnc: "iv.ct", createdAt: 1,
+    });
+    const deleteSpy = vi.spyOn(db.biometric, "delete").mockRejectedValueOnce(new Error("boom"));
+
+    await renderSettings();
+
+    const current = await screen.findByLabelText("현재 PIN");
+    fireEvent.change(current, { target: { value: PIN } });
+    fireEvent.change(screen.getByLabelText("새 PIN"), { target: { value: "246810" } });
+    fireEvent.change(screen.getByLabelText("새 PIN 확인"), { target: { value: "246810" } });
+    fireEvent.click(screen.getByRole("button", { name: "PIN 바꾸기" }));
+
+    expect(
+      await screen.findByText("Face ID 해제에 실패해 PIN을 바꾸지 못했어요. 다시 시도해 주세요.", {}, { timeout: 15000 }),
+    ).toBeInTheDocument();
+
+    // PIN이 바뀌지 않았어야 한다 — 이전 PIN으로 여전히 verifier가 통과한다
+    const stillSettings = await getSettings();
+    expect(stillSettings?.verifier).toBe(oldVerifier);
+    expect(await checkVerifier(oldKey, stillSettings!.verifier)).toBe(true);
+    // Face ID 등록도 지워지지 않은 채 남아 있다(삭제 자체가 실패했으므로)
+    expect(await getBiometricConfig()).toBeDefined();
+
+    deleteSpy.mockRestore();
   });
 
   it("금액 숨기기 토글을 켜면 Settings에 저장된다", async () => {
