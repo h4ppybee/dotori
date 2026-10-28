@@ -36,7 +36,7 @@ npm run test:watch # vitest watch
 
 ## 디렉토리 구조
 
-메인 하단 탭 5개(홈·자산·계획·가계부·설정)와 자산 서브탭 5개(자산·주식·저축·연금·코인)로 구성된다. 탭 정의는 [lib/nav/nav-config.tsx](../lib/nav/nav-config.tsx).
+메인 하단 탭 5개(홈·자산·계획·가계부·설정)와 자산 서브탭 5개(자산·주식·저축·연금·코인)로 구성된다. 탭 정의는 [lib/nav/nav-config.tsx](../lib/nav/nav-config.tsx). 탭 이동 시 화면 진입 방향(오른쪽 탭으로 가면 왼쪽에서, 왼쪽 탭으로 가면 오른쪽에서)은 [lib/nav/direction.ts](../lib/nav/direction.ts)의 순수 함수가 탭 순서로 판단하고, `components/nav/AppNav`가 콘텐츠 래퍼에 짧은 진입 애니메이션을 건다.
 
 ```
 app/                       App Router 라우트 (모두 "use client")

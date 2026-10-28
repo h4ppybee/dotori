@@ -36,7 +36,7 @@ export function MainTabBar({ visible = true }: { visible?: boolean }) {
     <nav
       aria-hidden={visible ? undefined : true}
       inert={!visible ? true : undefined}
-      className={`fixed bottom-0 inset-x-0 z-40 bg-surface-card border-t border-hairline transition-[transform,opacity] motion-reduce:transition-none ${
+      className={`fixed bottom-0 inset-x-0 z-40 bg-surface-card border-t border-hairline transition-[translate,opacity] motion-reduce:transition-none ${
         visible
           ? "translate-y-0 opacity-100 duration-[200ms] delay-[150ms] ease-out"
           : "translate-y-full opacity-0 pointer-events-none duration-[140ms] ease-in"

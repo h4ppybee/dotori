@@ -1,10 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import type { TabDef } from "@/lib/nav/nav-config";
 import { useNavStore } from "@/stores/nav-store";
+
+// ← 복귀 시 접힘(160ms)이 거의 끝난 뒤 이동한다.
+const BACK_NAV_DELAY_MS = 140;
 
 // 펼침/접힘 타이밍. 펼침은 원이 떠오른 직후 시작(감속), 접힘은 즉시 시작(가속)해 빠릿하게.
 const EXPAND = "duration-[260ms] delay-[120ms] ease-[cubic-bezier(0.22,1,0.36,1)]";
@@ -20,10 +23,12 @@ const COLLAPSE = "duration-[160ms] delay-0 ease-[cubic-bezier(0.4,0,1,1)]";
  * - 등장: 메인 바가 내려가는 동안 ← 원(56px)이 떠오르고, 이어 pill이 왼→오로 펼쳐진다.
  * - 사라짐: 역순 — pill이 오→왼으로 원까지 접히고, 원이 내려간 뒤 메인 바가 올라온다.
  * 펼침은 배경 레이어 width(그림자 유지) + 내용물 clip-path를 같은 타이밍으로 맞춘다.
+ * ← 복귀는 누르는 즉시 접기 시작하고 접힘이 끝난 뒤 이동한다. width·clip-path는 메인 스레드
+ * 애니메이션이라, 경로 변경과 동시에 시작하면 새 화면 렌더에 프레임을 빼앗겨 접힘이 안 보인다.
  * 활성 표시는 낙관적: 탭을 누르는 즉시 옮기고, 실제 경로가 바뀌면 경로 기준으로 되돌린다.
  */
 export function NestedTabBar({
-  visible,
+  visible: visibleProp,
   tabs,
   activeKey: activeKeyProp,
 }: {
@@ -38,13 +43,37 @@ export function NestedTabBar({
   // 탭을 누른 직후 ~ 경로 변경 완료 사이에만 유효한 낙관적 활성 키.
   // 경로가 실제로 바뀌면 렌더 중 상태 보정 패턴으로 폐기한다.
   const [pendingKey, setPendingKey] = useState<string | null>(null);
+  // ← 를 누른 뒤 경로가 바뀌기 전까지 미리 접어 두는 상태. 경로가 바뀌면 함께 폐기한다.
+  const [closing, setClosing] = useState(false);
   const [prevPathname, setPrevPathname] = useState(pathname);
   if (pathname !== prevPathname) {
     setPrevPathname(pathname);
     setPendingKey(null);
+    setClosing(false);
   }
 
+  const backTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    return () => {
+      if (backTimer.current) {
+        clearTimeout(backTimer.current);
+      }
+    };
+  }, []);
+
+  const visible = visibleProp && !closing;
   const activeKey = pendingKey ?? activeKeyProp;
+
+  const goBack = () => {
+    const href = lastMainTabPath || "/";
+    const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    if (reduceMotion) {
+      router.push(href);
+      return;
+    }
+    setClosing(true);
+    backTimer.current = setTimeout(() => router.push(href), BACK_NAV_DELAY_MS);
+  };
 
   return (
     <>
@@ -60,7 +89,7 @@ export function NestedTabBar({
       <div
         aria-hidden={visible ? undefined : true}
         inert={!visible ? true : undefined}
-        className={`fixed inset-x-0 z-50 transition-[transform,opacity] motion-reduce:transition-none ${
+        className={`fixed inset-x-0 z-50 transition-[translate,opacity] motion-reduce:transition-none ${
           visible
             ? "translate-y-0 opacity-100 duration-[160ms] delay-[60ms] ease-out"
             : "translate-y-[150%] opacity-0 pointer-events-none duration-[120ms] delay-[110ms] ease-in"
@@ -87,7 +116,7 @@ export function NestedTabBar({
                   type="button"
                   aria-label="이전"
                   tabIndex={visible ? 0 : -1}
-                  onClick={() => router.push(lastMainTabPath || "/")}
+                  onClick={goBack}
                   className="flex h-11 w-11 items-center justify-center rounded-full text-muted transition-colors active:bg-surface-soft"
                 >
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">

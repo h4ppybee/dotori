@@ -1,10 +1,11 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useLayoutEffect, useRef, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { MainTabBar } from "@/components/nav/MainTabBar";
 import { NestedTabBar } from "@/components/nav/NestedTabBar";
 import { assetSubTabs, planSubTabs } from "@/lib/nav/nav-config";
+import { resolveNavDirection } from "@/lib/nav/direction";
 import {
   isDetailRoute,
   isNestedRoute,
@@ -20,9 +21,38 @@ import {
  *   서브탭·활성 키는 자산/계획 여부에 따라 골라 주입한다. 하단 패딩 = pill(56) + 여백
  * - 그 외: 메인 바만. 하단 패딩 56
  * 두 바 모두 항상 마운트하고 visible로 토글해 순차 전환(메인 바 하강 → pill 펼침, 역순 복귀)을 만든다.
+ * 화면 전환 텐션: 경로가 바뀌면 콘텐츠가 살짝(8px) 들어오며 선명해진다(220ms).
+ * 오른쪽 탭으로 가면 왼쪽에서, 왼쪽 탭으로 가면 오른쪽에서 들어온다(resolveNavDirection).
+ * key 리마운트 없이 Web Animations API로 transform·opacity만 움직여(합성 레이어) 페이지 상태를
+ * 보존하고, 끝나면 transform이 남지 않아 내부 fixed 요소(Dialog 등)에 영향이 없다.
  */
 export function AppNav({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const contentRef = useRef<HTMLDivElement>(null);
+  const prevPathname = useRef(pathname);
+
+  // 페인트 전에 시작해야 새 화면이 제자리에 한 번 그려졌다가 튀는 프레임이 없다.
+  useLayoutEffect(() => {
+    if (prevPathname.current === pathname) {
+      return;
+    }
+    const direction = resolveNavDirection(prevPathname.current, pathname);
+    prevPathname.current = pathname;
+    const el = contentRef.current;
+    if (!el || typeof el.animate !== "function") {
+      return;
+    }
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+      return;
+    }
+    el.animate(
+      [
+        { transform: `translateX(${direction === "forward" ? -8 : 8}px)`, opacity: 0.4 },
+        { transform: "translateX(0)", opacity: 1 },
+      ],
+      { duration: 220, easing: "cubic-bezier(0.22,1,0.36,1)" },
+    );
+  }, [pathname]);
 
   if (isDetailRoute(pathname)) {
     return <>{children}</>;
@@ -39,7 +69,9 @@ export function AppNav({ children }: { children: ReactNode }) {
 
   return (
     <>
-      <div style={{ paddingBottom: padBottom }}>{children}</div>
+      <div ref={contentRef} style={{ paddingBottom: padBottom }}>
+        {children}
+      </div>
       <MainTabBar visible={!nested} />
       <NestedTabBar visible={nested} tabs={tabs} activeKey={activeKey} />
     </>

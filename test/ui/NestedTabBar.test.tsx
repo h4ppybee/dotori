@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 const push = vi.fn();
@@ -26,11 +26,13 @@ describe("NestedTabBar", () => {
       expect(screen.getByText(t)).toBeInTheDocument()
     );
   });
-  it("← 버튼은 lastMainTabPath로 push한다", async () => {
+  it("← 버튼은 즉시 접기 시작하고(비활성화), 접힘 후 lastMainTabPath로 push한다", async () => {
     const user = userEvent.setup();
-    render(<NestedTabBar visible tabs={assetSubTabs} activeKey="stocks" />);
+    const { container } = render(<NestedTabBar visible tabs={assetSubTabs} activeKey="stocks" />);
     await user.click(screen.getByRole("button", { name: "이전" }));
-    expect(push).toHaveBeenCalledWith("/plan");
+    expect(container.querySelector("[inert]")).not.toBeNull();
+    expect(push).not.toHaveBeenCalled();
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/plan"));
   });
   it("서브탭을 누르면 경로가 바뀌기 전에도 활성 표시가 즉시 옮겨간다(activeKey prop보다 우선)", async () => {
     const user = userEvent.setup();

@@ -44,6 +44,7 @@ GitHub `h4ppybee/dotori` ↔ Vercel 프로젝트가 **Git 연동**되어 있다.
 - **큰 작업**: `superpowers:using-git-worktrees`로 worktree에서 작업 → 검증 통과 → 커밋(`dtr-git-commit-convention`) → 브랜치 push → `gh pr create`로 PR → Vercel 프리뷰로 검토 → 머지 시 프로덕션 배포.
 - **즉시 배포(사용자가 명시적으로 원할 때만)**: 검증 통과 후 `main`에 직접 커밋·push → 프로덕션 자동배포.
 - 통합 방식(PR 프리뷰 vs 즉시 배포)은 작업 전에 사용자에게 확인한다. 기본은 PR 프리뷰.
+- **UI·모션 변경은 배포 전에 웹에서 사용자 확인을 먼저 받는다.** "배포해줘"라고 해도 UI 변경이면 로컬 dev 서버(`npm run dev`, 같은 Wi-Fi 휴대폰용 LAN 주소 포함) 또는 PR Vercel 프리뷰 URL을 먼저 보여주고, 확인을 받은 뒤에만 `main`에 push한다. 가능하면 브라우저로 동작(애니메이션 프레임 등)도 직접 검증한다 — 테스트·타입체크 통과만으로는 시각적 결함을 잡지 못한다.
 
 ## 디렉토리 요약
 
@@ -53,7 +54,7 @@ GitHub `h4ppybee/dotori` ↔ Vercel 프로젝트가 **Git 연동**되어 있다.
   - `plan/realty` — 부동산 조달계획(플레이스홀더)
   - `api/toss/*`·`api/upbit/*` — 서버 프록시(토스·업비트)
 - `components/` — `ui/`(디자인 프리미티브·`DonutChart` 등), `portfolio/`, `holdings/`, `savings/`, `pension/`, `coin/`, `debt/`, `snapshot/`(스냅샷 섹션·목록 행·추이 콤보 차트), `goal/`(목표 카드·폼·빈상태·진행률 링), `envelope/`(통장 쪼개기: `ProfileSegment`·`RollupCard`·`EnvelopeItemRow`·`EnvelopeItemDialog`), `nav/`(탭 바, `NestedTabBar` — 자산·계획 공용), `settings/`(연동 폼·백업 패널·`SheetExportPanel` — 구글 시트 내보내기 연결/해제/지금 내보내기)
-- `lib/` — 자산 소스: `toss/`·`upbit/`·`sync/`(동기화 — 토스·업비트·예적금 자동 증가). 도메인 서비스(순수 계산): `portfolio/`·`savings/`·`pension/`·`coin/`·`debt/`·`goal/`(순자산 목표 진척 순수 계산)·`envelope/`(통장 쪼개기 집계·태그색·프리셋). 공통: `db/`(Dexie·CRUD), `sector/`, `crypto/`, `snapshot/`(수동 전체 자산 스냅샷 — 캡처·순수 빌더·추이 헬퍼), `sheet-export/`(구글 시트 내보내기 — 순수 빌더·웹앱 클라이언트), `backup/`, `nav/`, `query/`(자산별 훅, `use-asset-snapshots`·`use-goal`·`use-net-worth`·`use-envelope`·`use-sheet-export` 포함)
+- `lib/` — 자산 소스: `toss/`·`upbit/`·`sync/`(동기화 — 토스·업비트·예적금 자동 증가). 도메인 서비스(순수 계산): `portfolio/`·`savings/`·`pension/`·`coin/`·`debt/`·`goal/`(순자산 목표 진척 순수 계산)·`envelope/`(통장 쪼개기 집계·태그색·프리셋). 공통: `db/`(Dexie·CRUD), `sector/`, `crypto/`, `snapshot/`(수동 전체 자산 스냅샷 — 캡처·순수 빌더·추이 헬퍼), `sheet-export/`(구글 시트 내보내기 — 순수 빌더·웹앱 클라이언트), `backup/`, `nav/`(활성 탭 판정·탭 정의·전환 방향 `direction`), `query/`(자산별 훅, `use-asset-snapshots`·`use-goal`·`use-net-worth`·`use-envelope`·`use-sheet-export` 포함)
 - `stores/` — `app-store.ts`(잠금·세션 키·마지막 갱신·`lastSheetExport`), `nav-store.ts`(탭 복귀 지점)
 - `integrations/apps-script/` — 구글 시트 내보내기 Apps Script 원본(`sheet-export.gs`)과 설치 안내(`README.md`)
 - `test/` — 모듈 구조를 미러링한 테스트
