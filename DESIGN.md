@@ -409,7 +409,9 @@ dotori는 토스(Toss)의 디자인 언어를 따른다 — 차분하고, 신뢰
 ## Components (요약)
 
 - **요약 히어로 카드** (`{component.summary-hero-card}`): 총평가금(`{typography.number-hero}`) + 총수익률 배지 + 일간손익. 화면 최상단 시선 집중점.
-- **보유 종목 리스트** (`{component.list-row}`): 종목명(`{component.holding-row-name}`) + 시장·증권사 서브(`{component.holding-row-sub}`), 우측에 평가금(`{component.amount-cell}`) + 수익률(`{component.return-up-cell}` / `{component.return-down-cell}`).
+- **보유 종목 리스트** (`{component.list-row}`, `components/portfolio/HoldingsTable`): **계좌(연동) 라벨별 그룹**으로 나눈다 — 그룹 제목(`h3`, `text-[15px] font-semibold text-body`) 오른쪽에 그룹 평가금(`text-[13px] text-muted`), 그룹·그룹 안 행 모두 평가금 내림차순. 그룹 제목 행 아래에 구분선(`border-b border-hairline pb-2`)을 두고, 그룹 사이는 `gap-6`으로 띄운다(그룹 사이 선은 두지 않는다). 행 왼쪽은 섹터 칩 + 종목명(`{component.holding-row-name}`)만 두고 종목코드·시장·계좌는 표시하지 않는다. 우측은 위에서부터 평가금(`{component.amount-cell}`, USD는 원통화 보조 금액) → `N주 · 현재 가격`(`text-[13px] text-body-soft`, 수량은 소수 첫째 자리까지) → 맨 아래 수익(`{component.return-up-cell}` / `{component.return-down-cell}`).
+- **주식 탭 카드 제목 생략**: 섹터 비중 도넛·종목별 비중 막대·보유 종목 카드는 카드 제목(`h2`) 없이 내용만 둔다(이름은 `aria-label`로). 보유 종목 카드는 오른쪽 위 "종목 추가"(+) 아이콘 버튼만 남긴다.
+- **종목별 비중 막대** (`components/portfolio/HoldingWeightBars`): 막대 안을 손익으로 나눈다 — 수익 종목은 `[매수금액 primary | 수익 bg-up]`(막대 길이 = 평가금), 손실 종목은 `[평가금 primary | 잃은 금액 bg-down]`(막대 길이 = 매수금액). 막대 길이 기준은 총평가금이되 손실 구간이 100%를 넘지 않도록 max(평가금, 매수금액)을 반영한다. 막대 아래 오른쪽에 종목 손익 금액·수익률(`PnlText`, `text-[13px] font-semibold`).
 - **수익률 배지** (`{component.return-badge-up}` / `down`): 연한 surface 배경 + 부호(+/-) + 색.
 - **도넛 차트** (`{component.donut-chart}`): 섹터/종목/저축 카테고리 비율. 기본은 palette 순서대로 배정, track은 hairline. 공용 표현형 프리미티브 `components/ui/DonutChart`로 구현하고(도넛+범례+가운데 라벨/값), 카드·헤딩은 소비자(`SectorDonut`/`SavingsDonut`/`NetWorthDonut` 등)가 감싼다. 여러 자산 탭에서 재사용한다.
   - **의미색이 필요할 때**: `DonutSegment.color`로 조각별 색을 직접 지정한다(미지정 시 palette 순번). **순자산 vs 부채**(`NetWorthDonut`)는 순자산 = `{colors.primary}`(#A87342), 부채 = 뉴트럴 #6B7684로 배정한다. 순자산·부채는 손익이 아니므로 손익 색(up=빨강/down=파랑)을 쓰지 않는다.

@@ -23,22 +23,25 @@ export function bySector(
 }
 
 export function byHolding(
-  rows: { symbol: string; name: string; valueKrw: number }[],
-): { symbol: string; name: string; valueKrw: number; pct: number }[] {
+  rows: { symbol: string; name: string; valueKrw: number; costKrw: number }[],
+): { symbol: string; name: string; valueKrw: number; costKrw: number; pnlKrw: number; pct: number }[] {
   const total = rows.reduce((s, r) => s + r.valueKrw, 0);
-  const grouped = new Map<string, { name: string; valueKrw: number }>();
+  const grouped = new Map<string, { name: string; valueKrw: number; costKrw: number }>();
   for (const r of rows) {
     const prev = grouped.get(r.symbol);
     grouped.set(r.symbol, {
       name: prev?.name ?? r.name,
       valueKrw: (prev?.valueKrw ?? 0) + r.valueKrw,
+      costKrw: (prev?.costKrw ?? 0) + r.costKrw,
     });
   }
   return [...grouped.entries()]
-    .map(([symbol, { name, valueKrw }]) => ({
+    .map(([symbol, { name, valueKrw, costKrw }]) => ({
       symbol,
       name,
       valueKrw,
+      costKrw,
+      pnlKrw: valueKrw - costKrw,
       pct: pctOf(valueKrw, total),
     }))
     .sort((a, b) => b.valueKrw - a.valueKrw);
