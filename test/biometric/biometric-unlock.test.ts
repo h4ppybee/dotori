@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import { db } from "@/lib/db/schema";
 import { getBiometricConfig } from "@/lib/db/local-store";
 import { installFakeWebAuthn, uninstallFakeWebAuthn } from "./fake-webauthn";
@@ -12,6 +12,7 @@ import { BiometricCancelledError, BiometricUnsupportedError } from "@/lib/biomet
 afterEach(async () => {
   uninstallFakeWebAuthn();
   localStorage.clear();
+  clearBiometricOffered();
   await db.delete(); await db.open();
 });
 
@@ -34,6 +35,27 @@ describe("startEnrollment", () => {
     await res.finish();
     expect(fake.get).toHaveBeenCalledTimes(1);
     expect(await getBiometricConfig()).toBeDefined();
+  });
+
+  it("needs-confirm의 cancel은 만든 패스키를 브라우저에 알려 정리한다", async () => {
+    const fake = installFakeWebAuthn({ prfOnCreate: "enabled-only" });
+    const res = await startEnrollment("123456");
+    if (res.status !== "needs-confirm") { throw new Error("needs-confirm이어야 한다"); }
+    res.cancel();
+    expect(fake.PKC.signalUnknownCredential).toHaveBeenCalledWith({ rpId: location.hostname, credentialId: "AQIDBA" });
+    expect(await getBiometricConfig()).toBeUndefined();
+  });
+
+  it("cancel은 signalUnknownCredential이 없거나 실패해도 throw하지 않는다", async () => {
+    const fake = installFakeWebAuthn({ prfOnCreate: "enabled-only" });
+    const res = await startEnrollment("123456");
+    if (res.status !== "needs-confirm") { throw new Error("needs-confirm이어야 한다"); }
+    fake.PKC.signalUnknownCredential.mockImplementationOnce(() => { throw new Error("sync boom"); });
+    expect(() => res.cancel()).not.toThrow();
+    fake.PKC.signalUnknownCredential.mockRejectedValueOnce(new Error("async boom"));
+    expect(() => res.cancel()).not.toThrow();
+    vi.stubGlobal("PublicKeyCredential", {});
+    expect(() => res.cancel()).not.toThrow();
   });
 
   it("PRF 미지원 기기면 Unsupported를 던지고 행을 남기지 않는다", async () => {
@@ -107,5 +129,20 @@ describe("기기 상태", () => {
     expect(hasOfferedBiometric()).toBe(true);
     clearBiometricOffered();
     expect(hasOfferedBiometric()).toBe(false);
+  });
+
+  it("localStorage에 못 남겨도 같은 페이지 세션에서는 제안 기록을 기억한다", () => {
+    const setItem = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("quota", "QuotaExceededError");
+    });
+    try {
+      markBiometricOffered();
+      expect(localStorage.getItem("dotori.biometricOffered")).toBeNull();
+      expect(hasOfferedBiometric()).toBe(true);
+      clearBiometricOffered();
+      expect(hasOfferedBiometric()).toBe(false);
+    } finally {
+      setItem.mockRestore();
+    }
   });
 });

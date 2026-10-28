@@ -17,7 +17,7 @@ import { useAppStore } from "@/stores/app-store";
 import { useNavStore } from "@/stores/nav-store";
 import { saveSession, AUTO_LOCK_MS } from "@/lib/db/session-vault";
 import { installFakeWebAuthn, uninstallFakeWebAuthn } from "@/test/biometric/fake-webauthn";
-import { startEnrollment } from "@/lib/biometric/biometric-unlock";
+import { startEnrollment, clearBiometricOffered } from "@/lib/biometric/biometric-unlock";
 import { getBiometricConfig } from "@/lib/db/local-store";
 
 afterEach(async () => {
@@ -29,6 +29,8 @@ afterEach(async () => {
   useNavStore.setState({ lastMainTabPath: "/" });
   uninstallFakeWebAuthn();
   localStorage.clear();
+  // 제안 기록은 메모리에도 남으므로 함께 지운다
+  clearBiometricOffered();
   // visibilityState를 덮어쓴 테스트가 있으면 jsdom 기본값으로 되돌린다
   Reflect.deleteProperty(document, "visibilityState");
 });
@@ -516,5 +518,121 @@ describe("LockGate — Face ID", { timeout: 20000 }, () => {
     expect(screen.queryByRole("button", { name: "괜찮아요" })).not.toBeInTheDocument();
     expect(useAppStore.getState().locked).toBe(true);
     expect(localStorage.getItem("dotori.biometricOffered")).toBeNull();
+  });
+
+  it("등록 확인 단계에서 '괜찮아요'를 누르면 만든 패스키를 정리한다", async () => {
+    const fake = installFakeWebAuthn({ prfOnCreate: "enabled-only" });
+    await seedPin("135790");
+    const user = userEvent.setup();
+    render(<LockGate><div>앱 콘텐츠</div></LockGate>);
+    await screen.findByRole("button", { name: "1" });
+    await tapPin(user, "135790");
+    await user.click(await screen.findByRole("button", { name: "Face ID 켜기" }, { timeout: 15000 }));
+    await screen.findByRole("button", { name: "한 번 더 확인해 주세요" });
+    await user.click(screen.getByRole("button", { name: "괜찮아요" }));
+    await waitFor(() => expect(screen.getByText("앱 콘텐츠")).toBeInTheDocument());
+    expect(fake.PKC.signalUnknownCredential).toHaveBeenCalledWith({ rpId: location.hostname, credentialId: "AQIDBA" });
+    expect(await getBiometricConfig()).toBeUndefined();
+  });
+});
+
+/** get 호출을 붙잡아 두었다가 나중에 성공(resolve)·실패(reject)시킬 수 있게 한다. */
+function deferGet(fake: ReturnType<typeof installFakeWebAuthn>) {
+  let resolve: (v: unknown) => void = () => {};
+  let reject: (e: unknown) => void = () => {};
+  fake.get.mockImplementationOnce(
+    () =>
+      new Promise((res, rej) => {
+        resolve = res as (v: unknown) => void;
+        reject = rej;
+      }),
+  );
+  // fake-webauthn의 기본 PRF 값(9로 채운 32바이트)과 같은 결과 — 등록한 PIN을 그대로 풀 수 있다.
+  const okCred = {
+    rawId: new Uint8Array([1, 2, 3, 4]).buffer,
+    getClientExtensionResults: () => ({ prf: { results: { first: new Uint8Array(32).fill(9).buffer } } }),
+  };
+  return {
+    succeed: () => resolve(okCred),
+    cancel: () => reject(new DOMException("x", "NotAllowedError")),
+  };
+}
+
+function setVisibility(state: "visible" | "hidden") {
+  Object.defineProperty(document, "visibilityState", { value: state, configurable: true });
+  act(() => {
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+}
+
+describe("LockGate — Face ID 자동 시도 중 PIN 입력", { timeout: 20000 }, () => {
+  it("자동 시도가 응답을 기다리는 동안에도 넘버패드로 열 수 있다", async () => {
+    const fake = installFakeWebAuthn();
+    await seedPin("135790");
+    await startEnrollment("135790");
+    fake.get.mockImplementationOnce(() => new Promise(() => {})); // 끝나지 않는 자동 시도
+    const user = userEvent.setup();
+    render(<LockGate><div>앱 콘텐츠</div></LockGate>);
+    await waitFor(() => expect(fake.get).toHaveBeenCalledTimes(1));
+    const one = await screen.findByRole("button", { name: "1" });
+    expect(one).not.toBeDisabled();
+    expect(screen.getByRole("button", { name: "Face ID로 열기" })).not.toBeDisabled();
+    await tapPin(user, "135790");
+    await waitFor(() => expect(screen.getByText("앱 콘텐츠")).toBeInTheDocument(), { timeout: 15000 });
+  });
+
+  it("PIN 입력을 시작한 뒤 늦게 온 Face ID 결과는 버린다", async () => {
+    const fake = installFakeWebAuthn();
+    await seedPin("135790");
+    await startEnrollment("135790");
+    const deferred = deferGet(fake);
+    const user = userEvent.setup();
+    render(<LockGate><div>앱 콘텐츠</div></LockGate>);
+    await waitFor(() => expect(fake.get).toHaveBeenCalledTimes(1));
+    await screen.findByRole("button", { name: "1" });
+    await tapPin(user, "135");
+    await act(async () => {
+      deferred.succeed();
+    });
+    // 이전 코드라면 이 사이에 Face ID 결과로 잠금이 풀린다 — 충분히 기다린 뒤에도 잠겨 있어야 한다.
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 1500));
+    });
+    expect(useAppStore.getState().locked).toBe(true);
+    expect(screen.getByRole("status", { name: "6자리 중 3자리 입력" })).toBeInTheDocument();
+    await tapPin(user, "790");
+    await waitFor(() => expect(screen.getByText("앱 콘텐츠")).toBeInTheDocument(), { timeout: 15000 });
+  });
+
+  it("Face ID 요청 중의 hidden은 백그라운드로 보지 않아 취소 후 다시 시도하지 않는다", async () => {
+    const fake = installFakeWebAuthn();
+    await seedPin("135790");
+    await startEnrollment("135790");
+    const deferred = deferGet(fake);
+    render(<LockGate><div>앱 콘텐츠</div></LockGate>);
+    await waitFor(() => expect(fake.get).toHaveBeenCalledTimes(1));
+    // Face ID 시트가 뜨며 hidden → 사용자가 취소 → visible
+    setVisibility("hidden");
+    await act(async () => {
+      deferred.cancel();
+    });
+    setVisibility("visible");
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+    expect(fake.get).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "Face ID로 열기" })).toBeInTheDocument();
+  });
+
+  it("요청이 없을 때 백그라운드에 다녀오면 다시 자동 시도한다", async () => {
+    const fake = installFakeWebAuthn({ failGetWith: "NotAllowedError" });
+    await seedPin("135790");
+    await startEnrollment("135790");
+    render(<LockGate><div>앱 콘텐츠</div></LockGate>);
+    await waitFor(() => expect(fake.get).toHaveBeenCalledTimes(1));
+    await screen.findByRole("button", { name: "Face ID로 열기" });
+    setVisibility("hidden");
+    setVisibility("visible");
+    await waitFor(() => expect(fake.get).toHaveBeenCalledTimes(2));
   });
 });

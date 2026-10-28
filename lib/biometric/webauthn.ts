@@ -19,6 +19,22 @@ type PkcStatic = {
 const pkc = (): PkcStatic | undefined =>
   (globalThis as { PublicKeyCredential?: PkcStatic }).PublicKeyCredential;
 
+/**
+ * 쓰지 않을 패스키를 브라우저에 알려 키체인에서 지우게 한다(signalUnknownCredential). 최선 노력 —
+ * API가 없거나 실패해도 조용히 넘어가고 절대 throw하지 않는다.
+ */
+export function forgetCredential(credentialId: string): void {
+  try {
+    const signal = pkc()?.signalUnknownCredential;
+    if (!signal) {
+      return;
+    }
+    void signal({ rpId: location.hostname, credentialId }).catch(() => {});
+  } catch {
+    // 무시
+  }
+}
+
 function mapError(e: unknown): never {
   if (e instanceof DOMException && e.name === "NotAllowedError") {
     throw new BiometricCancelledError(e.message);
@@ -74,7 +90,7 @@ export async function createCredential(
   const credentialId = toB64Url(new Uint8Array(cred.rawId));
   const prf = (cred.getClientExtensionResults() as { prf?: PrfOutput }).prf;
   if (!prf || prf.enabled === false) {
-    void pkc()?.signalUnknownCredential?.({ rpId, credentialId }).catch(() => {});
+    forgetCredential(credentialId);
     throw new BiometricUnsupportedError("PRF not supported");
   }
   return { credentialId, prf: prf.results?.first ? new Uint8Array(prf.results.first) : null };

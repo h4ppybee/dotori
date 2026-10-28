@@ -6,13 +6,16 @@ import { db } from "@/lib/db/schema";
 import { putSettings, getBiometricConfig } from "@/lib/db/local-store";
 import { deriveKey, makeSalt, makeVerifier } from "@/lib/crypto/crypto";
 import { installFakeWebAuthn, uninstallFakeWebAuthn } from "@/test/biometric/fake-webauthn";
-import { startEnrollment } from "@/lib/biometric/biometric-unlock";
-import { QueryWrapper } from "@/test/utils/query";
+import { startEnrollment, clearBiometricOffered } from "@/lib/biometric/biometric-unlock";
+import { QueryWrapper, makeTestQueryClient } from "@/test/utils/query";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { SETTINGS_KEY } from "@/lib/query/use-settings";
 import { useAppStore } from "@/stores/app-store";
 
 afterEach(async () => {
   uninstallFakeWebAuthn();
   localStorage.clear();
+  clearBiometricOffered();
   await db.delete();
   await db.open();
   useAppStore.setState({ locked: true, sessionKey: null });
@@ -159,5 +162,72 @@ describe("BiometricPanel", () => {
     await user.click(await screen.findByRole("switch", { name: "Face ID로 잠금 해제" }));
     expect(await screen.findByLabelText("현재 비밀번호")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "비밀번호 확인" })).toBeInTheDocument();
+  });
+
+  it("지원하지 않는 기기라도 이미 켜져 있으면 스위치를 보여주고 끌 수 있다", async () => {
+    installFakeWebAuthn({ available: false });
+    await seedPin("135790");
+    await startEnrollment("135790");
+    const user = userEvent.setup();
+    renderPanel();
+    const sw = await screen.findByRole("switch", { name: "Face ID로 잠금 해제" });
+    await waitFor(() => expect(sw).toHaveAttribute("aria-checked", "true"));
+    await user.click(sw);
+    await waitFor(async () => expect(await getBiometricConfig()).toBeUndefined());
+  });
+
+  it("PIN 확인 뒤 PIN이 바뀌면 켜기 흐름을 닫아 이전 PIN으로 등록하지 않는다", async () => {
+    const fake = installFakeWebAuthn();
+    await seedPin("135790");
+    const client = makeTestQueryClient();
+    const user = userEvent.setup();
+    render(
+      <QueryClientProvider client={client}>
+        <BiometricPanel />
+      </QueryClientProvider>,
+    );
+    await user.click(await screen.findByRole("switch", { name: "Face ID로 잠금 해제" }));
+    await user.type(await screen.findByLabelText("현재 PIN"), "135790");
+    await user.click(screen.getByRole("button", { name: "PIN 확인" }));
+    await screen.findByRole("button", { name: "Face ID 켜기" });
+
+    // 다른 화면에서 PIN을 바꾼 상황 — 새 salt·verifier 저장 후 설정 쿼리 무효화
+    const salt = makeSalt();
+    const key = await deriveKey("246802", salt);
+    await putSettings({ id: "app", kdfSalt: salt, verifier: await makeVerifier(key), schemaVersion: 1, lockType: "pin" });
+    await client.invalidateQueries({ queryKey: SETTINGS_KEY });
+
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Face ID 켜기" })).not.toBeInTheDocument());
+    expect(screen.getByRole("switch", { name: "Face ID로 잠금 해제" })).toHaveAttribute("aria-checked", "false");
+    expect(fake.create).not.toHaveBeenCalled();
+  });
+
+  it("한 번 더 확인 단계에서 닫으면 만든 패스키를 정리한다", async () => {
+    const fake = installFakeWebAuthn({ prfOnCreate: "enabled-only" });
+    await seedPin("135790");
+    const user = userEvent.setup();
+    renderPanel();
+    await user.click(await screen.findByRole("switch", { name: "Face ID로 잠금 해제" }));
+    await user.type(await screen.findByLabelText("현재 PIN"), "135790");
+    await user.click(screen.getByRole("button", { name: "PIN 확인" }));
+    await user.click(await screen.findByRole("button", { name: "Face ID 켜기" }));
+    await screen.findByRole("button", { name: "한 번 더 확인해 주세요" });
+    await user.click(screen.getByRole("button", { name: "닫기" }));
+    expect(fake.PKC.signalUnknownCredential).toHaveBeenCalledWith({ rpId: location.hostname, credentialId: "AQIDBA" });
+    expect(await getBiometricConfig()).toBeUndefined();
+  });
+
+  it("등록을 마치면 패스키를 정리하지 않는다", async () => {
+    const fake = installFakeWebAuthn({ prfOnCreate: "enabled-only" });
+    await seedPin("135790");
+    const user = userEvent.setup();
+    renderPanel();
+    await user.click(await screen.findByRole("switch", { name: "Face ID로 잠금 해제" }));
+    await user.type(await screen.findByLabelText("현재 PIN"), "135790");
+    await user.click(screen.getByRole("button", { name: "PIN 확인" }));
+    await user.click(await screen.findByRole("button", { name: "Face ID 켜기" }));
+    await user.click(await screen.findByRole("button", { name: "한 번 더 확인해 주세요" }));
+    await waitFor(async () => expect(await getBiometricConfig()).toBeDefined(), { timeout: 15000 });
+    expect(fake.PKC.signalUnknownCredential).not.toHaveBeenCalled();
   });
 });

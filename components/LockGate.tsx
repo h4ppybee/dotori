@@ -45,10 +45,12 @@ interface LockGateProps {
  * - 재진입(lockType 없음/passphrase): 기존 문자 비밀번호 화면 (unlock-passphrase 모드)
  * - 잠금 해제 시: children을 렌더링
  * - Face ID(등록돼 있을 때): 잠금 화면 진입·포그라운드 복귀 시 한 번 자동 시도하고, 기본은 "Face ID로 열기" 버튼 탭
+ *   자동 시도는 넘버패드·비밀번호 입력을 막지 않으며, 그사이 PIN·비밀번호 입력을 시작하면 늦게 온 Face ID 결과는 버린다
  * - PIN·비밀번호로 연 직후: 지원 기기·미등록·제안 기록 없음이면 Face ID 등록을 한 번 제안한다 (offer-biometric 모드)
  * - 모드는 마운트 때와 잠금으로 바뀔 때마다 다시 판정한다(세션 복원 후 자동 잠금 시 "불러오는 중"에 멈추지 않게)
  *
- * 보안 원칙: PIN/비밀번호 자체는 절대 저장하지 않는다. salt + verifier만 DB에 저장한다.
+ * 보안 원칙: PIN/비밀번호는 평문으로 저장하지 않는다. 잠금 확인용으로는 salt + verifier만 DB에 저장한다.
+ * Face ID를 켠 경우에만 PRF 파생 키로 암호화한 PIN/비밀번호를 biometric 테이블에 둔다. (lib/biometric)
  * 잠금 해제 후에는 자동 잠금(10분 유휴)을 위해 비추출 세션 키를 세션 볼트에 두고,
  * 마지막 활동 후 10분이 지나면 잠근다. (lib/db/session-vault.ts, useSessionGuard)
  */
@@ -79,8 +81,8 @@ export function LockGate({ children }: LockGateProps) {
   const [bioConfig, setBioConfig] = useState<BiometricConfig | undefined>(undefined);
   // 등록 제안 중에만 검증된 secret·key를 메모리에 둔다.
   const [pending, setPending] = useState<{ secret: string; key: CryptoKey } | null>(null);
-  // create에서 PRF를 못 받아 한 번 더 확인이 필요할 때의 마무리 함수
-  const [confirmFinish, setConfirmFinish] = useState<(() => Promise<void>) | null>(null);
+  // create에서 PRF를 못 받아 한 번 더 확인이 필요할 때의 마무리·포기 함수
+  const [enrollConfirm, setEnrollConfirm] = useState<{ finish: () => Promise<void>; cancel: () => void } | null>(null);
   // 같은 잠금 주기 안에서 자동 시도는 한 번만, 버튼 탭 취소는 연속 횟수를 센다.
   const autoTriedRef = useRef(false);
   const bioFailRef = useRef(0);
@@ -88,6 +90,11 @@ export function LockGate({ children }: LockGateProps) {
   // 검증·Face ID·등록 작업이 진행 중인지. submitting(state)은 화면 표시용이고, 동시 실행 차단은
   // 렌더 시점 값에 묶이지 않는 이 ref로 한다(자동 시도 클로저가 오래된 submitting을 볼 수 있다).
   const inFlightRef = useRef(false);
+  // Face ID 시도 세대 — 새 시도를 시작하거나 PIN·비밀번호 입력을 시작하면 올려서, 늦게 온 이전 결과를 버린다.
+  const bioGenRef = useRef(0);
+  // 응답을 기다리는 Face ID 요청 수(자동·버튼 공용). Face ID 시트 자체가 hidden/visible을 일으키므로
+  // 요청 중의 hidden은 백그라운드 전환으로 보지 않는다.
+  const bioPendingRef = useRef(0);
   // 현재 잠금 수단 — 안내 문구를 PIN/비밀번호로 나눈다.
   const [secretKind, setSecretKind] = useState<keyof typeof SECRET_WORDS>("pin");
 
@@ -101,6 +108,9 @@ export function LockGate({ children }: LockGateProps) {
     setFirstPin(null);
     setError(null);
     if (settings == null) {
+      // 설정이 없으면 Face ID 등록도 의미가 없다 — 이전 상태가 남지 않게 비운다.
+      setBioSupported(false);
+      setBioConfig(undefined);
       setMode("setup");
       return;
     }
@@ -168,7 +178,7 @@ export function LockGate({ children }: LockGateProps) {
       return;
     }
     const tryAuto = () => {
-      if (autoTriedRef.current || document.visibilityState !== "visible") {
+      if (autoTriedRef.current || bioPendingRef.current > 0 || document.visibilityState !== "visible") {
         return;
       }
       autoTriedRef.current = true;
@@ -177,7 +187,10 @@ export function LockGate({ children }: LockGateProps) {
     const onVisibilityChange = () => {
       if (document.visibilityState === "hidden") {
         // 백그라운드로 가면 돌아왔을 때 다시 시도할 수 있게 한다.
-        autoTriedRef.current = false;
+        // 단, Face ID 요청 중이면 시트가 띄운 hidden일 수 있어 그대로 둔다(취소 후 다시 뜨는 반복 방지).
+        if (bioPendingRef.current === 0) {
+          autoTriedRef.current = false;
+        }
         return;
       }
       tryAuto();
@@ -202,8 +215,10 @@ export function LockGate({ children }: LockGateProps) {
       if (inFlightRef.current) {
         return;
       }
+      // 한 번 더 확인 단계에서 버리면 이미 만든 패스키를 정리한다.
+      enrollConfirm?.cancel();
       setPending(null);
-      setConfirmFinish(null);
+      setEnrollConfirm(null);
       setMode("loading");
       // mode 변경으로 이 effect가 정리돼도 판정은 끝까지 해야 하므로 취소하지 않는다.
       void resolveMode(() => false);
@@ -219,8 +234,8 @@ export function LockGate({ children }: LockGateProps) {
       window.clearTimeout(timer);
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
-    // confirmFinish가 생기면(한 번 더 확인 단계) 제한 시간을 다시 센다.
-  }, [mode, confirmFinish, resolveMode]);
+    // enrollConfirm이 생기면(한 번 더 확인 단계) 제한 시간을 다시 센다.
+  }, [mode, enrollConfirm, resolveMode]);
 
   // 이미 잠금 해제된 경우 AppNav가 children과 하단 네비게이션을 조립한다.
   // (동적 하단 패딩·상세화면 네비 숨김은 모두 AppNav가 책임진다.)
@@ -286,8 +301,14 @@ export function LockGate({ children }: LockGateProps) {
     }
   }
 
+  /** 진행 중인 자동 Face ID 시도의 결과를 버리게 한다 — PIN·비밀번호 입력이 항상 이긴다. */
+  function supersedeBiometric() {
+    bioGenRef.current += 1;
+  }
+
   /** unlock-pin: 6자리가 차면 자동으로 검증한다. */
   async function verifyPin(enteredPin: string) {
+    supersedeBiometric();
     if (!beginWork()) {
       return;
     }
@@ -331,10 +352,16 @@ export function LockGate({ children }: LockGateProps) {
     const p = pending;
     markBiometricOffered();
     setPending(null);
-    setConfirmFinish(null);
+    setEnrollConfirm(null);
     if (p) {
       useAppStore.getState().unlock(p.key);
     }
+  }
+
+  /** "괜찮아요" — 한 번 더 확인 단계였다면 이미 만든 패스키를 정리하고 연다. */
+  function declineOffer() {
+    enrollConfirm?.cancel();
+    finishOffer();
   }
 
   async function handleEnableFromOffer() {
@@ -344,7 +371,7 @@ export function LockGate({ children }: LockGateProps) {
     try {
       const res = await startEnrollment(pending.secret);
       if (res.status === "needs-confirm") {
-        setConfirmFinish(() => res.finish);
+        setEnrollConfirm({ finish: res.finish, cancel: res.cancel });
         return;
       }
     } catch {
@@ -356,13 +383,14 @@ export function LockGate({ children }: LockGateProps) {
   }
 
   async function handleConfirmFinish() {
-    if (!beginWork()) {
+    if (enrollConfirm == null || !beginWork()) {
       return;
     }
     try {
-      await confirmFinish?.();
+      await enrollConfirm.finish();
     } catch {
-      // 위와 같음
+      // 위와 같음 — 등록을 마치지 못했으니 만든 패스키는 정리한다
+      enrollConfirm.cancel();
     } finally {
       endWork();
     }
@@ -379,23 +407,49 @@ export function LockGate({ children }: LockGateProps) {
     setBioConfig(undefined);
   }
 
-  /** Face ID로 저장된 PIN/비밀번호를 꺼내 기존 검증 경로로 연다. auto=true면 자동 시도. */
+  /**
+   * Face ID로 저장된 PIN/비밀번호를 꺼내 기존 검증 경로로 연다. auto=true면 자동 시도.
+   * 자동 시도는 화면을 막지 않는다(submitting·inFlight를 세우지 않음). 대신 시도마다 세대를 매기고,
+   * 그사이 버튼 탭·PIN 입력으로 세대가 바뀌면 결과를 버린다. 버튼 탭은 기존처럼 화면을 막는다.
+   */
   async function handleBiometric(auto: boolean) {
-    if (bioConfig == null || !beginWork()) {
+    if (bioConfig == null || inFlightRef.current) {
       return;
     }
+    if (!auto && !beginWork()) {
+      return;
+    }
+    bioGenRef.current += 1;
+    const gen = bioGenRef.current;
+    const stale = () => gen !== bioGenRef.current;
     setError(null);
     const words = SECRET_WORDS[secretKind];
+    bioPendingRef.current += 1;
+    let settled = false;
+    const settle = () => {
+      if (!settled) {
+        settled = true;
+        bioPendingRef.current -= 1;
+      }
+    };
     try {
       // 첫 await가 credentials.get이어야 한다(제스처 보존).
       const secret = await unlockWithBiometric(bioConfig);
+      settle();
+      if (stale()) {
+        return;
+      }
       if (secret == null) {
         setBioConfig(undefined);
         return;
       }
       const settings = await getSettings();
       const key = settings ? await deriveKey(secret, settings.kdfSalt) : null;
-      if (!settings || !key || !(await checkVerifier(key, settings.verifier))) {
+      const valid = settings != null && key != null && (await checkVerifier(key, settings.verifier));
+      if (stale()) {
+        return;
+      }
+      if (!valid || key == null) {
         await dropBiometric();
         setError(`${words.subject} 바뀌어 Face ID를 쓸 수 없어요. ${words.by} 연 뒤 설정에서 Face ID를 다시 켜 주세요.`);
         return;
@@ -403,6 +457,10 @@ export function LockGate({ children }: LockGateProps) {
       bioFailRef.current = 0;
       useAppStore.getState().unlock(key);
     } catch (e) {
+      settle();
+      if (stale()) {
+        return;
+      }
       if (e instanceof BiometricCancelledError) {
         // 자동 시도 거부는 조용히 넘기고 연속 실패에도 넣지 않는다.
         if (auto) {
@@ -422,7 +480,10 @@ export function LockGate({ children }: LockGateProps) {
       }
       setError(`Face ID로 열지 못했어요. ${words.object} 입력해 주세요.`);
     } finally {
-      endWork();
+      settle();
+      if (!auto) {
+        endWork();
+      }
     }
   }
 
@@ -431,6 +492,8 @@ export function LockGate({ children }: LockGateProps) {
     if (inFlightRef.current || pin.length >= PIN_LENGTH) {
       return;
     }
+    // PIN 입력을 시작하면 기다리던 자동 Face ID 결과는 버린다.
+    supersedeBiometric();
     setError(null);
 
     const next = pin + digit;
@@ -479,6 +542,7 @@ export function LockGate({ children }: LockGateProps) {
       return;
     }
 
+    supersedeBiometric();
     if (!beginWork()) {
       return;
     }
@@ -544,7 +608,7 @@ export function LockGate({ children }: LockGateProps) {
               <p className="text-[15px] font-normal leading-[1.5] text-body">
                 {SECRET_WORDS[secretKind].name} 대신 얼굴로 바로 열 수 있어요. 설정에서 언제든 끌 수 있어요.
               </p>
-              {confirmFinish ? (
+              {enrollConfirm ? (
                 <Button variant="primary" className="w-full" disabled={submitting} onClick={handleConfirmFinish}>
                   한 번 더 확인해 주세요
                 </Button>
@@ -553,7 +617,7 @@ export function LockGate({ children }: LockGateProps) {
                   Face ID 켜기
                 </Button>
               )}
-              <Button variant="weak" className="w-full" disabled={submitting} onClick={finishOffer}>
+              <Button variant="weak" className="w-full" disabled={submitting} onClick={declineOffer}>
                 괜찮아요
               </Button>
             </div>
@@ -569,6 +633,8 @@ export function LockGate({ children }: LockGateProps) {
                 label="비밀번호"
                 value={passphrase}
                 onChange={(v) => {
+                  // 비밀번호 입력을 시작하면 기다리던 자동 Face ID 결과는 버린다.
+                  supersedeBiometric();
                   setPassphrase(v);
                   setError(null);
                 }}

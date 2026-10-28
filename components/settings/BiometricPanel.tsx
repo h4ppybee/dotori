@@ -16,7 +16,8 @@ import { startEnrollment, disableBiometric, markBiometricOffered } from "@/lib/b
  * 설정 — Face ID로 잠금 해제 켜기/끄기.
  * 켤 때는 iOS 사용자 제스처를 지키려고 두 단계로 나눈다: 1단계 "PIN 확인"은 현재 PIN/비밀번호를
  * verifier로만 검증하고, 2단계 "Face ID 켜기" 탭에서 await 없이 바로 startEnrollment를 호출한다.
- * 지원하지 않는 기기에서는 렌더링하지 않는다. (lib/biometric)
+ * 지원하지 않는 기기에서는 렌더링하지 않는다. 단, 이미 켜져 있으면 끌 수 있도록 스위치는 보여준다. (lib/biometric)
+ * 확인 단계 사이에 PIN·비밀번호가 바뀌면(설정의 salt·verifier 변경) 이전 PIN으로 등록하지 않도록 흐름을 닫는다.
  */
 export function BiometricPanel() {
   const [supported, setSupported] = useState(false);
@@ -24,6 +25,8 @@ export function BiometricPanel() {
   const { data: config } = useBiometricConfig();
   const queryClient = useQueryClient();
   const inFlightRef = useRef(false);
+  // "한 번 더 확인해 주세요" 단계를 버릴 때 이미 만든 패스키를 정리하는 함수
+  const abandonRef = useRef<(() => void) | null>(null);
 
   const [asking, setAsking] = useState(false);
   const [secret, setSecret] = useState("");
@@ -48,11 +51,30 @@ export function BiometricPanel() {
     };
   }, []);
 
-  if (!supported) {
+  // PIN·비밀번호가 바뀌면 진행 중인 켜기 흐름을 닫는다 — 확인해 둔 이전 PIN이 등록되지 않게 한다.
+  const secretStamp = settings ? `${settings.kdfSalt}:${settings.verifier}` : null;
+  const prevStampRef = useRef(secretStamp);
+  useEffect(() => {
+    const prev = prevStampRef.current;
+    prevStampRef.current = secretStamp;
+    if (prev == null || prev === secretStamp) {
+      return;
+    }
+    abandonRef.current?.();
+    abandonRef.current = null;
+    setAsking(false);
+    setSecret("");
+    setVerified(false);
+    setFinish(null);
+  }, [secretStamp]);
+
+  if (!supported && !enabled) {
     return null;
   }
 
   function closeAsking() {
+    abandonRef.current?.();
+    abandonRef.current = null;
     setAsking(false);
     setSecret("");
     setVerified(false);
@@ -88,6 +110,8 @@ export function BiometricPanel() {
 
   async function finishSuccess() {
     markBiometricOffered();
+    // 등록을 마쳤으니 정리할 패스키가 없다.
+    abandonRef.current = null;
     closeAsking();
     await queryClient.invalidateQueries({ queryKey: BIOMETRIC_CONFIG_KEY });
   }
@@ -101,10 +125,7 @@ export function BiometricPanel() {
       setError("Face ID를 켜지 못했어요. 다시 시도해 주세요.");
     }
     if (opts.endFlow) {
-      setAsking(false);
-      setSecret("");
-      setVerified(false);
-      setFinish(null);
+      closeAsking();
     }
   }
 
@@ -142,6 +163,7 @@ export function BiometricPanel() {
     try {
       const res = await startEnrollment(secret);
       if (res.status === "needs-confirm") {
+        abandonRef.current = res.cancel;
         setFinish(() => res.finish);
         return;
       }
@@ -192,7 +214,9 @@ export function BiometricPanel() {
       <div className="flex items-center justify-between gap-4">
         <div className="flex flex-col">
           <span className="text-[15px] font-medium leading-[1.5] text-ink">Face ID로 잠금 해제</span>
-          <span className="text-[13px] text-body-soft leading-[1.5]">PIN 대신 얼굴로 바로 열어요.</span>
+          <span className="text-[13px] text-body-soft leading-[1.5]">
+            {isPinLock ? "PIN" : "비밀번호"} 대신 얼굴로 바로 열어요. Face ID에 실패하면 iPhone 암호로도 열 수 있어요.
+          </span>
         </div>
         <Switch
           checked={enabled || asking}
