@@ -223,6 +223,26 @@ function PinSection() {
   );
 }
 
+// ─── 지금 잠그기 섹션 ─────────────────────────────────────────────────────────
+
+function LockNowSection() {
+  const lock = useAppStore((s) => s.lock);
+
+  return (
+    <Card>
+      <h2 className="text-[19px] font-bold leading-[1.4] tracking-[-0.2px] text-ink mb-2">
+        잠금
+      </h2>
+      <p className="text-[15px] text-body-soft leading-[1.5] mb-4">
+        자리를 비울 때 바로 잠가요. 10분 동안 쓰지 않으면 저절로 잠겨요.
+      </p>
+      <Button variant="weak" onClick={lock} className="w-full">
+        지금 잠그기
+      </Button>
+    </Card>
+  );
+}
+
 // ─── 데이터 전체 삭제 섹션 ────────────────────────────────────────────────────
 
 function DeleteAllSection() {
@@ -301,6 +321,7 @@ export default function SettingsPage() {
           <BackupPanel />
           <SheetExportPanel />
           <PrivacySection />
+          <LockNowSection />
           <PinSection />
           <BiometricPanel />
           <DeleteAllSection />
