@@ -9,6 +9,7 @@ import { ProfileSegment } from "@/components/envelope/ProfileSegment";
 import { RollupCard } from "@/components/envelope/RollupCard";
 import { EnvelopeItemRow } from "@/components/envelope/EnvelopeItemRow";
 import { EnvelopeItemDialog } from "@/components/envelope/EnvelopeItemDialog";
+import { EnvelopeSheetImport } from "@/components/envelope/EnvelopeSheetImport";
 import {
   useEnvelopeItems,
   useEnvelopeConfig,
@@ -182,10 +183,14 @@ export default function PlanPage() {
   return (
     <main className="min-h-screen bg-canvas">
       <div className="mx-auto w-full max-w-[480px] px-4 pt-6 pb-28 flex flex-col gap-4">
-        {/* 헤딩 */}
-        <h1 className="text-[22px] font-bold leading-[1.3] tracking-[-0.3px] text-ink">
-          통장 쪼개기
-        </h1>
+        {/* 헤딩 + 시트에서 가져오기(시트 연결 시) */}
+        <EnvelopeSheetImport
+          heading={
+            <h1 className="text-[22px] font-bold leading-[1.3] tracking-[-0.3px] text-ink">
+              통장 쪼개기
+            </h1>
+          }
+        />
 
         {/* 프로필 세그먼트 */}
         <ProfileSegment value={scope} onChange={handleScopeChange} />
