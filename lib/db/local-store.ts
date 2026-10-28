@@ -2,7 +2,7 @@ import { db, priceKey } from "@/lib/db/schema";
 import type {
   Connection, Holding, PriceCache, FxRate, Settings, Member, SavingsAccount, SavingsCategory,
   PensionAccount, PensionCategory, CoinHolding, LoanAccount, LoanCategory, AssetSnapshot, Goal,
-  EnvelopeItem, EnvelopeConfig, EnvelopeProfile, SheetExportConfig,
+  EnvelopeItem, EnvelopeConfig, EnvelopeProfile, SheetExportConfig, BiometricConfig,
 } from "@/lib/types";
 import { toLocalYmd } from "@/lib/format";
 import { encrypt } from "@/lib/crypto/crypto";
@@ -390,3 +390,12 @@ export async function saveSheetExportConfig(
 }
 
 export const clearSheetExportConfig = () => db.sheetExport.delete("sheet");
+
+// ─── Face ID 잠금 해제 설정 ───
+export const getBiometricConfig = () => db.biometric.get("biometric");
+
+export async function saveBiometricConfig(input: Omit<BiometricConfig, "id">): Promise<void> {
+  await db.biometric.put({ id: "biometric", ...input });
+}
+
+export const clearBiometricConfig = () => db.biometric.delete("biometric");

@@ -226,3 +226,12 @@ export interface SheetExportConfig {
   secretEnc: string;    // 공유 비밀키 (세션 키로 암호화, base64)
   updatedAt: number;
 }
+
+/** Face ID 잠금 해제 설정(단일 행). 기기·도메인에 묶임 → 백업 제외. */
+export interface BiometricConfig {
+  id: "biometric";      // 고정 키
+  credentialId: string; // 패스키 ID (base64url)
+  prfSalt: string;      // PRF eval 입력 32바이트 (base64)
+  secretEnc: string;    // PRF 파생 키로 암호화한 PIN/비밀번호 (iv.ct)
+  createdAt: number;
+}
