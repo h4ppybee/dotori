@@ -480,7 +480,8 @@ describe("LockGate — Face ID", { timeout: 20000 }, () => {
     const fake = installFakeWebAuthn();
     await seedPin("135790");
     await startEnrollment("135790");
-    fake.get.mockRejectedValue(new DOMException("x", "AbortError"));
+    // AbortError는 우리가 요청을 취소한 경우(취소로 처리)라 다른 오류로 확인한다.
+    fake.get.mockRejectedValue(new DOMException("x", "UnknownError"));
     render(<LockGate><div>앱 콘텐츠</div></LockGate>);
     expect(await screen.findByText("Face ID로 열지 못했어요. PIN을 입력해 주세요.")).toBeInTheDocument();
     expect(await getBiometricConfig()).toBeDefined();
@@ -634,6 +635,41 @@ describe("LockGate — Face ID 자동 시도 중 PIN 입력", { timeout: 20000 }
     expect(useAppStore.getState().locked).toBe(true);
     expect(screen.getByRole("status", { name: "6자리 중 3자리 입력" })).toBeInTheDocument();
     await tapPin(user, "790");
+    await waitFor(() => expect(screen.getByText("앱 콘텐츠")).toBeInTheDocument(), { timeout: 15000 });
+  });
+
+  it("버튼 탭 뒤 iOS가 보류해 둔 이전 요청의 결과가 먼저 와도 Face ID를 통과했으면 연다", async () => {
+    // iOS 홈 화면 앱: 제스처 없는 자동 요청을 보류했다가 다음 탭 때 그 창을 먼저 띄운다.
+    const fake = installFakeWebAuthn();
+    await seedPin("135790");
+    await startEnrollment("135790");
+    const autoReq = deferGet(fake);
+    const manualReq = deferGet(fake);
+    const user = userEvent.setup();
+    render(<LockGate><div>앱 콘텐츠</div></LockGate>);
+    await waitFor(() => expect(fake.get).toHaveBeenCalledTimes(1));
+    await user.click(await screen.findByRole("button", { name: "Face ID로 열기" }));
+    await waitFor(() => expect(fake.get).toHaveBeenCalledTimes(2));
+    // 보류돼 있던 자동 요청이 먼저 통과된다(새 요청은 아직 대기 중)
+    await act(async () => {
+      autoReq.succeed();
+    });
+    await waitFor(() => expect(screen.getByText("앱 콘텐츠")).toBeInTheDocument(), { timeout: 15000 });
+    manualReq.cancel();
+  });
+
+  it("버튼을 누르면 보류 중인 자동 요청을 취소(abort)해 요청이 겹치지 않게 한다", async () => {
+    const fake = installFakeWebAuthn();
+    await seedPin("135790");
+    await startEnrollment("135790");
+    deferGet(fake);
+    const user = userEvent.setup();
+    render(<LockGate><div>앱 콘텐츠</div></LockGate>);
+    await waitFor(() => expect(fake.get).toHaveBeenCalledTimes(1));
+    const autoSignal = (fake.get.mock.calls[0][0] as CredentialRequestOptions).signal;
+    expect(autoSignal?.aborted).toBe(false);
+    await user.click(await screen.findByRole("button", { name: "Face ID로 열기" }));
+    expect(autoSignal?.aborted).toBe(true);
     await waitFor(() => expect(screen.getByText("앱 콘텐츠")).toBeInTheDocument(), { timeout: 15000 });
   });
 

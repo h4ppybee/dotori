@@ -74,6 +74,16 @@ describe("getPrfSecret", () => {
     installFakeWebAuthn({ failGetWith: "NotAllowedError" });
     await expect(getPrfSecret("AQIDBA", salt)).rejects.toBeInstanceOf(BiometricCancelledError);
   });
+  it("AbortError(우리가 취소한 요청)도 Cancelled로 바꾼다", async () => {
+    installFakeWebAuthn({ failGetWith: "AbortError" });
+    await expect(getPrfSecret("AQIDBA", salt)).rejects.toBeInstanceOf(BiometricCancelledError);
+  });
+  it("signal을 credentials.get에 넘긴다", async () => {
+    const fake = installFakeWebAuthn();
+    const controller = new AbortController();
+    await getPrfSecret("AQIDBA", salt, controller.signal);
+    expect((fake.get.mock.calls[0][0] as CredentialRequestOptions).signal).toBe(controller.signal);
+  });
   it("get 결과에 PRF가 없으면 Unsupported를 던진다", async () => {
     installFakeWebAuthn({ prfOnGet: false });
     await expect(getPrfSecret("AQIDBA", salt)).rejects.toBeInstanceOf(BiometricUnsupportedError);

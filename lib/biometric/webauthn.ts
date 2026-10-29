@@ -36,7 +36,8 @@ export function forgetCredential(credentialId: string): void {
 }
 
 function mapError(e: unknown): never {
-  if (e instanceof DOMException && e.name === "NotAllowedError") {
+  // AbortError는 우리가 기다리던 요청을 취소한 경우다(버튼 탭이 보류 중인 자동 요청을 대신할 때).
+  if (e instanceof DOMException && (e.name === "NotAllowedError" || e.name === "AbortError")) {
     throw new BiometricCancelledError(e.message);
   }
   throw e;
@@ -96,8 +97,12 @@ export async function createCredential(
   return { credentialId, prf: prf.results?.first ? new Uint8Array(prf.results.first) : null };
 }
 
-/** Face ID 인증을 거쳐 PRF 32바이트를 받는다. */
-export async function getPrfSecret(credentialId: string, salt: Uint8Array<ArrayBuffer>): Promise<Uint8Array<ArrayBuffer>> {
+/** Face ID 인증을 거쳐 PRF 32바이트를 받는다. signal로 기다리는 요청을 취소할 수 있다(취소는 Cancelled로 바뀐다). */
+export async function getPrfSecret(
+  credentialId: string,
+  salt: Uint8Array<ArrayBuffer>,
+  signal?: AbortSignal,
+): Promise<Uint8Array<ArrayBuffer>> {
   let cred: PublicKeyCredential;
   try {
     cred = (await navigator.credentials.get({
@@ -109,6 +114,7 @@ export async function getPrfSecret(credentialId: string, salt: Uint8Array<ArrayB
         timeout: 60_000,
         extensions: { prf: { eval: { first: salt } } } as AuthenticationExtensionsClientInputs,
       },
+      signal,
     })) as PublicKeyCredential;
   } catch (e) {
     mapError(e);

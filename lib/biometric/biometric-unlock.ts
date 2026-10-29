@@ -102,12 +102,12 @@ export async function startEnrollment(secret: string): Promise<EnrollmentResult>
  * 복호화 실패(다른 PRF 값 등)는 BiometricInvalidError로 던진다.
  * cfg를 미리 읽어 넘기면(LockGate가 제스처 보존을 위해 state에 둔 설정) DB 재조회 없이 바로 진행한다.
  */
-export async function unlockWithBiometric(cfg?: BiometricConfig): Promise<string | null> {
+export async function unlockWithBiometric(cfg?: BiometricConfig, signal?: AbortSignal): Promise<string | null> {
   const config = cfg ?? (await getBiometricConfig());
   if (!config) {
     return null;
   }
-  const prf = await getPrfSecret(config.credentialId, fromB64(config.prfSalt));
+  const prf = await getPrfSecret(config.credentialId, fromB64(config.prfSalt), signal);
   const key = await derivePrfKey(prf);
   try {
     return await decrypt(key, config.secretEnc);

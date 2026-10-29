@@ -90,8 +90,14 @@ export function LockGate({ children }: LockGateProps) {
   // 검증·Face ID·등록 작업이 진행 중인지. submitting(state)은 화면 표시용이고, 동시 실행 차단은
   // 렌더 시점 값에 묶이지 않는 이 ref로 한다(자동 시도 클로저가 오래된 submitting을 볼 수 있다).
   const inFlightRef = useRef(false);
-  // Face ID 시도 세대 — 새 시도를 시작하거나 PIN·비밀번호 입력을 시작하면 올려서, 늦게 온 이전 결과를 버린다.
+  // PIN·비밀번호 입력 세대 — 입력을 시작하면 올려서, 그 전에 시작한 Face ID 시도의 결과를 버린다(PIN이 항상 이긴다).
+  // Face ID 시도끼리는 결과를 버리지 않는다: iOS 홈 화면 앱은 제스처 없는 자동 요청을 보류했다가 다음 탭 때
+  // 그 창을 먼저 띄우므로, 새 시도가 이전 결과를 버리면 통과해도 열리지 않는 엇갈림이 생긴다.
   const bioGenRef = useRef(0);
+  // 가장 최근 Face ID 시도 번호 — 오류 문구는 최근 시도에서만 띄운다(이전 시도의 취소·실패는 조용히).
+  const bioAttemptRef = useRef(0);
+  // 보류 중인 자동 요청 취소용 — 버튼 탭·PIN 입력·잠금 해제 때 abort해 요청이 겹치지 않게 한다.
+  const autoAbortRef = useRef<AbortController | null>(null);
   // 응답을 기다리는 Face ID 요청 수(자동·버튼 공용). Face ID 시트 자체가 hidden/visible을 일으키므로
   // 요청 중의 hidden은 백그라운드 전환으로 보지 않는다.
   const bioPendingRef = useRef(0);
@@ -157,6 +163,7 @@ export function LockGate({ children }: LockGateProps) {
     if (!locked) {
       autoTriedRef.current = false;
       bioFailRef.current = 0;
+      abortAutoBiometric();
       return;
     }
     if (wasLocked) {
@@ -302,9 +309,16 @@ export function LockGate({ children }: LockGateProps) {
     }
   }
 
+  /** 보류 중인 자동 Face ID 요청을 취소한다. */
+  function abortAutoBiometric() {
+    autoAbortRef.current?.abort();
+    autoAbortRef.current = null;
+  }
+
   /** 진행 중인 자동 Face ID 시도의 결과를 버리게 한다 — PIN·비밀번호 입력이 항상 이긴다. */
   function supersedeBiometric() {
     bioGenRef.current += 1;
+    abortAutoBiometric();
   }
 
   /** unlock-pin: 6자리가 차면 자동으로 검증한다. */
@@ -432,9 +446,20 @@ export function LockGate({ children }: LockGateProps) {
     if (!auto && !beginWork()) {
       return;
     }
-    bioGenRef.current += 1;
+    // 버튼 탭이면 보류 중인 자동 요청을 먼저 취소해 요청이 겹치지 않게 한다.
+    if (!auto) {
+      abortAutoBiometric();
+    }
+    const controller = auto ? new AbortController() : null;
+    if (controller) {
+      autoAbortRef.current = controller;
+    }
     const gen = bioGenRef.current;
-    const stale = () => gen !== bioGenRef.current;
+    // PIN 입력이 시작됐거나 다른 시도로 이미 열렸으면 이 결과는 쓰지 않는다.
+    const stale = () => gen !== bioGenRef.current || !useAppStore.getState().locked;
+    bioAttemptRef.current += 1;
+    const attempt = bioAttemptRef.current;
+    const isLatest = () => attempt === bioAttemptRef.current;
     setError(null);
     const words = SECRET_WORDS[secretKind];
     bioPendingRef.current += 1;
@@ -447,7 +472,7 @@ export function LockGate({ children }: LockGateProps) {
     };
     try {
       // 첫 await가 credentials.get이어야 한다(제스처 보존).
-      const secret = await unlockWithBiometric(bioConfig);
+      const secret = await unlockWithBiometric(bioConfig, controller?.signal);
       settle();
       if (stale()) {
         return;
@@ -471,7 +496,8 @@ export function LockGate({ children }: LockGateProps) {
       useAppStore.getState().unlock(key);
     } catch (e) {
       settle();
-      if (stale()) {
+      // 이전 시도의 취소·실패는 조용히 넘긴다 — 지금 기다리는 시도가 따로 있다.
+      if (stale() || !isLatest()) {
         return;
       }
       if (e instanceof BiometricCancelledError) {
@@ -494,6 +520,9 @@ export function LockGate({ children }: LockGateProps) {
       setError(`Face ID로 열지 못했어요. ${words.object} 입력해 주세요.`);
     } finally {
       settle();
+      if (controller && autoAbortRef.current === controller) {
+        autoAbortRef.current = null;
+      }
       if (!auto) {
         endWork();
       }
