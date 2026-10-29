@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Analytics } from "@vercel/analytics/next";
 import { QueryProvider } from "@/lib/query/client";
 import { LockGate } from "@/components/LockGate";
+import { AppDataGate } from "@/components/AppDataGate";
 import { ServiceWorkerRegister } from "@/components/ServiceWorkerRegister";
 import "./globals.css";
 
@@ -28,7 +29,9 @@ export default function RootLayout({
     <html lang="ko" className="h-full antialiased">
       <body className="min-h-full flex flex-col">
         <QueryProvider>
-          <LockGate>{children}</LockGate>
+          <LockGate>
+            <AppDataGate>{children}</AppDataGate>
+          </LockGate>
         </QueryProvider>
         <ServiceWorkerRegister />
         <Analytics />

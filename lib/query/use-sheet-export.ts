@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAppStore } from "@/stores/app-store";
 import {
   getSheetExportConfig, saveSheetExportConfig, clearSheetExportConfig,
@@ -10,14 +10,15 @@ import { isValidWebAppUrl } from "@/lib/sheet-export/client";
 
 export const SHEET_EXPORT_CONFIG_KEY = ["sheet-export-config"] as const;
 
+export const sheetExportConfigQueryOptions = queryOptions({
+  queryKey: SHEET_EXPORT_CONFIG_KEY,
+  queryFn: async () => (await getSheetExportConfig()) ?? null,
+});
+
 /** 시트 내보내기 설정(웹앱 URL·암호화된 비밀키). 미설정이면 null. 잠금 상태에서는 비활성. */
 export function useSheetExportConfig() {
   const locked = useAppStore((s) => s.locked);
-  return useQuery({
-    queryKey: SHEET_EXPORT_CONFIG_KEY,
-    enabled: !locked,
-    queryFn: async () => (await getSheetExportConfig()) ?? null,
-  });
+  return useQuery({ ...sheetExportConfigQueryOptions, enabled: !locked });
 }
 
 // 진행 중인 내보내기 Promise(모듈 스코프 단일 슬롯). 자동(갱신 직후)·수동("지금 내보내기")이

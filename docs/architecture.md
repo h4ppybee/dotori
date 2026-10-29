@@ -73,7 +73,7 @@ components/
   holdings/HoldingForm.tsx 종목 추가/편집 폼
   nav/                     AppNav, MainTabBar, NestedTabBar(자산·계획 공용 플로팅 서브탭), DummyPage
   settings/                ConnectionForm, BackupPanel, SheetExportPanel(구글 시트 내보내기 연결/해제/지금 내보내기), BiometricPanel(Face ID 잠금 해제 켜기/끄기)
-  LockGate, ServiceWorkerRegister
+  LockGate, AppDataGate(잠금 해제 직후 탭 데이터 미리 읽기), ServiceWorkerRegister
 
 lib/
   toss/                    toss-client(API 호출·정규화·재시도), toss-token(토큰 발급/캐시)
@@ -91,7 +91,7 @@ lib/
   sheet-export/            구글 시트 내보내기 — build-payload(순수 빌더: VM 5종+envelope→탭별 2차원 배열), client(Apps Script 웹앱 POST·응답 정규화), export(설정·DB 읽기→빌더→전송 조립, throw 없음). 상세 docs/external-api.md
   backup/                  수동 데이터 export/import (JSON) — 상세 docs/backup.md
   nav/                     nav-config(탭 정의), active(활성 탭 판정)
-  query/                   client(QueryProvider), use-portfolio·use-savings·use-pension·use-coin·use-debt·use-settings, use-assets-refresh, use-asset-snapshots(목록/단건/기록·삭제 뮤테이션), use-goal(목표 조회·저장·삭제 뮤테이션), use-net-worth(순자산 합산 훅), use-envelope(항목·설정 CRUD + bulkUpdate 뮤테이션), use-sheet-export(설정 조회 + 저장·해제·지금 내보내기 뮤테이션, runSheetExport), use-biometric(Face ID 등록 여부 조회, queryKey `["biometric"]`, 잠금 중엔 비활성)
+  query/                   client(QueryProvider, gcTime 무한), prefetch(prefetchAppData — 잠금 해제 직후 모든 탭 쿼리 미리 읽기, 각 훅의 *QueryOptions 공유), use-portfolio·use-savings·use-pension·use-coin·use-debt·use-settings, use-assets-refresh, use-asset-snapshots(목록/단건/기록·삭제 뮤테이션), use-goal(목표 조회·저장·삭제 뮤테이션), use-net-worth(순자산 합산 훅), use-envelope(항목·설정 CRUD + bulkUpdate 뮤테이션), use-sheet-export(설정 조회 + 저장·해제·지금 내보내기 뮤테이션, runSheetExport), use-biometric(Face ID 등록 여부 조회 `["biometric"]`·기기 지원 여부 `["biometric-available"]`)
   format.ts, types.ts
 
 stores/
@@ -108,6 +108,9 @@ docs/                      본 문서 + superpowers/(스펙·플랜)
 ```
 [LockGate] PIN(6자리 넘버패드)·비밀번호 잠금 해제 → sessionKey(CryptoKey) 메모리 + 세션 볼트(10분) 보관
      │   (등록돼 있으면: 또는 Face ID 버튼(WebAuthn PRF) → 저장된 PIN/비밀번호 복호화 → 같은 deriveKey·checkVerifier 경로)
+     │
+[AppDataGate] 잠금 해제 직후 prefetchAppData로 모든 탭의 첫 렌더 쿼리를 미리 읽고(최대 600ms) 화면을 그린다
+     │   → 탭을 처음 열 때 빈 상태(0원·"아직 항목이 없어요")가 그려졌다 바뀌는 깜박임 방지. 캐시는 gcTime 무한으로 유지
      │
 [useAssetsRefresh] 자산 통합 갱신 (자산 탭 진입 시 10분 경과하면 자동 실행)
      │   refreshAll   : 토스 토큰→보유→시세→환율→DB, prevClose 롤오버

@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { queryOptions, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAppStore } from "@/stores/app-store";
 import {
   listAssetSnapshots,
@@ -11,16 +11,21 @@ import { captureAssetSnapshot } from "@/lib/snapshot/capture";
 
 const SNAPSHOT_KEY = ["assetSnapshots"] as const;
 
-/** 스냅샷 목록(최신 우선). limit 미지정 시 전체. 잠금 상태에서는 비활성. */
-export function useAssetSnapshots(limit?: number) {
-  const locked = useAppStore((s) => s.locked);
+/** 자산 탭 스냅샷 섹션이 읽는 개수(추이 차트 20개 + 더보기 판정용 1개). */
+export const RECENT_SNAPSHOT_LIMIT = 21;
 
-  return useQuery({
+/** 스냅샷 목록 쿼리 설정 — 훅과 잠금 해제 직후 미리 읽기(prefetchAppData)가 함께 쓴다. */
+export const assetSnapshotsQueryOptions = (limit?: number) =>
+  queryOptions({
     queryKey: [...SNAPSHOT_KEY, limit ?? "all"],
-    enabled: !locked,
     staleTime: 30_000,
     queryFn: () => listAssetSnapshots(limit),
   });
+
+/** 스냅샷 목록(최신 우선). limit 미지정 시 전체. 잠금 상태에서는 비활성. */
+export function useAssetSnapshots(limit?: number) {
+  const locked = useAppStore((s) => s.locked);
+  return useQuery({ ...assetSnapshotsQueryOptions(limit), enabled: !locked });
 }
 
 /** 스냅샷 단건. 잠금 상태에서는 비활성. */

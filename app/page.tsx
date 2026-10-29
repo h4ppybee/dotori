@@ -12,8 +12,9 @@ import { buildGoalProgress } from "@/lib/goal/goal-service";
 import { formatKrw } from "@/lib/format";
 
 export default function HomePage() {
-  const { netWorthKrw } = useNetWorth();
-  const goal = useGoal().data;
+  const { netWorthKrw, isLoading: netWorthLoading } = useNetWorth();
+  const goalQuery = useGoal();
+  const goal = goalQuery.data;
   const { save, remove } = useGoalMutations();
   const [formOpen, setFormOpen] = useState(false);
 
@@ -34,13 +35,14 @@ export default function HomePage() {
           <span className="text-[13px] font-normal leading-[1.45] text-muted">순자산</span>
           <PrivacyAmount revealLabel="순자산 보기">
             <span className="text-[28px] font-bold leading-[1.2] tracking-[-0.5px] tabular-nums text-ink">
-              {formatKrw(netWorthKrw)}
+              {/* 불러오는 동안 0원이 잠깐 보였다가 바뀌지 않게, 높이만 지키고 비워 둔다. */}
+              {netWorthLoading ? "\u00A0" : formatKrw(netWorthKrw)}
             </span>
           </PrivacyAmount>
         </Card>
 
-        {/* 목표 섹션 — 미설정이면 빈 상태, 있으면 진척 카드 */}
-        {goal == null ? (
+        {/* 목표 섹션 — 미설정이면 빈 상태, 있으면 진척 카드. 불러오는 중에는 빈 상태가 잠깐 보이지 않게 그리지 않는다. */}
+        {goalQuery.isPending ? null : goal == null ? (
           <GoalEmptyState onSet={() => setFormOpen(true)} />
         ) : (
           <GoalCard

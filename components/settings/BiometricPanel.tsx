@@ -7,9 +7,9 @@ import { Button } from "@/components/ui/Button";
 import { TextInput } from "@/components/ui/TextInput";
 import { Switch } from "@/components/ui/Switch";
 import { useSettings } from "@/lib/query/use-settings";
-import { useBiometricConfig, BIOMETRIC_CONFIG_KEY } from "@/lib/query/use-biometric";
+import { useBiometricConfig, useBiometricAvailable, BIOMETRIC_CONFIG_KEY } from "@/lib/query/use-biometric";
 import { deriveKey, checkVerifier } from "@/lib/crypto/crypto";
-import { isBiometricAvailable, BiometricCancelledError, BiometricUnsupportedError } from "@/lib/biometric/webauthn";
+import { BiometricCancelledError, BiometricUnsupportedError } from "@/lib/biometric/webauthn";
 import { startEnrollment, disableBiometric, markBiometricOffered } from "@/lib/biometric/biometric-unlock";
 
 /**
@@ -20,7 +20,7 @@ import { startEnrollment, disableBiometric, markBiometricOffered } from "@/lib/b
  * 확인 단계 사이에 PIN·비밀번호가 바뀌면(설정의 salt·verifier 변경) 이전 PIN으로 등록하지 않도록 흐름을 닫는다.
  */
 export function BiometricPanel() {
-  const [supported, setSupported] = useState(false);
+  const supported = useBiometricAvailable().data ?? false;
   const { data: settings } = useSettings();
   const { data: config } = useBiometricConfig();
   const queryClient = useQueryClient();
@@ -38,18 +38,6 @@ export function BiometricPanel() {
   const isPinLock = settings?.lockType === "pin";
   const enabled = config != null;
 
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      const ok = await isBiometricAvailable();
-      if (!cancelled) {
-        setSupported(ok);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   // PIN·비밀번호가 바뀌면 진행 중인 켜기 흐름을 닫는다 — 확인해 둔 이전 PIN이 등록되지 않게 한다.
   const secretStamp = settings ? `${settings.kdfSalt}:${settings.verifier}` : null;

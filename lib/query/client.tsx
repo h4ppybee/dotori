@@ -8,7 +8,9 @@ function makeQueryClient(): QueryClient {
     defaultOptions: {
       queries: {
         staleTime: 30_000,
-        gcTime: 5 * 60_000,
+        // 로컬 IndexedDB 데이터라 작고, 버리면 그 탭을 다시 열 때 빈 상태가 한 번 그려지며 깜박인다.
+        // 잠금 해제 직후 미리 읽은 캐시(lib/query/prefetch)를 끝까지 유지한다. 갱신은 staleTime·무효화로 한다.
+        gcTime: Infinity,
         retry: 1,
         refetchOnWindowFocus: false,
       },

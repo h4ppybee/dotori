@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { queryOptions, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAppStore } from "@/stores/app-store";
 import {
   listEnvelopeItems,
@@ -18,26 +18,28 @@ import type { EnvelopeItem, EnvelopeConfig } from "@/lib/types";
 const ITEMS_KEY = ["envelopeItems"] as const;
 const CONFIG_KEY = ["envelopeConfig"] as const;
 
+/** 통장 쪼개기 쿼리 설정 — 훅과 잠금 해제 직후 미리 읽기(prefetchAppData)가 함께 쓴다. */
+export const envelopeItemsQueryOptions = queryOptions({
+  queryKey: ITEMS_KEY,
+  staleTime: 30_000,
+  queryFn: listEnvelopeItems,
+});
+export const envelopeConfigQueryOptions = queryOptions({
+  queryKey: CONFIG_KEY,
+  staleTime: 30_000,
+  queryFn: getEnvelopeConfig,
+});
+
 /** 통장 쪼개기 항목 전체. 잠금 상태에서는 비활성. */
 export function useEnvelopeItems() {
   const locked = useAppStore((s) => s.locked);
-  return useQuery({
-    queryKey: ITEMS_KEY,
-    enabled: !locked,
-    staleTime: 30_000,
-    queryFn: listEnvelopeItems,
-  });
+  return useQuery({ ...envelopeItemsQueryOptions, enabled: !locked });
 }
 
 /** 커스텀 태그·은행 config. 잠금 상태에서는 비활성. */
 export function useEnvelopeConfig() {
   const locked = useAppStore((s) => s.locked);
-  return useQuery({
-    queryKey: CONFIG_KEY,
-    enabled: !locked,
-    staleTime: 30_000,
-    queryFn: getEnvelopeConfig,
-  });
+  return useQuery({ ...envelopeConfigQueryOptions, enabled: !locked });
 }
 
 /** 항목 저장·삭제 + 커스텀 태그/은행 추가 뮤테이션. 성공 시 해당 쿼리 무효화. */

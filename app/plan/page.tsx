@@ -180,6 +180,12 @@ export default function PlanPage() {
     );
   }
 
+  // 항목을 불러오기 전에는 그리지 않는다 — 0원·"아직 항목이 없어요"가 잠깐 보였다가 바뀌며 깜박이지 않게.
+  // 보통은 잠금 해제 직후 미리 읽어 두므로(AppDataGate) 이 분기에 머물지 않는다.
+  if (itemsData === undefined) {
+    return <main className="min-h-screen bg-canvas" />;
+  }
+
   return (
     <main className="min-h-screen bg-canvas">
       <div className="mx-auto w-full max-w-[480px] px-4 pt-6 pb-28 flex flex-col gap-4">
