@@ -1,6 +1,6 @@
 /**
  * 가계부 분석 차트 좌표 계산(순수). viewBox 좌표계 기준이고 반응형은 svg width=100%로 처리한다.
- * jsdom에는 레이아웃 측정이 없으므로 누르기 영역·말풍선 위치도 viewBox 비율(%)로만 정한다.
+ * jsdom에는 레이아웃 측정이 없으므로 달 버튼 위치도 viewBox 비율(%)로만 정한다.
  */
 
 export const CHART_W = 320;
@@ -49,8 +49,8 @@ export function flowBars(i: number, n: number): { incomeX: number; savingX: numb
  * 여러 계열이 함께 쓰는 0 기준 세로 스케일. NaN·Infinity는 최댓값 계산에서 빼고,
  * 값은 [0, 최댓값]으로 잘라 그림 영역 밖으로 나가지 않게 한다. 값이 모두 0 이하면 바닥선에 붙는다.
  */
-export function makeYScale(series: number[][]): (v: number) => number {
-  const max = Math.max(0, ...series.flat().filter(Number.isFinite));
+export function makeYScale(series: (number | null)[][]): (v: number) => number {
+  const max = Math.max(0, ...series.flat().filter((v): v is number => Number.isFinite(v)));
   return (v: number) => {
     if (max === 0 || !Number.isFinite(v)) {
       return PLOT_BOTTOM;
@@ -69,9 +69,41 @@ export function indexAtX(x: number, n: number): number {
   return Math.min(n - 1, Math.max(0, i));
 }
 
-/** polyline points 문자열. */
-export function linePoints(values: number[], yAt: (v: number) => number): string {
-  return values.map((v, i) => `${slotCenter(i, values.length)},${yAt(v)}`).join(" ");
+export interface LinePoint {
+  index: number;
+  x: number;
+  y: number;
+}
+
+/**
+ * 선 구간. null(기록 없는 달)에서 끊어 이어진 점끼리 묶는다.
+ * 한 점뿐인 구간도 남긴다(점은 그리고 선은 그리지 않는다).
+ */
+export function lineSegments(values: (number | null)[], yAt: (v: number) => number): LinePoint[][] {
+  const out: LinePoint[][] = [];
+  let current: LinePoint[] = [];
+  values.forEach((v, index) => {
+    if (v === null) {
+      if (current.length > 0) {
+        out.push(current);
+      }
+      current = [];
+      return;
+    }
+    current.push({ index, x: slotCenter(index, values.length), y: yAt(v) });
+  });
+  if (current.length > 0) {
+    out.push(current);
+  }
+  return out;
+}
+
+/** 터치 문지르기 시작 기준(px). */
+export const SCRUB_THRESHOLD = 6;
+
+/** 터치가 문지르기인지 — 가로로 기준보다 많이, 세로보다 크게 움직였을 때만(세로 스크롤과 구분). */
+export function isHorizontalDrag(dx: number, dy: number): boolean {
+  return Math.abs(dx) > SCRUB_THRESHOLD && Math.abs(dx) > Math.abs(dy);
 }
 
 /** 점 반지름 — 최대 3, 달이 많아 슬롯이 좁으면 슬롯 폭 × 0.25로 줄인다. */
@@ -85,13 +117,8 @@ export function hitArea(i: number, n: number): { leftPct: number; widthPct: numb
   return { leftPct: ((PAD_X + w * i) / CHART_W) * 100, widthPct: (w / CHART_W) * 100 };
 }
 
-/**
- * 말풍선 위치. 기준점(달 중심)을 left %로 두고, 자기 폭의 shift %만큼 왼쪽으로 민다.
- * shift는 그림 영역 안 상대 위치(0~100) — 왼쪽 끝은 왼쪽 정렬, 오른쪽 끝은 오른쪽 정렬, 가운데는 가운데 정렬이라
- * 말풍선 폭과 무관하게 차트 좌우 밖으로 나가지 않는다.
- */
-export function tooltipPlacement(cx: number): { leftPct: number; shiftPct: number } {
-  const x = Math.min(CHART_W - PAD_X, Math.max(PAD_X, cx));
-  const t = (x - PAD_X) / (CHART_W - PAD_X * 2);
-  return { leftPct: (x / CHART_W) * 100, shiftPct: t * 100 };
+/** 기본으로 고를 달 — 기록이 있는 가장 최근 달. 기록이 하나도 없으면 마지막 달(축이 비면 -1). */
+export function latestRecordedIndex(recorded: boolean[]): number {
+  const last = recorded.lastIndexOf(true);
+  return last >= 0 ? last : recorded.length - 1;
 }

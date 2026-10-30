@@ -48,14 +48,17 @@ export function buildMonthView(amounts: Amounts): LedgerMonthView {
   return { income, expense, saving, remaining: income - expense - saving, nodes };
 }
 
+/** 월별 값. 기록이 없는 달(행이 없거나 현재 잎 금액이 하나도 없음)은 null — 차트에서 선을 끊는다. */
+export type SeriesValue = number | null;
+
 export interface LedgerSeries {
   /** 연속 월 축("YYYY-MM", 오름차순). */
   months: string[];
-  income: number[];
-  expense: number[];
-  saving: number[];
-  /** 요청한 노드별 월 합계. */
-  byNode: Record<string, number[]>;
+  income: SeriesValue[];
+  expense: SeriesValue[];
+  saving: SeriesValue[];
+  /** 요청한 노드별 월 합계(기록한 달에서 그 노드가 0이면 0). */
+  byNode: Record<string, SeriesValue[]>;
   /** 축 안에서 금액이 있는 달 수(2 미만이면 차트 대신 안내). */
   monthsWithData: number;
 }
@@ -64,7 +67,7 @@ export interface LedgerSeries {
 export const MAX_ALL_MONTHS = 120;
 
 /**
- * endMonth에서 거슬러 올라가는 연속 월 시계열. 빈 달은 0.
+ * endMonth에서 거슬러 올라가는 연속 월 시계열. 기록 없는 달은 null(축은 그대로 연속).
  * "all"은 금액이 있는 가장 오래된 달부터이고, 그 달이 6개월보다 최근(또는 기록 없음)이면 6개월 축을 쓴다.
  * "all"도 끝 달 기준 최대 120개월까지만 그린다.
  */
@@ -90,18 +93,23 @@ export function buildSeries(
   }
 
   const months = monthRange(start, endMonth);
-  const amountsAt = months.map((m) => byMonth.get(m) ?? {});
-  const byNode: Record<string, number[]> = {};
+  // 기록 없는 달은 null(0으로 그리면 선이 바닥으로 꺼져 오해를 준다).
+  const amountsAt = months.map((m) => {
+    const a = byMonth.get(m);
+    return a && hasLedgerAmounts(a) ? a : null;
+  });
+  const sumAt = (id: string): SeriesValue[] => amountsAt.map((a) => (a ? sumNode(a, id) : null));
+  const byNode: Record<string, SeriesValue[]> = {};
   nodeIds.forEach((id) => {
-    byNode[id] = amountsAt.map((a) => sumNode(a, id));
+    byNode[id] = sumAt(id);
   });
   return {
     months,
-    income: amountsAt.map((a) => sumNode(a, "income")),
-    expense: amountsAt.map((a) => sumNode(a, "expense")),
-    saving: amountsAt.map((a) => sumNode(a, "saving")),
+    income: sumAt("income"),
+    expense: sumAt("expense"),
+    saving: sumAt("saving"),
     byNode,
-    monthsWithData: amountsAt.filter(hasLedgerAmounts).length,
+    monthsWithData: amountsAt.filter((a) => a !== null).length,
   };
 }
 

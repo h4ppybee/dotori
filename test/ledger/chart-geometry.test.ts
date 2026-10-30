@@ -10,11 +10,12 @@ import {
   indexAtX,
   flowBars,
   hitArea,
-  linePoints,
+  isHorizontalDrag,
+  latestRecordedIndex,
+  lineSegments,
   makeYScale,
   slotCenter,
   slotWidth,
-  tooltipPlacement,
 } from "@/lib/ledger/chart-geometry";
 
 describe("가계부 차트 geometry", () => {
@@ -77,9 +78,19 @@ describe("가계부 차트 geometry", () => {
     expect(indexAtX(100, 0)).toBe(-1);
   });
 
-  it("선 좌표는 슬롯 중심과 스케일로 만든다", () => {
-    const yAt = makeYScale([[0, 10]]);
-    expect(linePoints([0, 10], yAt)).toBe(`${slotCenter(0, 2)},${PLOT_BOTTOM} ${slotCenter(1, 2)},${PLOT_TOP}`);
+  it("선은 null(기록 없는 달)에서 끊어 구간으로 나눈다 — 한 점뿐인 구간도 남긴다", () => {
+    const values = [null, 10, 0, null, 5, null];
+    const yAt = makeYScale([values]);
+    const segs = lineSegments(values, yAt);
+    expect(segs.map((seg) => seg.map((p) => p.index))).toEqual([[1, 2], [4]]);
+    expect(segs[0][0]).toEqual({ index: 1, x: slotCenter(1, 6), y: PLOT_TOP });
+    expect(segs[0][1].y).toBe(PLOT_BOTTOM);
+    expect(lineSegments([null, null], yAt)).toEqual([]);
+  });
+
+  it("null은 스케일 계산에서 빠진다", () => {
+    const yAt = makeYScale([[null, 200], [null]]);
+    expect(yAt(200)).toBe(PLOT_TOP);
   });
 
   it("누르기 영역은 슬롯을 퍼센트로 덮는다", () => {
@@ -89,12 +100,16 @@ describe("가계부 차트 geometry", () => {
     expect(last.leftPct + last.widthPct).toBeCloseTo(((CHART_W - PAD_X) / CHART_W) * 100);
   });
 
-  it("말풍선은 왼쪽 끝이면 왼쪽 정렬, 오른쪽 끝이면 오른쪽 정렬, 가운데면 가운데 정렬로 잘리지 않는다", () => {
-    expect(tooltipPlacement(PAD_X)).toEqual({ leftPct: (PAD_X / CHART_W) * 100, shiftPct: 0 });
-    expect(tooltipPlacement(CHART_W - PAD_X).shiftPct).toBe(100);
-    expect(tooltipPlacement(CHART_W / 2).shiftPct).toBeCloseTo(50);
-    // viewBox 밖 값도 0~100으로 자른다.
-    expect(tooltipPlacement(-10).shiftPct).toBe(0);
-    expect(tooltipPlacement(CHART_W + 10).shiftPct).toBe(100);
+  it("터치 문지르기는 가로로 6px보다 많이, 세로보다 크게 움직였을 때만 시작한다", () => {
+    expect(isHorizontalDrag(7, 0)).toBe(true);
+    expect(isHorizontalDrag(-7, 3)).toBe(true);
+    expect(isHorizontalDrag(6, 0)).toBe(false);
+    expect(isHorizontalDrag(10, 12)).toBe(false);
+  });
+
+  it("기본 선택 달은 기록이 있는 가장 최근 달, 없으면 마지막 달", () => {
+    expect(latestRecordedIndex([true, false, true, false])).toBe(2);
+    expect(latestRecordedIndex([false, false])).toBe(1);
+    expect(latestRecordedIndex([])).toBe(-1);
   });
 });

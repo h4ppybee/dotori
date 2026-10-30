@@ -145,103 +145,168 @@ describe("가계부 분석 화면", () => {
     expect(screen.queryByText(EMPTY)).not.toBeInTheDocument();
   });
 
-  it("말풍선은 고른 달 버튼에 aria-describedby로 이어지고, 바깥을 누르거나 Escape로 닫힌다", async () => {
+  it("기록이 없는 달은 0으로 그리지 않고 선을 끊는다 — 따로 떨어진 달은 점만 남는다", async () => {
+    await saveLedgerAmounts("2026-07", { "expense.fixed.housing": 500_000 });
     await seedTwoMonths();
     renderPage();
     const flow = await flowSection();
-    const october = within(flow).getByRole("button", { name: "2026년 10월" });
-    fireEvent.click(october);
-    const tip = within(flow).getByRole("tooltip");
-    expect(october).toHaveAttribute("aria-describedby", tip.id);
-
-    fireEvent.pointerDown(document.body);
-    expect(within(flow).queryByRole("tooltip")).not.toBeInTheDocument();
-
-    fireEvent.click(october);
-    expect(within(flow).getByRole("tooltip")).toBeInTheDocument();
-    fireEvent.keyDown(document, { key: "Escape" });
-    expect(within(flow).queryByRole("tooltip")).not.toBeInTheDocument();
+    const expense = flow.querySelector("[data-flow-expense]")!;
+    // 7월(외따로) + 9~10월(이어짐) → 선 구간 1개, 점 3개.
+    expect(expense.querySelectorAll("polyline")).toHaveLength(1);
+    expect(expense.querySelectorAll("circle")).toHaveLength(3);
+    // 수입·저축 막대는 기록한 달만(7월은 수입·저축이 0이라 막대 없음).
+    expect(flow.querySelectorAll("[data-flow-bar='income']")).toHaveLength(2);
   });
 
-  it("차트를 누르고 문지르면 손가락 아래 달로 말풍선이 옮겨 가고, 고른 달을 다시 탭하면 닫힌다", async () => {
-    await seedTwoMonths();
-    renderPage();
-    const flow = await flowSection();
-    const scrub = flow.querySelector<HTMLElement>("[data-chart-scrub]");
-    expect(scrub).not.toBeNull();
+  describe("고른 달 상세", () => {
+    function detail(section: HTMLElement) {
+      return within(section).getByRole("status");
+    }
+
+    it("기본은 기록이 있는 가장 최근 달이고, 그 달 수입·지출·저축을 보여준다", async () => {
+      await seedTwoMonths();
+      renderPage();
+      const flow = await flowSection();
+      const row = detail(flow);
+      expect(within(row).getByText("2026년 10월")).toBeInTheDocument();
+      expect(within(row).getAllByRole("term").map((t) => t.textContent)).toEqual(["수입", "지출", "저축"]);
+      expect(within(row).getByText("₩3,000,000")).toBeInTheDocument();
+      expect(within(row).getByText("₩700,000")).toBeInTheDocument();
+      expect(within(row).getByText("₩1,000,000")).toBeInTheDocument();
+      const october = within(flow).getByRole("button", { name: "2026년 10월" });
+      expect(october).toHaveAttribute("aria-pressed", "true");
+      expect(october).toHaveAttribute("aria-describedby", row.id);
+      expect(row).toHaveAttribute("aria-live", "polite");
+    });
+
+    it("이번 달이 아직 비어 있으면 기록이 있는 지난 달을 기본으로 고른다", async () => {
+      await saveLedgerAmounts("2026-08", { "income.salary": 2_000_000 });
+      await saveLedgerAmounts("2026-09", { "income.salary": 2_000_000 });
+      renderPage();
+      const flow = await flowSection();
+      expect(within(detail(flow)).getByText("2026년 9월")).toBeInTheDocument();
+    });
+
+    it("다른 달을 누르면 그 달로 바뀌고, 같은 달을 다시 눌러도 선택이 유지된다", async () => {
+      await seedTwoMonths();
+      renderPage();
+      const flow = await flowSection();
+      const september = within(flow).getByRole("button", { name: "2026년 9월" });
+      fireEvent.click(september);
+      expect(within(detail(flow)).getByText("₩2,000,000")).toBeInTheDocument();
+      fireEvent.click(september);
+      expect(september).toHaveAttribute("aria-pressed", "true");
+      expect(within(detail(flow)).getByText("2026년 9월")).toBeInTheDocument();
+      // 바깥을 눌러도 선택은 그대로다.
+      fireEvent.pointerDown(document.body);
+      fireEvent.keyDown(document, { key: "Escape" });
+      expect(within(detail(flow)).getByText("2026년 9월")).toBeInTheDocument();
+    });
+
+    it("기록이 없는 달을 고르면 '기록 없음'을 보여준다", async () => {
+      await seedTwoMonths();
+      renderPage();
+      const flow = await flowSection();
+      fireEvent.click(within(flow).getByRole("button", { name: "2026년 8월" }));
+      const row = detail(flow);
+      expect(within(row).getByText("2026년 8월")).toBeInTheDocument();
+      expect(within(row).getByText("기록 없음")).toBeInTheDocument();
+      expect(within(row).queryByText(/₩/)).not.toBeInTheDocument();
+    });
+
+    it("금액 숨기기가 켜져 있으면 상세 값을 가린다", async () => {
+      await putSettings({ id: "app", kdfSalt: "s", verifier: "v", schemaVersion: 1, privacyAmounts: true });
+      await seedTwoMonths();
+      renderPage();
+      const flow = await flowSection();
+      expect(await within(detail(flow)).findAllByRole("button", { name: /금액 보기/ })).toHaveLength(3);
+    });
+  });
+
+  describe("문지르기", () => {
     // jsdom에는 레이아웃이 없으므로 화면 폭을 viewBox와 같은 320px로 가정한다.
-    vi.spyOn(scrub!, "getBoundingClientRect").mockReturnValue(
-      { left: 0, top: 0, width: 320, height: 180, right: 320, bottom: 180, x: 0, y: 0, toJSON: () => ({}) } as DOMRect,
-    );
-    // 12개월 축: 슬롯 폭 24, 마지막 달(10월) 중심 x=292, 9월 중심 x=268.
-    fireEvent.pointerDown(scrub!, { clientX: 292, pointerId: 1 });
-    expect(within(within(flow).getByRole("tooltip")).getByText("2026년 10월")).toBeInTheDocument();
-    fireEvent.pointerMove(scrub!, { clientX: 268, pointerId: 1 });
-    expect(within(within(flow).getByRole("tooltip")).getByText("2026년 9월")).toBeInTheDocument();
-    fireEvent.pointerUp(scrub!, { clientX: 268, pointerId: 1 });
-    // 누르지 않은 채 움직이면 바뀌지 않는다.
-    fireEvent.pointerMove(scrub!, { clientX: 292, pointerId: 1 });
-    expect(within(within(flow).getByRole("tooltip")).getByText("2026년 9월")).toBeInTheDocument();
+    // 12개월 축: 슬롯 폭 24 — 10월 중심 x=292, 9월 268, 8월 244.
+    async function setup() {
+      await seedTwoMonths();
+      renderPage();
+      const flow = await flowSection();
+      const scrub = flow.querySelector<HTMLElement>("[data-chart-scrub]")!;
+      vi.spyOn(scrub, "getBoundingClientRect").mockReturnValue(
+        { left: 0, top: 0, width: 320, height: 180, right: 320, bottom: 180, x: 0, y: 0, toJSON: () => ({}) } as DOMRect,
+      );
+      const shown = () => within(within(flow).getByRole("status")).getByText(/^\d{4}년 \d{1,2}월$/).textContent;
+      return { scrub, shown };
+    }
 
-    fireEvent.pointerDown(scrub!, { clientX: 268, pointerId: 1 });
-    fireEvent.pointerUp(scrub!, { clientX: 268, pointerId: 1 });
-    expect(within(flow).queryByRole("tooltip")).not.toBeInTheDocument();
+    it("마우스는 누르는 즉시 고르고, 누른 채 움직이면 따라간다", async () => {
+      const { scrub, shown } = await setup();
+      fireEvent.pointerDown(scrub, { clientX: 268, pointerId: 1, pointerType: "mouse" });
+      expect(shown()).toBe("2026년 9월");
+      fireEvent.pointerMove(scrub, { clientX: 244, pointerId: 1, pointerType: "mouse" });
+      expect(shown()).toBe("2026년 8월");
+      fireEvent.pointerUp(scrub, { clientX: 244, pointerId: 1, pointerType: "mouse" });
+      // 누르지 않은 채 움직이면 바뀌지 않는다.
+      fireEvent.pointerMove(scrub, { clientX: 292, pointerId: 1, pointerType: "mouse" });
+      expect(shown()).toBe("2026년 8월");
+    });
+
+    it("터치는 누르는 순간 고르지 않고, 거의 움직이지 않고 떼면(탭) 그 달을 고른다", async () => {
+      const { scrub, shown } = await setup();
+      fireEvent.pointerDown(scrub, { clientX: 268, clientY: 50, pointerId: 2, pointerType: "touch" });
+      expect(shown()).toBe("2026년 10월");
+      fireEvent.pointerUp(scrub, { clientX: 270, clientY: 52, pointerId: 2, pointerType: "touch" });
+      expect(shown()).toBe("2026년 9월");
+    });
+
+    it("터치를 세로로 움직이면(스크롤) 고르지 않는다", async () => {
+      const { scrub, shown } = await setup();
+      fireEvent.pointerDown(scrub, { clientX: 268, clientY: 50, pointerId: 3, pointerType: "touch" });
+      fireEvent.pointerMove(scrub, { clientX: 262, clientY: 90, pointerId: 3, pointerType: "touch" });
+      fireEvent.pointerUp(scrub, { clientX: 262, clientY: 90, pointerId: 3, pointerType: "touch" });
+      expect(shown()).toBe("2026년 10월");
+    });
+
+    it("터치를 가로로 6px 넘게 움직이면 문지르기를 시작하고, 취소되면 이전 선택으로 돌아간다", async () => {
+      const { scrub, shown } = await setup();
+      fireEvent.pointerDown(scrub, { clientX: 268, clientY: 50, pointerId: 4, pointerType: "touch" });
+      fireEvent.pointerMove(scrub, { clientX: 272, clientY: 50, pointerId: 4, pointerType: "touch" });
+      expect(shown()).toBe("2026년 10월");
+      fireEvent.pointerMove(scrub, { clientX: 244, clientY: 52, pointerId: 4, pointerType: "touch" });
+      expect(shown()).toBe("2026년 8월");
+      fireEvent.pointerCancel(scrub, { pointerId: 4, pointerType: "touch" });
+      expect(shown()).toBe("2026년 10월");
+    });
+
+    it("터치를 누른 채 취소되면(시작 전) 아무것도 바뀌지 않는다", async () => {
+      const { scrub, shown } = await setup();
+      fireEvent.pointerDown(scrub, { clientX: 244, clientY: 50, pointerId: 5, pointerType: "touch" });
+      fireEvent.pointerCancel(scrub, { pointerId: 5, pointerType: "touch" });
+      expect(shown()).toBe("2026년 10월");
+    });
   });
 
-  it("달 버튼은 하나만 탭 순서에 있고, ←/→로 옮겨 다닌다", async () => {
+  it("달 버튼은 고른 달 하나만 탭 순서에 있고, ←/→로 옮겨 다닌다", async () => {
     await seedTwoMonths();
     renderPage();
     const flow = await flowSection();
     const buttons = within(flow).getAllByRole("button", { name: /^\d{4}년 \d{1,2}월$/ });
-    expect(buttons.filter((b) => b.tabIndex === 0)).toEqual([buttons[0]]);
-
     const october = within(flow).getByRole("button", { name: "2026년 10월" });
-    fireEvent.click(october);
     expect(buttons.filter((b) => b.tabIndex === 0)).toEqual([october]);
 
     fireEvent.keyDown(october, { key: "ArrowLeft" });
     const september = within(flow).getByRole("button", { name: "2026년 9월" });
     expect(september).toHaveAttribute("aria-pressed", "true");
     expect(september).toHaveFocus();
-    expect(september.tabIndex).toBe(0);
-    expect(within(within(flow).getByRole("tooltip")).getByText("2026년 9월")).toBeInTheDocument();
+    expect(buttons.filter((b) => b.tabIndex === 0)).toEqual([september]);
+    expect(within(within(flow).getByRole("status")).getByText("2026년 9월")).toBeInTheDocument();
 
-    fireEvent.keyDown(september, { key: "ArrowRight" });
+    fireEvent.keyDown(september, { key: "Home" });
+    expect(buttons[0]).toHaveFocus();
+    fireEvent.keyDown(buttons[0], { key: "End" });
     expect(october).toHaveFocus();
     // 끝 달에서 →는 그대로.
     fireEvent.keyDown(october, { key: "ArrowRight" });
     expect(october).toHaveFocus();
-  });
-
-  it("달을 누르면 말풍선에 그 달 수입·지출·저축이 뜨고, 다시 누르면 닫힌다", async () => {
-    await seedTwoMonths();
-    renderPage();
-    const flow = await flowSection();
-    const october = within(flow).getByRole("button", { name: "2026년 10월" });
-    fireEvent.click(october);
-    expect(october).toHaveAttribute("aria-pressed", "true");
-    const tip = within(flow).getByRole("tooltip");
-    expect(within(tip).getByText("2026년 10월")).toBeInTheDocument();
-    expect(within(tip).getByText("₩3,000,000")).toBeInTheDocument();
-    expect(within(tip).getByText("₩700,000")).toBeInTheDocument();
-    expect(within(tip).getByText("₩1,000,000")).toBeInTheDocument();
-
-    // 다른 달을 누르면 그 달로 바뀐다.
-    fireEvent.click(within(flow).getByRole("button", { name: "2026년 9월" }));
-    expect(within(within(flow).getByRole("tooltip")).getByText("₩2,000,000")).toBeInTheDocument();
-
-    fireEvent.click(within(flow).getByRole("button", { name: "2026년 9월" }));
-    expect(within(flow).queryByRole("tooltip")).not.toBeInTheDocument();
-  });
-
-  it("금액 숨기기가 켜져 있으면 말풍선 값을 가린다", async () => {
-    await putSettings({ id: "app", kdfSalt: "s", verifier: "v", schemaVersion: 1, privacyAmounts: true });
-    await seedTwoMonths();
-    renderPage();
-    const flow = await flowSection();
-    fireEvent.click(within(flow).getByRole("button", { name: "2026년 10월" }));
-    const tip = within(flow).getByRole("tooltip");
-    expect(await within(tip).findAllByRole("button", { name: /금액 보기/ })).toHaveLength(3);
   });
 
   describe("카테고리별 차트", () => {
@@ -300,17 +365,42 @@ describe("가계부 분석 화면", () => {
       expect(dot("배달")).toHaveStyle({ backgroundColor: "#A87342" });
     });
 
-    it("달을 누르면 고른 카테고리의 그 달 금액이 말풍선에 뜬다", async () => {
+    it("상세에 고른 카테고리의 그 달 금액이 뜨고(기록한 달의 0은 ₩0), 아래 범례에 고른 카테고리가 슬롯 색으로 보인다", async () => {
       await seedTwoMonths();
       renderPage();
       const section = await categorySection();
       fireEvent.click(chip("외식"));
-      fireEvent.click(within(section).getByRole("button", { name: "2026년 10월" }));
-      const tip = within(section).getByRole("tooltip");
-      expect(within(tip).getByText("식비")).toBeInTheDocument();
-      expect(within(tip).getByText("₩200,000")).toBeInTheDocument();
-      expect(within(tip).getByText("외식")).toBeInTheDocument();
-      expect(within(tip).getByText("₩0")).toBeInTheDocument();
+      const row = within(section).getByRole("status");
+      expect(within(row).getByText("2026년 10월")).toBeInTheDocument();
+      expect(within(row).getByText("식비")).toBeInTheDocument();
+      expect(within(row).getByText("₩200,000")).toBeInTheDocument();
+      expect(within(row).getByText("외식")).toBeInTheDocument();
+      expect(within(row).getByText("₩0")).toBeInTheDocument();
+
+      const legend = within(section).getByRole("list", { name: "범례" });
+      const items = within(legend).getAllByRole("listitem");
+      expect(items.map((li) => li.textContent)).toEqual(["식비", "외식"]);
+      expect(items[1].querySelector("[data-legend-swatch]")).toHaveStyle({ backgroundColor: "#F04452" });
+    });
+
+    it("처음 열면 고른 칩이 보이도록 칩 줄을 스크롤한다", async () => {
+      // jsdom에는 scrollIntoView가 없을 수 있어 잠시 심어 두고 끝나면 되돌린다.
+      const original = Element.prototype.scrollIntoView;
+      const scrollIntoView = vi.fn();
+      Element.prototype.scrollIntoView = scrollIntoView;
+      try {
+        await seedTwoMonths();
+        renderPage();
+        await categorySection();
+        expect(scrollIntoView).toHaveBeenCalledWith({ inline: "nearest", block: "nearest" });
+        expect(scrollIntoView.mock.contexts[0]).toBe(chip("식비"));
+      } finally {
+        if (original) {
+          Element.prototype.scrollIntoView = original;
+        } else {
+          Reflect.deleteProperty(Element.prototype, "scrollIntoView");
+        }
+      }
     });
   });
 });

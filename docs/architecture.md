@@ -73,7 +73,8 @@ components/
   envelope/                ProfileSegment, RollupCard, EnvelopeItemRow, EnvelopeItemDialog, EnvelopeSheetImport (통장 쪼개기)
   ledger/                  가계부 — MonthPicker, LedgerSummaryCard, LedgerCategoryList, UnderlineAmountInput(밑줄형 금액 입력칸),
                            LedgerMemoCard(월간 회고), RangeChips, CategoryChips, LedgerFlowChart, LedgerCategoryChart,
-                           MonthChartFrame(차트 공용 틀 — 0 기준선·고른 달 강조·월 라벨·누르기 영역·말풍선), ChartTooltip, ledger-colors
+                           MonthChartFrame(차트 공용 틀 — 고른 달 상세 줄·0 기준선·고른 달 강조·월 라벨·문지르기·달 버튼), ChartDetail(고른 달 상세 줄),
+                           SeriesLine(기록 없는 달에서 끊기는 점 있는 선), ledger-constants(차트 색·슬롯 팔레트·금액 보기 라벨)
   holdings/HoldingForm.tsx 종목 추가/편집 폼
   nav/                     AppNav, MainTabBar, NestedTabBar(자산·계획·가계부 공용 플로팅 서브탭), DummyPage
   settings/                ConnectionForm, BackupPanel, SheetExportPanel(구글 시트 내보내기 연결/해제/지금 내보내기), BiometricPanel(Face ID 잠금 해제 켜기/끄기)
@@ -89,7 +90,7 @@ lib/
   goal/                    순수 계산: goal-service(buildGoalProgress) — 순자산 목표 진척(월 필요 저축액·달성률)
   envelope/                순수 계산: envelope-service(태그·은행·프로필별 롤업 집계), presets(태그·은행 기본 목록), tag-color(태그 팔레트 매핑), sheet-import(시트 그리드 → 항목 순수 파서). import-from-sheet(시트 읽기→파싱 조립, throw 없음). 상세 docs/external-api.md
   ledger/                  순수 계산: categories(카테고리 트리 상수·잎 ID·leavesUnder·chipLabel·CARRY_OVER_ROOTS), month("YYYY-MM" 문자열 헬퍼, addMonths·monthRange·formatMonthTitle·currentMonth),
-                           ledger-service(sumNode·buildMonthView·buildSeries 시계열·carryOverFromPrevious·canCarryOver·axisLabels), chart-geometry(SVG viewBox 좌표 계산 — 막대·선·누르기 영역·말풍선 위치)
+                           ledger-service(sumNode·buildMonthView·buildSeries 시계열 — 기록 없는 달은 null·carryOverFromPrevious·canCarryOver·axisLabels), chart-geometry(SVG viewBox 좌표 계산 — 막대·선 구간·달 버튼 위치·문지르기 판정·기본 선택 달)
   biometric/               Face ID 잠금 해제 — webauthn(PRF 지원 판정·패스키 생성·PRF 조회), prf-key(PRF→HKDF→비추출 AES-GCM 키), biometric-unlock(등록·잠금 해제·해제 서비스, 기기별 user.id·제안 기록)
   sector/                  seed(종목→섹터 시드), sector-map(resolveSector + KNOWN_SECTORS)
   crypto/                  crypto(PBKDF2/AES-GCM), rekey(비밀번호 변경 재암호화)

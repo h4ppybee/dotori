@@ -61,14 +61,23 @@ describe("buildSeries", () => {
     { id: "2026-02", amounts: { "saving.invest": 500_000 } },
   ];
 
-  it("endMonth에서 거슬러 올라간 연속 월, 빈 달은 0", () => {
+  it("endMonth에서 거슬러 올라간 연속 월 — 기록 없는 달은 null, 기록한 달의 0은 0", () => {
     const s = buildSeries(rows, { endMonth: "2026-02", range: 6, nodeIds: ["expense.variable.food"] });
     expect(s.months).toEqual(["2025-09", "2025-10", "2025-11", "2025-12", "2026-01", "2026-02"]);
-    expect(s.income).toEqual([0, 0, 0, 3_000_000, 0, 0]);
-    expect(s.expense).toEqual([0, 0, 0, 100_000, 0, 0]);
-    expect(s.saving).toEqual([0, 0, 0, 0, 0, 500_000]);
-    expect(s.byNode["expense.variable.food"]).toEqual([0, 0, 0, 100_000, 0, 0]);
+    expect(s.income).toEqual([null, null, null, 3_000_000, null, 0]);
+    expect(s.expense).toEqual([null, null, null, 100_000, null, 0]);
+    expect(s.saving).toEqual([null, null, null, 0, null, 500_000]);
+    expect(s.byNode["expense.variable.food"]).toEqual([null, null, null, 100_000, null, 0]);
     expect(s.monthsWithData).toBe(2);
+  });
+
+  it("메모만 있거나 알 수 없는 키만 있는 달도 기록 없음(null)", () => {
+    const s = buildSeries(
+      [{ id: "2026-01", amounts: { "legacy.x": 500 } }, { id: "2026-02", amounts: {} }],
+      { endMonth: "2026-02", range: 6, nodeIds: [] },
+    );
+    expect(s.income.slice(-2)).toEqual([null, null]);
+    expect(s.monthsWithData).toBe(0);
   });
 
   it("12개월 축", () => {
