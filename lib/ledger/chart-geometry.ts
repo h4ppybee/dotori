@@ -13,6 +13,8 @@ export const PLOT_TOP = 16;
 export const PLOT_BOTTOM = 150;
 /** 월 라벨 글자 기준선. */
 export const LABEL_Y = 170;
+/** 월 라벨 글자 크기(viewBox 단위) — 카드 안 차트 폭 288px 기준 약 12px로 보인다. */
+export const LABEL_FONT_SIZE = 13;
 
 /** 막대 폭 = min(BAR_MAX, 슬롯 폭 × BAR_RATIO), 수입·저축 막대 사이 간격 BAR_GAP. */
 export const BAR_MAX = 10;
@@ -43,15 +45,28 @@ export function flowBars(i: number, n: number): { incomeX: number; savingX: numb
   return { incomeX: cx - BAR_GAP / 2 - width, savingX: cx + BAR_GAP / 2, width };
 }
 
-/** 여러 계열이 함께 쓰는 0 기준 세로 스케일. 값이 모두 0이면 바닥선에 붙는다. */
+/**
+ * 여러 계열이 함께 쓰는 0 기준 세로 스케일. NaN·Infinity는 최댓값 계산에서 빼고,
+ * 값은 [0, 최댓값]으로 잘라 그림 영역 밖으로 나가지 않게 한다. 값이 모두 0 이하면 바닥선에 붙는다.
+ */
 export function makeYScale(series: number[][]): (v: number) => number {
-  const max = Math.max(0, ...series.flat());
+  const max = Math.max(0, ...series.flat().filter(Number.isFinite));
   return (v: number) => {
-    if (max === 0) {
+    if (max === 0 || !Number.isFinite(v)) {
       return PLOT_BOTTOM;
     }
-    return PLOT_BOTTOM - (v / max) * (PLOT_BOTTOM - PLOT_TOP);
+    const clamped = Math.min(max, Math.max(0, v));
+    return PLOT_BOTTOM - (clamped / max) * (PLOT_BOTTOM - PLOT_TOP);
   };
+}
+
+/** viewBox x → 달 인덱스(문지르기). 그림 영역 밖은 양 끝 달로 자르고, 계산할 수 없으면 -1. */
+export function indexAtX(x: number, n: number): number {
+  if (n <= 0 || !Number.isFinite(x)) {
+    return -1;
+  }
+  const i = Math.floor((x - PAD_X) / slotWidth(n));
+  return Math.min(n - 1, Math.max(0, i));
 }
 
 /** polyline points 문자열. */

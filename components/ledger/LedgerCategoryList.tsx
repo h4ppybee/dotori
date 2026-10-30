@@ -3,7 +3,7 @@
 import { Card } from "@/components/ui/Card";
 import { PrivacyAmount } from "@/components/ui/PrivacyAmount";
 import { UnderlineAmountInput } from "@/components/ledger/UnderlineAmountInput";
-import { LEDGER_REVEAL_LABEL } from "@/components/ledger/LedgerSummaryCard";
+import { LEDGER_REVEAL_LABEL } from "@/components/ledger/ledger-constants";
 import { formatKrw } from "@/lib/format";
 import { LEDGER_TREE, chipLabel, type LedgerNode } from "@/lib/ledger/categories";
 import type { LedgerMonthView } from "@/lib/ledger/ledger-service";

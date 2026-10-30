@@ -2,11 +2,10 @@
 
 import { Card } from "@/components/ui/Card";
 import { PrivacyAmount } from "@/components/ui/PrivacyAmount";
+import { LEDGER_REVEAL_LABEL } from "@/components/ledger/ledger-constants";
 import { formatKrw } from "@/lib/format";
 import { formatMonthTitle } from "@/lib/ledger/month";
 import type { LedgerMonthView } from "@/lib/ledger/ledger-service";
-
-export const LEDGER_REVEAL_LABEL = "가계부 금액 보기";
 
 // 분석 차트와 같은 계열 색(수입 primary · 지출 warning · 저축 success). 손익이 아니므로 up/down은 쓰지 않는다.
 const ROWS = [

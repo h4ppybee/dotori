@@ -6,7 +6,7 @@ import { RangeChips } from "@/components/ledger/RangeChips";
 import { CategoryChips } from "@/components/ledger/CategoryChips";
 import { LedgerFlowChart } from "@/components/ledger/LedgerFlowChart";
 import { LedgerCategoryChart } from "@/components/ledger/LedgerCategoryChart";
-import { SLOT_COLORS } from "@/components/ledger/ledger-colors";
+import { SLOT_COLORS } from "@/components/ledger/ledger-constants";
 import { useLedgerMonths } from "@/lib/query/use-ledger";
 import { chipLabel } from "@/lib/ledger/categories";
 import { buildSeries } from "@/lib/ledger/ledger-service";
@@ -22,11 +22,26 @@ const CARD_TITLE = "text-[17px] font-bold leading-[1.45] tracking-[-0.2px] text-
 export default function LedgerAnalysisPage() {
   // 끝 달은 이번 달 — 렌더 시점에 한 번 계산한다.
   const [thisMonth] = useState(() => currentMonth(new Date()));
-  const rows = useLedgerMonths().data;
+  const { data: rows, isError } = useLedgerMonths();
   const range = useLedgerStore((s) => s.range);
   const selected = useLedgerStore((s) => s.selected);
   const setRange = useLedgerStore((s) => s.setRange);
   const toggleNode = useLedgerStore((s) => s.toggleNode);
+
+  if (rows === undefined && isError) {
+    return (
+      <main className="min-h-screen bg-canvas">
+        <div className="mx-auto flex w-full max-w-[480px] flex-col gap-4 px-4 pt-6 pb-28">
+          <h1 className="text-[22px] font-bold leading-[1.3] tracking-[-0.3px] text-ink">분석</h1>
+          <Card className="py-10 text-center">
+            <p role="alert" className="text-[15px] font-normal leading-[1.5] text-muted">
+              가계부를 불러오지 못했어요. 다시 열어 주세요.
+            </p>
+          </Card>
+        </div>
+      </main>
+    );
+  }
 
   // 데이터를 불러오기 전에는 그리지 않는다 — 안내 문구가 잠깐 보였다가 차트로 바뀌며 깜박이지 않게.
   if (rows === undefined) {

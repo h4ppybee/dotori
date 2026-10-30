@@ -60,9 +60,13 @@ export interface LedgerSeries {
   monthsWithData: number;
 }
 
+/** "all" 축의 최대 길이(10년). 끝 달에서 거슬러 올라가며 자른다. */
+export const MAX_ALL_MONTHS = 120;
+
 /**
  * endMonth에서 거슬러 올라가는 연속 월 시계열. 빈 달은 0.
  * "all"은 금액이 있는 가장 오래된 달부터이고, 그 달이 6개월보다 최근(또는 기록 없음)이면 6개월 축을 쓴다.
+ * "all"도 끝 달 기준 최대 120개월까지만 그린다.
  */
 export function buildSeries(
   rows: LedgerMonthAmounts[],
@@ -76,7 +80,11 @@ export function buildSeries(
       .filter((r) => isValidMonth(r.id) && hasLedgerAmounts(r.amounts))
       .map((r) => r.id)
       .sort()[0];
+    const allStart = addMonths(endMonth, -(MAX_ALL_MONTHS - 1));
     start = oldest != null && oldest < sixStart ? oldest : sixStart;
+    if (start < allStart) {
+      start = allStart;
+    }
   } else {
     start = addMonths(endMonth, -(range - 1));
   }

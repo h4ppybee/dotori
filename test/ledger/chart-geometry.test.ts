@@ -6,6 +6,8 @@ import {
   PLOT_TOP,
   BAR_GAP,
   barWidth,
+  dotRadius,
+  indexAtX,
   flowBars,
   hitArea,
   linePoints,
@@ -46,6 +48,33 @@ describe("가계부 차트 geometry", () => {
   it("값이 모두 0이면 바닥선에 붙는다", () => {
     const yAt = makeYScale([[0, 0]]);
     expect(yAt(0)).toBe(PLOT_BOTTOM);
+  });
+
+  it("NaN·Infinity는 최댓값 계산에서 빼고, 값은 [0, 최댓값]으로 자른다", () => {
+    const yAt = makeYScale([[100, Number.NaN, Number.POSITIVE_INFINITY, -50]]);
+    expect(yAt(100)).toBe(PLOT_TOP);
+    expect(yAt(-50)).toBe(PLOT_BOTTOM);
+    expect(yAt(500)).toBe(PLOT_TOP);
+    expect(yAt(Number.NaN)).toBe(PLOT_BOTTOM);
+    expect(yAt(Number.POSITIVE_INFINITY)).toBe(PLOT_BOTTOM);
+  });
+
+  it("음수만 있으면 바닥선에 붙는다", () => {
+    const yAt = makeYScale([[-10, -20]]);
+    expect(yAt(-10)).toBe(PLOT_BOTTOM);
+  });
+
+  it("점 반지름은 최대 3, 슬롯이 좁으면 슬롯 폭 × 0.25", () => {
+    expect(dotRadius(6)).toBe(3);
+    expect(dotRadius(120)).toBeCloseTo(slotWidth(120) * 0.25);
+  });
+
+  it("viewBox x를 달 인덱스로 바꾸고, 그림 영역 밖은 양 끝 달로 자른다", () => {
+    expect(indexAtX(slotCenter(4, 12), 12)).toBe(4);
+    expect(indexAtX(0, 12)).toBe(0);
+    expect(indexAtX(CHART_W, 12)).toBe(11);
+    expect(indexAtX(Number.NaN, 12)).toBe(-1);
+    expect(indexAtX(100, 0)).toBe(-1);
   });
 
   it("선 좌표는 슬롯 중심과 스케일로 만든다", () => {

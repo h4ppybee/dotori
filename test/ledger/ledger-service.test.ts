@@ -6,6 +6,7 @@ import {
   canCarryOver,
   carryOverFromPrevious,
   hasLedgerAmounts,
+  MAX_ALL_MONTHS,
   sumNode,
   type LedgerMonthAmounts,
 } from "@/lib/ledger/ledger-service";
@@ -96,6 +97,15 @@ describe("buildSeries", () => {
     const s = buildSeries(withBad, { endMonth: "2026-02", range: "all", nodeIds: [] });
     expect(s.months).toHaveLength(6);
     expect(s.months[0]).toBe("2025-09");
+  });
+
+  it("all은 끝 달에서 최대 120개월까지만 거슬러 올라간다(끝 달 포함)", () => {
+    const old: LedgerMonthAmounts[] = [{ id: "2000-01", amounts: { "income.side": 100_000 } }, ...rows];
+    const s = buildSeries(old, { endMonth: "2026-02", range: "all", nodeIds: [] });
+    expect(s.months).toHaveLength(MAX_ALL_MONTHS);
+    expect(MAX_ALL_MONTHS).toBe(120);
+    expect(s.months[0]).toBe("2016-03");
+    expect(s.months[s.months.length - 1]).toBe("2026-02");
   });
 
   it("기록이 없으면 all도 6개월 축", () => {

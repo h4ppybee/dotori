@@ -69,6 +69,8 @@ export default function LedgerPage() {
 
   // 모든 잎의 최종 값을 넘긴다 — 0·빈 잎은 저장 함수가 키를 지운다.
   async function saveEdit() {
+    // 다시 시도할 때 지난 실패 안내를 먼저 지운다.
+    setSaveError(null);
     const amounts: Amounts = {};
     LEAF_IDS.forEach((id) => {
       amounts[id] = draft[id] ?? 0;

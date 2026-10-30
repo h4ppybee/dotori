@@ -5,13 +5,19 @@ import { useAppStore } from "@/stores/app-store";
 import { useLedgerStore } from "@/stores/ledger-store";
 import { db } from "@/lib/db/schema";
 import { deriveKey, makeSalt } from "@/lib/crypto/crypto";
-import { putSettings, saveLedgerAmounts, saveLedgerMemo } from "@/lib/db/local-store";
+import { listLedgerMonths, putSettings, saveLedgerAmounts, saveLedgerMemo } from "@/lib/db/local-store";
 import LedgerAnalysisPage from "@/app/ledger/analysis/page";
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/ledger/analysis",
   useRouter: () => ({ push: vi.fn() }),
 }));
+
+// 목록 조회 실패를 흉내 내려고 실제 구현을 감싼 vi.fn으로 바꾼다(기본은 실제 동작).
+vi.mock("@/lib/db/local-store", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/db/local-store")>();
+  return { ...actual, listLedgerMonths: vi.fn(actual.listLedgerMonths) };
+});
 
 const EMPTY = "두 달 이상 기록하면 흐름을 볼 수 있어요";
 
@@ -95,7 +101,7 @@ describe("가계부 분석 화면", () => {
     const flow = await flowSection();
     expect(within(flow).getByRole("img", { name: /수입·지출·저축.*2025년 11월부터 2026년 10월까지/ })).toBeInTheDocument();
     const legend = within(flow).getByRole("list", { name: "범례" });
-    expect(within(legend).getAllByRole("listitem").map((li) => li.textContent)).toEqual(["수입", "저축", "지출"]);
+    expect(within(legend).getAllByRole("listitem").map((li) => li.textContent)).toEqual(["수입", "지출", "저축"]);
     expect(within(flow).getAllByRole("button", { name: /^\d{4}년 \d{1,2}월$/ })).toHaveLength(12);
     expect(screen.queryByText(EMPTY)).not.toBeInTheDocument();
   });
@@ -108,6 +114,103 @@ describe("가계부 분석 화면", () => {
     expect(within(flow).getAllByRole("button", { name: /^\d{4}년 \d{1,2}월$/ })).toHaveLength(6);
     expect(within(flow).getByRole("button", { name: "2026년 5월" })).toBeInTheDocument();
     expect(within(flow).queryByRole("button", { name: "2026년 4월" })).not.toBeInTheDocument();
+  });
+
+  it("전체를 고르면 금액이 있는 가장 오래된 달부터 축을 만든다", async () => {
+    await saveLedgerAmounts("2025-01", { "income.salary": 2_000_000 });
+    await saveLedgerAmounts("2026-10", { "income.salary": 3_000_000 });
+    renderPage();
+    // 12개월 축에는 금액 있는 달이 하나뿐이라 안내가 뜬다.
+    expect(await screen.findByText(EMPTY)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "전체" }));
+    const flow = await flowSection();
+    const months = within(flow).getAllByRole("button", { name: /^\d{4}년 \d{1,2}월$/ });
+    expect(months).toHaveLength(22);
+    expect(months[0]).toHaveAccessibleName("2025년 1월");
+  });
+
+  it("0원인 막대는 그리지 않는다", async () => {
+    await seedTwoMonths();
+    renderPage();
+    const flow = await flowSection();
+    // 12개월 중 수입·저축이 있는 달은 2개 → 막대 4개.
+    expect(flow.querySelectorAll("[data-flow-bar='income']")).toHaveLength(2);
+    expect(flow.querySelectorAll("[data-flow-bar='saving']")).toHaveLength(2);
+  });
+
+  it("목록을 불러오지 못하면 안내를 보여준다", async () => {
+    vi.mocked(listLedgerMonths).mockRejectedValueOnce(new Error("fail"));
+    renderPage();
+    expect(await screen.findByRole("alert")).toHaveTextContent("가계부를 불러오지 못했어요. 다시 열어 주세요.");
+    expect(screen.queryByText(EMPTY)).not.toBeInTheDocument();
+  });
+
+  it("말풍선은 고른 달 버튼에 aria-describedby로 이어지고, 바깥을 누르거나 Escape로 닫힌다", async () => {
+    await seedTwoMonths();
+    renderPage();
+    const flow = await flowSection();
+    const october = within(flow).getByRole("button", { name: "2026년 10월" });
+    fireEvent.click(october);
+    const tip = within(flow).getByRole("tooltip");
+    expect(october).toHaveAttribute("aria-describedby", tip.id);
+
+    fireEvent.pointerDown(document.body);
+    expect(within(flow).queryByRole("tooltip")).not.toBeInTheDocument();
+
+    fireEvent.click(october);
+    expect(within(flow).getByRole("tooltip")).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(within(flow).queryByRole("tooltip")).not.toBeInTheDocument();
+  });
+
+  it("차트를 누르고 문지르면 손가락 아래 달로 말풍선이 옮겨 가고, 고른 달을 다시 탭하면 닫힌다", async () => {
+    await seedTwoMonths();
+    renderPage();
+    const flow = await flowSection();
+    const scrub = flow.querySelector<HTMLElement>("[data-chart-scrub]");
+    expect(scrub).not.toBeNull();
+    // jsdom에는 레이아웃이 없으므로 화면 폭을 viewBox와 같은 320px로 가정한다.
+    vi.spyOn(scrub!, "getBoundingClientRect").mockReturnValue(
+      { left: 0, top: 0, width: 320, height: 180, right: 320, bottom: 180, x: 0, y: 0, toJSON: () => ({}) } as DOMRect,
+    );
+    // 12개월 축: 슬롯 폭 24, 마지막 달(10월) 중심 x=292, 9월 중심 x=268.
+    fireEvent.pointerDown(scrub!, { clientX: 292, pointerId: 1 });
+    expect(within(within(flow).getByRole("tooltip")).getByText("2026년 10월")).toBeInTheDocument();
+    fireEvent.pointerMove(scrub!, { clientX: 268, pointerId: 1 });
+    expect(within(within(flow).getByRole("tooltip")).getByText("2026년 9월")).toBeInTheDocument();
+    fireEvent.pointerUp(scrub!, { clientX: 268, pointerId: 1 });
+    // 누르지 않은 채 움직이면 바뀌지 않는다.
+    fireEvent.pointerMove(scrub!, { clientX: 292, pointerId: 1 });
+    expect(within(within(flow).getByRole("tooltip")).getByText("2026년 9월")).toBeInTheDocument();
+
+    fireEvent.pointerDown(scrub!, { clientX: 268, pointerId: 1 });
+    fireEvent.pointerUp(scrub!, { clientX: 268, pointerId: 1 });
+    expect(within(flow).queryByRole("tooltip")).not.toBeInTheDocument();
+  });
+
+  it("달 버튼은 하나만 탭 순서에 있고, ←/→로 옮겨 다닌다", async () => {
+    await seedTwoMonths();
+    renderPage();
+    const flow = await flowSection();
+    const buttons = within(flow).getAllByRole("button", { name: /^\d{4}년 \d{1,2}월$/ });
+    expect(buttons.filter((b) => b.tabIndex === 0)).toEqual([buttons[0]]);
+
+    const october = within(flow).getByRole("button", { name: "2026년 10월" });
+    fireEvent.click(october);
+    expect(buttons.filter((b) => b.tabIndex === 0)).toEqual([october]);
+
+    fireEvent.keyDown(october, { key: "ArrowLeft" });
+    const september = within(flow).getByRole("button", { name: "2026년 9월" });
+    expect(september).toHaveAttribute("aria-pressed", "true");
+    expect(september).toHaveFocus();
+    expect(september.tabIndex).toBe(0);
+    expect(within(within(flow).getByRole("tooltip")).getByText("2026년 9월")).toBeInTheDocument();
+
+    fireEvent.keyDown(september, { key: "ArrowRight" });
+    expect(october).toHaveFocus();
+    // 끝 달에서 →는 그대로.
+    fireEvent.keyDown(october, { key: "ArrowRight" });
+    expect(october).toHaveFocus();
   });
 
   it("달을 누르면 말풍선에 그 달 수입·지출·저축이 뜨고, 다시 누르면 닫힌다", async () => {

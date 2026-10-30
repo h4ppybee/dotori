@@ -7,6 +7,12 @@ import { deriveKey, makeSalt } from "@/lib/crypto/crypto";
 import { listLedgerMonths, putSettings, saveLedgerAmounts, saveLedgerMemo } from "@/lib/db/local-store";
 import LedgerPage from "@/app/ledger/page";
 
+// 저장 실패를 흉내 내려고 실제 구현을 감싼 vi.fn으로 바꾼다(기본은 실제 동작).
+vi.mock("@/lib/db/local-store", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/db/local-store")>();
+  return { ...actual, saveLedgerAmounts: vi.fn(actual.saveLedgerAmounts) };
+});
+
 vi.mock("next/navigation", () => ({
   usePathname: () => "/ledger",
   useRouter: () => ({ push: vi.fn() }),
@@ -122,22 +128,23 @@ describe("가계부 월별 화면", () => {
 
   it("저장에 실패하면 편집 모드와 입력값을 유지하고 안내를 보여준다", async () => {
     await seedOctober();
-    const store = await import("@/lib/db/local-store");
-    const spy = vi.spyOn(store, "saveLedgerAmounts").mockRejectedValueOnce(new Error("fail"));
-    try {
-      renderPage();
-      fireEvent.click(await screen.findByRole("button", { name: "편집" }));
-      const salary = screen.getByRole<HTMLInputElement>("textbox", { name: "월급" });
-      fireEvent.focus(salary);
-      fireEvent.change(salary, { target: { value: "4000000" } });
-      fireEvent.blur(salary);
-      fireEvent.click(screen.getByRole("button", { name: "저장하기" }));
-      expect(await screen.findByRole("alert")).toHaveTextContent("저장하지 못했어요. 다시 시도해 주세요.");
-      expect(screen.getByRole<HTMLInputElement>("textbox", { name: "월급" }).value).toBe("4,000,000");
-      expect(screen.getByRole("button", { name: "취소" })).toBeEnabled();
-    } finally {
-      spy.mockRestore();
-    }
+    vi.mocked(saveLedgerAmounts).mockRejectedValueOnce(new Error("fail"));
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "편집" }));
+    const salary = screen.getByRole<HTMLInputElement>("textbox", { name: "월급" });
+    fireEvent.focus(salary);
+    fireEvent.change(salary, { target: { value: "4000000" } });
+    fireEvent.blur(salary);
+    fireEvent.click(screen.getByRole("button", { name: "저장하기" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("저장하지 못했어요. 다시 시도해 주세요.");
+    expect(screen.getByRole<HTMLInputElement>("textbox", { name: "월급" }).value).toBe("4,000,000");
+    expect(screen.getByRole("button", { name: "취소" })).toBeEnabled();
+
+    // 다시 저장하면 안내를 지우고 저장한다.
+    fireEvent.click(screen.getByRole("button", { name: "저장하기" }));
+    expect(await screen.findByRole("button", { name: "편집" })).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect((await listLedgerMonths())[0].amounts["income.salary"]).toBe(4_000_000);
   });
 
   it("편집 중에는 월 이동이 비활성이고, 취소하면 변경을 버린다", async () => {

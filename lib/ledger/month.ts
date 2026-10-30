@@ -28,14 +28,21 @@ export function isValidMonth(month: string): boolean {
 // 연속 월 축의 안전 상한(100년). 잘못된 데이터로 축이 끝없이 길어지는 것을 막는다.
 const MAX_RANGE_MONTHS = 1200;
 
-/** start~end(양 끝 포함) 연속 월. 형식이 잘못됐거나 start가 end보다 뒤면 빈 배열. 최대 100년치. */
+/**
+ * start~end(양 끝 포함) 연속 월. 형식이 잘못됐거나 start가 end보다 뒤면 빈 배열.
+ * 최대 100년치이고, 넘치면 끝 달 기준으로 자른다(끝 달은 항상 포함).
+ */
 export function monthRange(start: string, end: string): string[] {
   if (!isValidMonth(start) || !isValidMonth(end) || start > end) {
     return [];
   }
+  // 문자열 비교 대신 개수로 센다(연도 자릿수가 바뀌어도 끝나도록).
+  const [sy, sm] = parse(start);
+  const [ey, em] = parse(end);
+  const count = Math.min(MAX_RANGE_MONTHS, (ey - sy) * 12 + (em - sm) + 1);
   const out: string[] = [];
-  for (let m = start; m <= end && out.length < MAX_RANGE_MONTHS; m = addMonths(m, 1)) {
-    out.push(m);
+  for (let i = count - 1; i >= 0; i -= 1) {
+    out.push(addMonths(end, -i));
   }
   return out;
 }

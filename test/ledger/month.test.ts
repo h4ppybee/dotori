@@ -23,10 +23,11 @@ describe("월 헬퍼", () => {
     expect(monthRange("2026-01", "")).toEqual([]);
   });
 
-  it("monthRange는 지나치게 긴 범위를 상한에서 끊는다", () => {
+  it("monthRange는 지나치게 긴 범위를 끝 달 기준 상한(1200개월)에서 끊는다 — 끝 달은 항상 포함", () => {
     const r = monthRange("0001-01", "9999-12");
-    expect(r.length).toBeLessThanOrEqual(1200);
-    expect(r[0]).toBe("0001-01");
+    expect(r).toHaveLength(1200);
+    expect(r[r.length - 1]).toBe("9999-12");
+    expect(r[0]).toBe(addMonths("9999-12", -1199));
   });
 
   it("isValidMonth", () => {

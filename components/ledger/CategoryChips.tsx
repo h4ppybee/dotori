@@ -1,7 +1,7 @@
 "use client";
 
 import { Chip } from "@/components/ui/Chip";
-import { SLOT_COLORS } from "@/components/ledger/ledger-colors";
+import { SLOT_COLORS } from "@/components/ledger/ledger-constants";
 import { allNodesInOrder, chipLabel } from "@/lib/ledger/categories";
 import { slotOf, type LedgerSelection } from "@/stores/ledger-store";
 
