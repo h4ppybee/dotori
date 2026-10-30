@@ -31,7 +31,7 @@ function Chevron({ left }: { left?: boolean }) {
 }
 
 const ARROW =
-  "flex h-10 w-10 items-center justify-center rounded-full text-muted transition-colors hover:bg-surface-soft hover:text-body active:bg-surface-strong disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent disabled:hover:text-muted";
+  "flex h-11 w-11 items-center justify-center rounded-full text-muted transition-colors hover:bg-surface-soft hover:text-body active:bg-surface-strong disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent disabled:hover:text-muted";
 
 /** 월 선택 — ‹ 2026년 10월 ›. 이동 가능 여부는 호출부가 정한다(다음 달 이후·편집 중 비활성). */
 export function MonthPicker({ month, onPrev, onNext, prevDisabled, nextDisabled }: MonthPickerProps) {

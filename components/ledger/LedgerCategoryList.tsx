@@ -5,7 +5,7 @@ import { PrivacyAmount } from "@/components/ui/PrivacyAmount";
 import { UnderlineAmountInput } from "@/components/ledger/UnderlineAmountInput";
 import { LEDGER_REVEAL_LABEL } from "@/components/ledger/LedgerSummaryCard";
 import { formatKrw } from "@/lib/format";
-import { LEDGER_TREE, type LedgerNode } from "@/lib/ledger/categories";
+import { LEDGER_TREE, chipLabel, type LedgerNode } from "@/lib/ledger/categories";
 import type { LedgerMonthView } from "@/lib/ledger/ledger-service";
 
 interface LedgerCategoryListProps {
@@ -35,21 +35,28 @@ export function LedgerCategoryList({ view, editing, draft, onDraftChange }: Ledg
 
   function renderLeaf(node: LedgerNode) {
     const value = sumOf(node.id);
+    // 편집 모드 — 행 전체를 <label>로 감싸 카테고리 이름을 눌러도 입력칸에 포커스된다.
+    if (editing) {
+      return (
+        <li key={node.id}>
+          <label className="flex min-h-[44px] cursor-text items-center justify-between gap-3">
+            <span className="text-[15px] font-normal leading-[1.5] text-body">{node.label}</span>
+            <UnderlineAmountInput
+              label={chipLabel(node.id)}
+              value={draft[node.id] ?? 0}
+              onChange={(v) => onDraftChange(node.id, v)}
+            />
+          </label>
+        </li>
+      );
+    }
     return (
       <li key={node.id} className="flex min-h-[44px] items-center justify-between gap-3 py-1">
         <span className="text-[15px] font-normal leading-[1.5] text-body">{node.label}</span>
-        {editing ? (
-          <UnderlineAmountInput
-            label={node.label}
-            value={draft[node.id] ?? 0}
-            onChange={(v) => onDraftChange(node.id, v)}
-          />
-        ) : (
-          <Amount
-            value={value}
-            className={`text-[15px] font-semibold leading-[1.4] ${value > 0 ? "text-ink" : "text-muted-soft"}`}
-          />
-        )}
+        <Amount
+          value={value}
+          className={`text-[15px] font-semibold leading-[1.4] ${value > 0 ? "text-ink" : "text-muted-soft"}`}
+        />
       </li>
     );
   }

@@ -31,6 +31,8 @@ export function LedgerMemoCard({ month, initialMemo }: LedgerMemoCardProps) {
   const lastSavedRef = useRef(initialMemo);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hideRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 언마운트 뒤 저장이 끝나면 안내 상태·타이머를 만들지 않는다.
+  const mountedRef = useRef(true);
 
   // showSaved=false는 화면이 사라지는 경로(언마운트·hidden) — 안내를 띄우지 않는다.
   const flush = useCallback(
@@ -48,7 +50,7 @@ export function LedgerMemoCard({ month, initialMemo }: LedgerMemoCardProps) {
       saveLedgerMemo(month, memo)
         .then(() => {
           void qc.invalidateQueries({ queryKey: LEDGER_KEY });
-          if (!showSaved) {
+          if (!showSaved || !mountedRef.current) {
             return;
           }
           setSavedVisible(true);
@@ -58,7 +60,9 @@ export function LedgerMemoCard({ month, initialMemo }: LedgerMemoCardProps) {
           hideRef.current = setTimeout(() => setSavedVisible(false), SAVED_VISIBLE_MS);
         })
         .catch(() => {
-          // 실패하면 다음 저장 시점에 다시 시도하도록 마지막 저장값을 되돌린다.
+          // 마지막 저장값을 되돌려 다음 저장 시점(blur·debounce)에 다시 시도한다.
+          // 한계: 언마운트 경로의 실패는 다음 저장 시점이 없어 다시 시도하지 못하고, hidden 경로도
+          // 그 뒤 앱이 종료되면 마찬가지다(로컬 IndexedDB라 실패는 드물다).
           if (lastSavedRef.current === memo) {
             lastSavedRef.current = previous;
           }
@@ -69,6 +73,7 @@ export function LedgerMemoCard({ month, initialMemo }: LedgerMemoCardProps) {
 
   // effect는 visibilitychange 등록과 언마운트 정리(저장)만 맡는다.
   useEffect(() => {
+    mountedRef.current = true;
     const onVisibility = () => {
       if (document.visibilityState === "hidden") {
         flush(false);
@@ -77,6 +82,7 @@ export function LedgerMemoCard({ month, initialMemo }: LedgerMemoCardProps) {
     document.addEventListener("visibilitychange", onVisibility);
     return () => {
       document.removeEventListener("visibilitychange", onVisibility);
+      mountedRef.current = false;
       if (hideRef.current) {
         clearTimeout(hideRef.current);
       }

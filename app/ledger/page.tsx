@@ -36,6 +36,7 @@ export default function LedgerPage() {
   const [month, setMonth] = useState(thisMonth);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<Amounts>({});
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const rows = useLedgerMonths().data;
   const { saveAmounts } = useLedgerMutations();
@@ -55,6 +56,7 @@ export default function LedgerPage() {
   // 편집에 들어가면 금액 숨기기를 풀어 입력값이 보이게 한다.
   function beginEdit(seed: Amounts) {
     revealAmounts();
+    setSaveError(null);
     setDraft(seed);
     setEditing(true);
   }
@@ -62,6 +64,7 @@ export default function LedgerPage() {
   function cancelEdit() {
     setEditing(false);
     setDraft({});
+    setSaveError(null);
   }
 
   // 모든 잎의 최종 값을 넘긴다 — 0·빈 잎은 저장 함수가 키를 지운다.
@@ -70,7 +73,13 @@ export default function LedgerPage() {
     LEAF_IDS.forEach((id) => {
       amounts[id] = draft[id] ?? 0;
     });
-    await saveAmounts.mutateAsync({ month, amounts });
+    try {
+      await saveAmounts.mutateAsync({ month, amounts });
+    } catch {
+      // 실패하면 편집 모드와 입력값을 그대로 두고 다시 시도할 수 있게 한다.
+      setSaveError("저장하지 못했어요. 다시 시도해 주세요.");
+      return;
+    }
     cancelEdit();
   }
 
@@ -87,7 +96,7 @@ export default function LedgerPage() {
           nextDisabled={editing || month >= thisMonth}
         />
 
-        <LedgerSummaryCard view={view} />
+        <LedgerSummaryCard month={month} view={view} />
 
         {showCarryOver && (
           <Button
@@ -112,7 +121,12 @@ export default function LedgerPage() {
             </button>
           ) : (
             <div className="flex items-center gap-3">
-              <button type="button" onClick={cancelEdit} className="text-[15px] font-semibold text-muted">
+              <button
+                type="button"
+                onClick={cancelEdit}
+                disabled={saveAmounts.isPending}
+                className="text-[15px] font-semibold text-muted disabled:text-muted-soft"
+              >
                 취소
               </button>
               <button
@@ -126,6 +140,12 @@ export default function LedgerPage() {
             </div>
           )}
         </div>
+
+        {saveError != null && (
+          <div role="alert" className="rounded-[16px] bg-up-surface px-4 py-[14px] text-[15px] leading-[1.5] text-up">
+            {saveError}
+          </div>
+        )}
 
         <LedgerCategoryList
           view={view}

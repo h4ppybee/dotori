@@ -3,6 +3,7 @@
 import { Card } from "@/components/ui/Card";
 import { PrivacyAmount } from "@/components/ui/PrivacyAmount";
 import { formatKrw } from "@/lib/format";
+import { formatMonthTitle } from "@/lib/ledger/month";
 import type { LedgerMonthView } from "@/lib/ledger/ledger-service";
 
 export const LEDGER_REVEAL_LABEL = "가계부 금액 보기";
@@ -15,9 +16,9 @@ const ROWS = [
 ] as const;
 
 /** 월 요약 — 남은 돈(수입 − 지출 − 저축)을 크게, 아래에 수입·지출·저축 합계. */
-export function LedgerSummaryCard({ view }: { view: LedgerMonthView }) {
+export function LedgerSummaryCard({ month, view }: { month: string; view: LedgerMonthView }) {
   return (
-    <section aria-label="이번 달 요약">
+    <section aria-label={`${formatMonthTitle(month)} 요약`}>
       <Card variant="hero" className="flex flex-col gap-5">
         <div className="flex flex-col gap-2">
           <span className="text-[13px] font-normal leading-[1.45] text-muted">남은 돈</span>

@@ -60,7 +60,7 @@ describe("가계부 월별 화면", () => {
   it("요약 카드에 수입·지출·저축 합계와 남은 돈을 보여준다", async () => {
     await seedOctober();
     renderPage();
-    const summary = await screen.findByRole("region", { name: "이번 달 요약" });
+    const summary = await screen.findByRole("region", { name: "2026년 10월 요약" });
     expect(within(summary).getByText("₩3,000,000")).toBeInTheDocument();
     expect(within(summary).getByText("₩700,000")).toBeInTheDocument();
     expect(within(summary).getByText("₩1,000,000")).toBeInTheDocument();
@@ -95,6 +95,51 @@ describe("가계부 월별 화면", () => {
     expect(row.memo).toBe("회고");
   });
 
+  it("잎을 비우고 저장하면 그 키를 지운다", async () => {
+    await seedOctober();
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "편집" }));
+    const delivery = screen.getByRole("textbox", { name: "배달" });
+    fireEvent.focus(delivery);
+    fireEvent.change(delivery, { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "저장하기" }));
+    expect(await screen.findByRole("button", { name: "편집" })).toBeInTheDocument();
+    const [row] = await listLedgerMonths();
+    expect(row.amounts).not.toHaveProperty("expense.variable.food.delivery");
+    expect(row.amounts["income.salary"]).toBe(3_000_000);
+  });
+
+  it("같은 이름의 잎은 소속을 붙여 구분하고, 이름을 눌러도 입력칸에 포커스된다", async () => {
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "편집" }));
+    expect(screen.getByRole("textbox", { name: "기타(지출)" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "기타(저축)" })).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "기타" })).not.toBeInTheDocument();
+    // 행 전체가 <label>이라 이름 텍스트가 입력칸과 이어져 있다.
+    const salary = screen.getByRole("textbox", { name: "월급" });
+    expect(within(screen.getByRole("region", { name: "수입" })).getByText("월급").closest("label")).toContainElement(salary);
+  });
+
+  it("저장에 실패하면 편집 모드와 입력값을 유지하고 안내를 보여준다", async () => {
+    await seedOctober();
+    const store = await import("@/lib/db/local-store");
+    const spy = vi.spyOn(store, "saveLedgerAmounts").mockRejectedValueOnce(new Error("fail"));
+    try {
+      renderPage();
+      fireEvent.click(await screen.findByRole("button", { name: "편집" }));
+      const salary = screen.getByRole<HTMLInputElement>("textbox", { name: "월급" });
+      fireEvent.focus(salary);
+      fireEvent.change(salary, { target: { value: "4000000" } });
+      fireEvent.blur(salary);
+      fireEvent.click(screen.getByRole("button", { name: "저장하기" }));
+      expect(await screen.findByRole("alert")).toHaveTextContent("저장하지 못했어요. 다시 시도해 주세요.");
+      expect(screen.getByRole<HTMLInputElement>("textbox", { name: "월급" }).value).toBe("4,000,000");
+      expect(screen.getByRole("button", { name: "취소" })).toBeEnabled();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it("편집 중에는 월 이동이 비활성이고, 취소하면 변경을 버린다", async () => {
     await seedOctober();
     renderPage();
@@ -107,7 +152,7 @@ describe("가계부 월별 화면", () => {
     fireEvent.change(salary, { target: { value: "9" } });
     fireEvent.click(screen.getByRole("button", { name: "취소" }));
 
-    const summary = screen.getByRole("region", { name: "이번 달 요약" });
+    const summary = screen.getByRole("region", { name: "2026년 10월 요약" });
     expect(within(summary).getByText("₩3,000,000")).toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: "월급" })).not.toBeInTheDocument();
     const [row] = await listLedgerMonths();
@@ -184,10 +229,11 @@ describe("가계부 월별 화면", () => {
       fireEvent.change(memo, { target: { value: "잠깐" } });
       fireEvent.change(memo, { target: { value: "" } });
       fireEvent.blur(memo);
+      await new Promise((r) => setTimeout(r, 50));
+      expect(screen.queryByText("저장했어요")).not.toBeInTheDocument();
       unmount();
       await new Promise((r) => setTimeout(r, 50));
       expect(await listLedgerMonths()).toHaveLength(0);
-      expect(screen.queryByText("저장했어요")).not.toBeInTheDocument();
     });
 
     it("화면이 사라지면(언마운트) 저장한다", async () => {
