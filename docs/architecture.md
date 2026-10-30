@@ -2,7 +2,7 @@
 
 토스 스타일의 **로컬 퍼스트(local-first) PWA 개인 자산 관리 앱**. 주식·저축/현금성·연금·코인 자산과 부채를 한데 모아 **순자산**을 보여준다. 토스인베스트 Open API(주식·연금 시세·환율)와 업비트 API(코인·예수금)로 시세를 가져오고, 직접 입력한 자산과 합친다. 모든 데이터는 브라우저 IndexedDB에 저장되며, 민감정보는 비밀번호 파생 키로 암호화한다. **서버 DB가 없다.**
 
-> 패키지명은 `dotori`. 홈 탭(`app/page.tsx`)은 **순자산 + 목표 자산** 섹션을 보여준다(목표 금액·목표일 설정 → 월 필요 저축액·달성률 진행 링). 계획(`plan`) 탭은 **통장 쪼개기** 화면(하위 부동산 탭은 플레이스홀더). 가계부(`ledger`) 탭은 아직 플레이스홀더(`components/nav/DummyPage`)다.
+> 패키지명은 `dotori`. 홈 탭(`app/page.tsx`)은 **순자산 + 목표 자산** 섹션을 보여준다(목표 금액·목표일 설정 → 월 필요 저축액·달성률 진행 링). 계획(`plan`) 탭은 **통장 쪼개기** 화면(하위 부동산 탭은 플레이스홀더). 가계부(`ledger`) 탭은 **월별 직접 입력** 가계부다 — 건별 거래가 아니라 월·카테고리별 금액(원 단위)을 입력하고 월간 회고를 쓰며, 분석 서브탭(`/ledger/analysis`)에서 수입·지출·저축 흐름과 카테고리별 추이를 차트로 본다.
 
 > 📄 **문서를 코드와 일치시킨다.** 라우트·`lib` 모듈·`components` 디렉토리·자산 종류·외부 API·Dexie 테이블·데이터 흐름을 추가/변경할 때는 이 문서와 [AGENTS.md](../AGENTS.md)를 **같은 작업에서 함께 갱신**한다. 주제별 상세는 분리 문서로 관리한다 — 백업 [backup.md](backup.md), 외부 연동 [external-api.md](external-api.md). 전체 목록은 [docs/README.md](README.md).
 
@@ -51,7 +51,8 @@ app/                       App Router 라우트 (모두 "use client")
   holdings/new, holdings/[id]  주식 직접 추가 / 상세·섹터 편집·MANUAL 수정·삭제
   plan/page.tsx            통장 쪼개기 — 프로필(통합/아내/남편) · 태그·은행별 롤업 · 항목 관리(일괄 편집 모드 지원) · 시트에서 가져오기(시트 원본으로 덮어쓰기). 통합 뷰는 전체 항목을 아내/남편 섹션으로 나눠 리스트하며 항목 추가는 프로필 뷰에서만.
   plan/realty/page.tsx     부동산 조달계획 (플레이스홀더 DummyPage)
-  ledger                   가계부 (플레이스홀더 DummyPage)
+  ledger/page.tsx          가계부 월별 — 월 선택·요약 카드·카테고리별 금액 편집·지난달에서 가져오기·월간 회고
+  ledger/analysis/page.tsx 가계부 분석 — 기간 칩(6/12개월·전체) + 수입·지출·저축 차트 + 카테고리별 선 차트
   settings/page.tsx        연동(토스·업비트) / 백업 / 구글 시트 내보내기 / 지금 잠그기 / PIN 설정·변경 / Face ID
   api/toss/*/route.ts      토스 프록시 (token·holdings·prices·exchange-rate·accounts)
   api/upbit/*/route.ts     업비트 프록시 (accounts·markets·tickers)
@@ -70,8 +71,11 @@ components/
   snapshot/                SnapshotSection(기록 버튼+차트+최근 목록), SnapshotListItem, SnapshotTrendChart(추이 콤보 차트)
   goal/                    GoalCard, GoalForm, GoalEmptyState, GoalProgressRing (목표 자산 섹션)
   envelope/                ProfileSegment, RollupCard, EnvelopeItemRow, EnvelopeItemDialog, EnvelopeSheetImport (통장 쪼개기)
+  ledger/                  가계부 — MonthPicker, LedgerSummaryCard, LedgerCategoryList, UnderlineAmountInput(밑줄형 금액 입력칸),
+                           LedgerMemoCard(월간 회고), RangeChips, CategoryChips, LedgerFlowChart, LedgerCategoryChart,
+                           MonthChartFrame(차트 공용 틀 — 0 기준선·고른 달 강조·월 라벨·누르기 영역·말풍선), ChartTooltip, ledger-colors
   holdings/HoldingForm.tsx 종목 추가/편집 폼
-  nav/                     AppNav, MainTabBar, NestedTabBar(자산·계획 공용 플로팅 서브탭), DummyPage
+  nav/                     AppNav, MainTabBar, NestedTabBar(자산·계획·가계부 공용 플로팅 서브탭), DummyPage
   settings/                ConnectionForm, BackupPanel, SheetExportPanel(구글 시트 내보내기 연결/해제/지금 내보내기), BiometricPanel(Face ID 잠금 해제 켜기/끄기)
   LockGate, AppDataGate(잠금 해제 직후 탭 데이터 미리 읽기), ServiceWorkerRegister
 
@@ -84,19 +88,22 @@ lib/
   savings/, pension/, coin/, debt/   자산별 순수 서비스(VM 빌드·집계·카테고리 라벨). savings/deposit-accrual은 예적금 납입일 계산·자동 증가
   goal/                    순수 계산: goal-service(buildGoalProgress) — 순자산 목표 진척(월 필요 저축액·달성률)
   envelope/                순수 계산: envelope-service(태그·은행·프로필별 롤업 집계), presets(태그·은행 기본 목록), tag-color(태그 팔레트 매핑), sheet-import(시트 그리드 → 항목 순수 파서). import-from-sheet(시트 읽기→파싱 조립, throw 없음). 상세 docs/external-api.md
+  ledger/                  순수 계산: categories(카테고리 트리 상수·잎 ID·leavesUnder·chipLabel·CARRY_OVER_ROOTS), month("YYYY-MM" 문자열 헬퍼, addMonths·monthRange·formatMonthTitle·currentMonth),
+                           ledger-service(sumNode·buildMonthView·buildSeries 시계열·carryOverFromPrevious·canCarryOver·axisLabels), chart-geometry(SVG viewBox 좌표 계산 — 막대·선·누르기 영역·말풍선 위치)
   biometric/               Face ID 잠금 해제 — webauthn(PRF 지원 판정·패스키 생성·PRF 조회), prf-key(PRF→HKDF→비추출 AES-GCM 키), biometric-unlock(등록·잠금 해제·해제 서비스, 기기별 user.id·제안 기록)
   sector/                  seed(종목→섹터 시드), sector-map(resolveSector + KNOWN_SECTORS)
   crypto/                  crypto(PBKDF2/AES-GCM), rekey(비밀번호 변경 재암호화)
   snapshot/                수동 전체 자산 스냅샷 — capture(DB 상태→VM 5종→저장), asset-snapshot(순수 빌더), trend(추이 차트 데이터 헬퍼)
   sheet-export/            구글 시트 내보내기 — build-payload(순수 빌더: VM 5종+envelope→탭별 2차원 배열), client(Apps Script 웹앱 POST·응답 정규화), export(설정·DB 읽기→빌더→전송 조립, throw 없음). 상세 docs/external-api.md
   backup/                  수동 데이터 export/import (JSON) — 상세 docs/backup.md
-  nav/                     nav-config(탭 정의), active(활성 탭 판정)
-  query/                   client(QueryProvider, gcTime 무한), prefetch(prefetchAppData — 잠금 해제 직후 모든 탭 쿼리 미리 읽기, 각 훅의 *QueryOptions 공유), use-portfolio·use-savings·use-pension·use-coin·use-debt·use-settings, use-assets-refresh, use-asset-snapshots(목록/단건/기록·삭제 뮤테이션), use-goal(목표 조회·저장·삭제 뮤테이션), use-net-worth(순자산 합산 훅), use-envelope(항목·설정 CRUD + bulkUpdate 뮤테이션), use-sheet-export(설정 조회 + 저장·해제·지금 내보내기 뮤테이션, runSheetExport), use-biometric(Face ID 등록 여부 조회 `["biometric"]`·기기 지원 여부 `["biometric-available"]`)
+  nav/                     nav-config(탭 정의, 자산·계획·가계부 중첩 섹션을 `nestedSections: { key, match, subTabs, resolveActive }[]` 목록으로 일반화해 `AppNav`·`direction.ts`가 이항 분기 없이 서브탭·활성 키·전환 방향을 찾는다), active(활성 탭 판정 — isLedgerRoute·resolveActiveLedgerSub 포함)
+  query/                   client(QueryProvider, gcTime 무한), prefetch(prefetchAppData — 잠금 해제 직후 모든 탭 쿼리 미리 읽기, 각 훅의 *QueryOptions 공유), use-portfolio·use-savings·use-pension·use-coin·use-debt·use-settings, use-assets-refresh, use-asset-snapshots(목록/단건/기록·삭제 뮤테이션), use-goal(목표 조회·저장·삭제 뮤테이션), use-net-worth(순자산 합산 훅), use-envelope(항목·설정 CRUD + bulkUpdate 뮤테이션), use-sheet-export(설정 조회 + 저장·해제·지금 내보내기 뮤테이션, runSheetExport), use-biometric(Face ID 등록 여부 조회 `["biometric"]`·기기 지원 여부 `["biometric-available"]`), use-ledger(가계부 전체 달 조회 `["ledgerMonths"]` + 금액·회고 저장 뮤테이션, 성공 시 무효화)
   format.ts, types.ts
 
 stores/
   app-store.ts             zustand — locked, sessionKey(CryptoKey, 비추출·세션 볼트 동기화), lastRefreshAt, lastSheetExport(자동·수동 공용 마지막 시트 내보내기 결과)
-  nav-store.ts             자산 탭 진입 전 메인 탭 경로(복귀 지점)
+  nav-store.ts             중첩 섹션(자산·계획·가계부) 진입 전 메인 탭 경로(복귀 지점)
+  ledger-store.ts          가계부 분석 화면의 기간(6/12개월·전체)·카테고리 칩 선택(메모리에만, 새로고침하면 기본값)
 test/                      모듈 구조를 미러링한 단위/UI 테스트
 docs/                      본 문서 + superpowers/(스펙·플랜)
 ```
@@ -120,7 +127,7 @@ docs/                      본 문서 + superpowers/(스펙·플랜)
      ▼
 [IndexedDB]  holdings · priceCache · fxRates · sectorOverrides · snapshots · settings
              · savings · pension · coin · debts · assetSnapshots · goal · session
-             · envelopeItems · envelopeConfig · sheetExport · biometric
+             · envelopeItems · envelopeConfig · sheetExport · biometric · ledgerMonths
      │
 [use-* 훅]   DB 로드 → 자산별 순수 서비스로 VM 빌드
      │   주식: buildPortfolio(merge+pnl+fx+ratios+resolveSector)
@@ -141,6 +148,7 @@ docs/                      본 문서 + superpowers/(스펙·플랜)
 - **예적금 자동 증가**: 저축 계좌는 금액 기준일 `balanceAsOf`("YYYY-MM-DD")를 가진다. 새 계좌이거나 금액이 바뀔 때만 `upsertSavings`/`bulkUpdateSavings`가 오늘로 찍는다. 통합 갱신 때 [refreshSavingsAccrual](../lib/sync/refresh-savings.ts)이 MANUAL 예적금(`DEPOSIT`·KRW·월 불입액·만기일 있음)에 순수 함수 [accrueDeposit](../lib/savings/deposit-accrual.ts)을 적용한다. 납입일은 만기일 다음 날의 일자(만기 07-24 → 매월 25일, 만기가 말일이면 1일, 그 달에 없는 일자는 말일로 보정)이고, `기준일 < 납입일 ≤ min(오늘, 만기일)`인 횟수만큼 월 불입액을 더한 뒤 기준일을 오늘로 옮긴다. 기준일이 없는 기존 행은 소급하지 않고 기준일만 초기화한다.
 - **자산 스냅샷(수동 전체)**: 자동 갱신 흐름과 별개로, 자산 탭 하단 [SnapshotSection](../components/snapshot/SnapshotSection.tsx)의 "+ 지금 기록" 버튼을 누르면 [captureAssetSnapshot](../lib/snapshot/capture.ts)이 DB 상태를 화면과 동일한 VM 5종(주식·저축·연금·코인·부채)으로 계산해 순수 빌더 [buildAssetSnapshot](../lib/snapshot/asset-snapshot.ts)에 넘기고, 결과 1건을 `assetSnapshots` 테이블에 저장한다. 이전의 주식 전용 일별 자동 스냅샷(`snapshots` 테이블, `Settings.lastSnapshotDate`)은 제거되어 이 수동 전체 스냅샷으로 일원화됐다 — `snapshots` 테이블과 과거 데이터는 하위호환을 위해 보존만 되고 더 이상 기록되지 않는다. 추이는 [SnapshotTrendChart](../components/snapshot/SnapshotTrendChart.tsx)가 최신 20건을 [buildTrendData](../lib/snapshot/trend.ts)로 가공해 순자산 선(상단 밴드) + 직전 대비 변화량 막대(하단 밴드)로 보여준다. 목록·상세는 `/assets/snapshots`, `/assets/snapshots/[id]`.
 - **구글 시트 내보내기**: `useAssetsRefresh`의 `onSuccess`에서 설정(`sheetExport` 테이블)이 있으면 [runSheetExport](../lib/query/use-sheet-export.ts)를 기다리지 않고(fire-and-forget) 실행한다 — 갱신 스피너·쿼리 무효화가 내보내기 때문에 늦어지지 않게 하기 위함. [exportToSheet](../lib/sheet-export/export.ts)는 설정 복호화 → DB 읽기 → 화면과 같은 VM 빌더로 [buildSheetPayload](../lib/sheet-export/build-payload.ts) → Apps Script 웹앱에 POST 순으로 조립하며, 어떤 실패도 throw하지 않고 `{ status: "error", message }`로 돌려준다. 결과는 자동·수동(설정 화면의 "지금 내보내기") 공용으로 `stores/app-store.ts`의 `lastSheetExport`에 기록되고, 자산 탭의 [RefreshBar](../components/portfolio/RefreshBar.tsx)와 설정의 [SheetExportPanel](../components/settings/SheetExportPanel.tsx)이 여기서 읽는다. 내보내기 실패는 갱신 실패로 취급하지 않는다. 상세 계약·오류 코드는 [external-api.md](external-api.md).
+- **가계부**: `ledgerMonths` 테이블은 월 하나 = 행 하나(키 `"YYYY-MM"`)이고, 순수 계산 [ledger-service.ts](../lib/ledger/ledger-service.ts)가 카테고리 트리([categories.ts](../lib/ledger/categories.ts))의 잎 합계로 위 노드 값·월 뷰·시계열을 만든다. 저장은 [saveLedgerAmounts](../lib/db/local-store.ts)(편집 draft의 모든 잎 값을 받아 잎 키 전체를 교체 — 0·빠진 잎은 삭제, 현재 트리에 없는 키는 보존)와 [saveLedgerMemo](../lib/db/local-store.ts)(회고만 교체) 둘로 나뉘며, 각각 하나의 rw 트랜잭션에서 get → 병합 → put(결과가 비면 delete)한다. 월별 화면(`app/ledger/page.tsx`)의 금액 편집값은 화면 상태에만 있고 저장 버튼을 눌러야 반영된다 — **서브탭 이동·← 이동·자동 잠금으로 화면이 사라지면 확인 없이 버려진다.** 회고(메모)는 편집 모드와 무관하게 입력 멈춤 1초 뒤(debounce)·blur·`visibilitychange: hidden`·언마운트 시점에 자동 저장된다.
 
 ---
 
