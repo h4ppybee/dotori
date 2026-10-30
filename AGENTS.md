@@ -14,7 +14,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 ## 기술 스택
 
-- **Next.js 16.2.9** (App Router) — 위 경고 준수
+- **Next.js 16.4.3** (App Router) — 위 경고 준수
 - React 19 · TypeScript 5 · Tailwind CSS v4
 - `@tanstack/react-query` 5 (자산별 쿼리/갱신)
 - `dexie` 4 (IndexedDB) · `zustand` 5 (잠금·세션 키·네비, 인메모리)
