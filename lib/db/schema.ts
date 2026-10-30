@@ -2,7 +2,7 @@ import Dexie, { type Table } from "dexie";
 import type {
   Member, Connection, TokenCache, Holding, PriceCache, FxRate, DailySnapshot, Settings, SavingsAccount,
   PensionAccount, CoinHolding, LoanAccount, AssetSnapshot, Goal, EnvelopeItem, EnvelopeConfig, SheetExportConfig,
-  BiometricConfig,
+  BiometricConfig, LedgerMonth,
 } from "@/lib/types";
 
 /**
@@ -36,6 +36,7 @@ export class DotoriDB extends Dexie {
   envelopeConfig!: Table<EnvelopeConfig, string>; // key: id (커스텀 태그·은행)
   sheetExport!: Table<SheetExportConfig, string>; // key: id (구글 시트 내보내기 설정, 단일 행)
   biometric!: Table<BiometricConfig, string>; // key: id (Face ID 잠금 해제, 단일 행)
+  ledgerMonths!: Table<LedgerMonth, string>; // key: id ("YYYY-MM", 가계부 한 달 = 행 하나)
 
   constructor() {
     super("dotori");
@@ -92,6 +93,10 @@ export class DotoriDB extends Dexie {
     // v11: Face ID 잠금 해제 설정 테이블 추가 (기기별, 백업 제외)
     this.version(11).stores({
       biometric: "id",
+    });
+    // v12: 가계부(월·카테고리 금액 + 회고) 테이블 추가 (수동 데이터, 백업 포함)
+    this.version(12).stores({
+      ledgerMonths: "id",
     });
   }
 }

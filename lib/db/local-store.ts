@@ -2,11 +2,12 @@ import { db, priceKey } from "@/lib/db/schema";
 import type {
   Connection, Holding, PriceCache, FxRate, Settings, Member, SavingsAccount, SavingsCategory,
   PensionAccount, PensionCategory, CoinHolding, LoanAccount, LoanCategory, AssetSnapshot, Goal,
-  EnvelopeItem, EnvelopeConfig, EnvelopeProfile, SheetExportConfig, BiometricConfig,
+  EnvelopeItem, EnvelopeConfig, EnvelopeProfile, SheetExportConfig, BiometricConfig, LedgerMonth,
 } from "@/lib/types";
 import { toLocalYmd } from "@/lib/format";
 import { encrypt } from "@/lib/crypto/crypto";
 import { TAG_PRESETS, ACCOUNT_PRESETS } from "@/lib/envelope/presets";
+import { isLeafId } from "@/lib/ledger/categories";
 
 const now = () => Date.now();
 const uid = () => crypto.randomUUID();
@@ -399,3 +400,54 @@ export async function saveBiometricConfig(input: Omit<BiometricConfig, "id">): P
 }
 
 export const clearBiometricConfig = () => db.biometric.delete("biometric");
+
+// ─── 가계부 (한 달 = 행 하나) ───
+/** 전체 달(월 오름차순 — 기본 키 "YYYY-MM" 순서). */
+export const listLedgerMonths = () => db.ledgerMonths.orderBy("id").toArray();
+
+/**
+ * 한 달 행을 하나의 rw 트랜잭션에서 get → 병합 → put. 행이 없으면 새로 만들고,
+ * 결과에 금액도 메모도 없으면 put 대신 delete한다.
+ */
+async function updateLedgerMonth(
+  month: string,
+  merge: (prev: Pick<LedgerMonth, "amounts" | "memo">) => Pick<LedgerMonth, "amounts" | "memo">,
+): Promise<void> {
+  await db.transaction("rw", db.ledgerMonths, async () => {
+    const prev = await db.ledgerMonths.get(month);
+    const next = merge({ amounts: prev?.amounts ?? {}, memo: prev?.memo ?? "" });
+    if (Object.keys(next.amounts).length === 0 && next.memo === "") {
+      await db.ledgerMonths.delete(month);
+      return;
+    }
+    await db.ledgerMonths.put({ id: month, ...next, updatedAt: now() });
+  });
+}
+
+/**
+ * 잎 금액 저장. leafAmounts는 모든 잎의 최종 값(편집 draft 전체)이다.
+ * 잎 키는 통째로 교체(0·빠진 잎은 키 삭제), 잎이 아닌 기존 키(알 수 없는 ID)만 보존한다. 메모는 건드리지 않는다.
+ */
+export async function saveLedgerAmounts(month: string, leafAmounts: Record<string, number>): Promise<void> {
+  await updateLedgerMonth(month, (prev) => {
+    const amounts: Record<string, number> = {};
+    Object.entries(prev.amounts).forEach(([id, v]) => {
+      if (!isLeafId(id)) {
+        amounts[id] = v;
+      }
+    });
+    Object.entries(leafAmounts).forEach(([id, v]) => {
+      const n = Math.round(v);
+      if (!isLeafId(id) || !(n > 0)) {
+        return;
+      }
+      amounts[id] = n;
+    });
+    return { amounts, memo: prev.memo };
+  });
+}
+
+/** 월간 회고 저장. 금액은 건드리지 않는다. */
+export async function saveLedgerMemo(month: string, memo: string): Promise<void> {
+  await updateLedgerMonth(month, (prev) => ({ amounts: prev.amounts, memo }));
+}

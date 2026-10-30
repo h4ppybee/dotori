@@ -65,7 +65,7 @@ describe("exportAll / importAll", () => {
       data: Record<string, unknown[] | undefined>;
     };
 
-    expect(parsed.schemaVersion).toBe(7);
+    expect(parsed.schemaVersion).toBe(8);
     expect((parsed.data.connections as { id: string }[]).map((c) => c.id)).toEqual(["man1"]);
     expect((parsed.data.holdings as { id: string }[]).map((h) => h.id)).toEqual(["h1"]);
     expect(parsed.data.savings).toEqual([]);
@@ -82,7 +82,7 @@ describe("exportAll / importAll", () => {
     await db.debts.put({ id: "d1", category: "MORTGAGE", name: "주택담보대출", lender: "국민", balance: 120_000_000, interestRate: 3.5, monthlyPayment: 700_000, sortOrder: 0, updatedAt: 1 });
 
     const json = await exportAll();
-    expect(JSON.parse(json).schemaVersion).toBe(7);
+    expect(JSON.parse(json).schemaVersion).toBe(8);
 
     await db.delete();
     await db.open();
@@ -305,6 +305,31 @@ describe("exportAll / importAll", () => {
     await importAll(json, { mode: "overwrite" });
     expect((await db.envelopeItems.get("e1"))?.amountKrw).toBe(700_000);
     expect((await db.envelopeConfig.get("envelope"))?.customTags).toEqual(["경조사"]);
+  });
+
+  it("가계부(ledgerMonths)를 export/import 라운드트립한다 (schemaVersion 8)", async () => {
+    await db.ledgerMonths.put({ id: "2026-10", amounts: { "income.salary": 3_000_000 }, memo: "회고", updatedAt: 1 });
+    const json = await exportAll();
+    const parsed = JSON.parse(json) as { schemaVersion: number; data: { ledgerMonths?: unknown[] } };
+    expect(parsed.schemaVersion).toBe(8);
+    expect(parsed.data.ledgerMonths).toHaveLength(1);
+
+    await db.ledgerMonths.clear();
+    await importAll(json, { mode: "overwrite" });
+    const row = await db.ledgerMonths.get("2026-10");
+    expect(row?.amounts["income.salary"]).toBe(3_000_000);
+    expect(row?.memo).toBe("회고");
+  });
+
+  it("ledgerMonths 없는 v7 백업도 불러온다 — overwrite는 가계부를 비우고 merge는 유지한다", async () => {
+    const v7 = JSON.stringify({ schemaVersion: 7, exportedAt: 1, data: {} });
+    await db.ledgerMonths.put({ id: "2026-10", amounts: {}, memo: "유지", updatedAt: 1 });
+
+    await importAll(v7, { mode: "merge" });
+    expect(await db.ledgerMonths.get("2026-10")).toBeDefined();
+
+    await importAll(v7, { mode: "overwrite" });
+    expect(await db.ledgerMonths.count()).toBe(0);
   });
 
   it("시트 내보내기 설정은 백업에 포함되지 않고, 덮어쓰기 불러오기 후에도 유지된다", async () => {

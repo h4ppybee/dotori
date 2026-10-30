@@ -235,3 +235,15 @@ export interface BiometricConfig {
   secretEnc: string;    // PRF 파생 키로 암호화한 PIN/비밀번호 (iv.ct)
   createdAt: number;
 }
+
+/**
+ * 가계부 한 달(한 달 = 행 하나). 사용자가 직접 입력 → 백업 대상.
+ * amounts는 잎 카테고리 ID → 원(0 이상 정수). 0·미입력은 키를 두지 않는다.
+ * 현재 트리에 없는 ID(과거 버전 데이터 등)는 보존하되 합계·화면에서는 무시한다.
+ */
+export interface LedgerMonth {
+  id: string;                      // "YYYY-MM"
+  amounts: Record<string, number>;
+  memo: string;                    // 월간 회고(빈 문자열 허용)
+  updatedAt: number;
+}
