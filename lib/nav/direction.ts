@@ -1,5 +1,5 @@
-import { assetSubTabs, mainTabs, planSubTabs } from "@/lib/nav/nav-config";
-import { resolveActiveMain, resolveActivePlanSub, resolveActiveSub } from "@/lib/nav/active";
+import { findNestedSection, mainTabs } from "@/lib/nav/nav-config";
+import { resolveActiveMain } from "@/lib/nav/active";
 
 /** 화면 전환 방향. forward = 오른쪽 탭으로(왼쪽에서 들어옴), backward = 왼쪽 탭으로(오른쪽에서 들어옴). */
 export type NavDirection = "forward" | "backward";
@@ -11,9 +11,13 @@ function tabPosition(pathname: string): [number, number] | null {
     return null;
   }
   const mainIdx = mainTabs.findIndex((t) => t.key === main);
-  const sub = resolveActiveSub(pathname) ?? resolveActivePlanSub(pathname);
-  const subTabs = main === "plan" ? planSubTabs : assetSubTabs;
-  const subIdx = sub == null ? 0 : subTabs.findIndex((t) => t.key === sub);
+  // 중첩 섹션(자산·계획·가계부)이 아니면 서브탭 순서는 0으로 본다.
+  const section = findNestedSection(pathname);
+  if (!section) {
+    return [mainIdx, 0];
+  }
+  const sub = section.resolveActive(pathname);
+  const subIdx = sub == null ? 0 : section.subTabs.findIndex((t) => t.key === sub);
   return [mainIdx, subIdx];
 }
 

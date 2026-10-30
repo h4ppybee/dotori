@@ -60,4 +60,26 @@ describe("MainTabBar", () => {
     expect(screen.getByText("가계부").closest("a")).toHaveAttribute("aria-current", "page");
     expect(screen.getByText("설정").closest("a")).not.toHaveAttribute("aria-current");
   });
+  it("가계부 경로가 아닐 때 가계부 탭 클릭은 직전 경로를 저장한다", async () => {
+    const user = userEvent.setup();
+    render(<MainTabBar />);
+    await user.click(screen.getByText("가계부"));
+    expect(useNavStore.getState().lastMainTabPath).toBe("/plan");
+  });
+  it("이미 가계부 경로면 가계부 탭 클릭이 복귀 지점을 덮어쓰지 않는다", async () => {
+    pathname = "/ledger/analysis";
+    useNavStore.setState({ lastMainTabPath: "/" });
+    const user = userEvent.setup();
+    render(<MainTabBar />);
+    await user.click(screen.getByText("가계부"));
+    expect(useNavStore.getState().lastMainTabPath).toBe("/");
+  });
+  it("중첩 섹션이 아닌 설정 탭 클릭은 복귀 지점을 바꾸지 않는다", async () => {
+    pathname = "/";
+    useNavStore.setState({ lastMainTabPath: "/plan" });
+    const user = userEvent.setup();
+    render(<MainTabBar />);
+    await user.click(screen.getByText("설정"));
+    expect(useNavStore.getState().lastMainTabPath).toBe("/plan");
+  });
 });

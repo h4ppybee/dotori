@@ -37,4 +37,17 @@ describe("AppNav", () => {
     expect(screen.getByText("부동산")).toBeInTheDocument();
     expect(screen.queryByRole("navigation", { name: "주요 화면" })).not.toBeInTheDocument();
   });
+  it("가계부 경로에서는 가계부 서브탭만 뜨고 자산 서브탭은 없다", () => {
+    setPath("/ledger");
+    render(<AppNav><div>본문</div></AppNav>);
+    expect(screen.getByText("월별")).toBeInTheDocument();
+    expect(screen.getByText("분석")).toBeInTheDocument();
+    expect(screen.queryByText("주식")).not.toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "주요 화면" })).not.toBeInTheDocument();
+  });
+  it("/ledger/analysis 에서는 분석 서브탭이 활성이다", () => {
+    setPath("/ledger/analysis");
+    render(<AppNav><div>본문</div></AppNav>);
+    expect(screen.getByText("분석").closest("a")).toHaveAttribute("aria-current", "page");
+  });
 });

@@ -19,4 +19,12 @@ describe("resolveNavDirection", () => {
     expect(resolveNavDirection("/assets/stocks", "/assets/stocks/manage")).toBe("forward");
     expect(resolveNavDirection("/holdings/1", "/assets/stocks")).toBe("forward");
   });
+  it("가계부 서브탭(월별 → 분석)은 순서대로 판단한다", () => {
+    expect(resolveNavDirection("/ledger", "/ledger/analysis")).toBe("forward");
+    expect(resolveNavDirection("/ledger/analysis", "/ledger")).toBe("backward");
+  });
+  it("계획 → 가계부는 오른쪽 메인 탭이라 forward", () => {
+    expect(resolveNavDirection("/plan", "/ledger")).toBe("forward");
+    expect(resolveNavDirection("/ledger/analysis", "/plan/realty")).toBe("backward");
+  });
 });
