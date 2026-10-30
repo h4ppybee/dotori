@@ -19,7 +19,7 @@ import { buildEnvelopeView } from "@/lib/envelope/envelope-service";
 import type { EnvelopeItemRow as EnvelopeItemRowData } from "@/lib/envelope/envelope-service";
 import { TAG_PRESETS, ACCOUNT_PRESETS, mergePresets } from "@/lib/envelope/presets";
 import { tagColor } from "@/lib/envelope/tag-color";
-import { formatKrw } from "@/lib/format";
+import { formatKrw, parseAmount } from "@/lib/format";
 import type { EnvelopeItem, EnvelopeProfile } from "@/lib/types";
 
 // scope 라벨 — 통합/아내/남편.
@@ -34,16 +34,6 @@ const PROFILE_LABEL: Record<EnvelopeProfile, string> = {
   wife: "아내",
   husband: "남편",
 };
-
-/** 편집 모드에서 금액 문자열을 정수로. 빈 문자열이나 숫자 아님은 0. */
-function parseAmount(s: string): number {
-  const digits = s.replace(/[^\d]/g, "");
-  if (digits === "") {
-    return 0;
-  }
-  const n = Number(digits);
-  return Number.isFinite(n) ? n : 0;
-}
 
 export default function PlanPage() {
   // 현재 보고 있는 프로필(통합/아내/남편).
