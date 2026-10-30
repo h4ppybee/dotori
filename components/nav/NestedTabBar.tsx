@@ -14,7 +14,7 @@ const EXPAND = "duration-[260ms] delay-[120ms] ease-[cubic-bezier(0.22,1,0.36,1)
 const COLLAPSE = "duration-[160ms] delay-0 ease-[cubic-bezier(0.4,0,1,1)]";
 
 /**
- * 중첩 네비게이션 — 둥근 플로팅 바(pill). 자산·계획 공용(중첩 경로에서만 떠오른다).
+ * 중첩 네비게이션 — 둥근 플로팅 바(pill). 자산·계획·가계부 공용(중첩 경로에서만 떠오른다).
  * 토스 증권의 플로팅 nested 바와 동일한 UX: 진입하면 메인 탭 바는 사라지고 이 pill만
  * 하단에 살짝 띄워 표시된다(좌우 여백 + shadow-floating). ←로 직전 메인 탭에 복귀한다.
  * 표시할 서브탭(tabs)과 활성 키(activeKey)는 부모(AppNav)가 경로에 맞춰 주입한다.

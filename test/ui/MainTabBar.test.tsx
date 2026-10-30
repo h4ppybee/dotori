@@ -61,10 +61,11 @@ describe("MainTabBar", () => {
     expect(screen.getByText("설정").closest("a")).not.toHaveAttribute("aria-current");
   });
   it("가계부 경로가 아닐 때 가계부 탭 클릭은 직전 경로를 저장한다", async () => {
+    pathname = "/settings";
     const user = userEvent.setup();
     render(<MainTabBar />);
     await user.click(screen.getByText("가계부"));
-    expect(useNavStore.getState().lastMainTabPath).toBe("/plan");
+    expect(useNavStore.getState().lastMainTabPath).toBe("/settings");
   });
   it("이미 가계부 경로면 가계부 탭 클릭이 복귀 지점을 덮어쓰지 않는다", async () => {
     pathname = "/ledger/analysis";

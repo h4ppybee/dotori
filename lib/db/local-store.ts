@@ -4,7 +4,7 @@ import type {
   PensionAccount, PensionCategory, CoinHolding, LoanAccount, LoanCategory, AssetSnapshot, Goal,
   EnvelopeItem, EnvelopeConfig, EnvelopeProfile, SheetExportConfig, BiometricConfig, LedgerMonth,
 } from "@/lib/types";
-import { toLocalYmd } from "@/lib/format";
+import { MAX_AMOUNT, toLocalYmd } from "@/lib/format";
 import { encrypt } from "@/lib/crypto/crypto";
 import { TAG_PRESETS, ACCOUNT_PRESETS } from "@/lib/envelope/presets";
 import { isLeafId } from "@/lib/ledger/categories";
@@ -437,8 +437,12 @@ export async function saveLedgerAmounts(month: string, leafAmounts: Record<strin
       }
     });
     Object.entries(leafAmounts).forEach(([id, v]) => {
-      const n = Math.round(v);
-      if (!isLeafId(id) || !(n > 0)) {
+      // 유한하지 않은 값(NaN·Infinity)은 건너뛰고, 상한(1조 원)을 넘으면 자른다.
+      if (!isLeafId(id) || !Number.isFinite(v)) {
+        return;
+      }
+      const n = Math.min(Math.round(v), MAX_AMOUNT);
+      if (n <= 0) {
         return;
       }
       amounts[id] = n;

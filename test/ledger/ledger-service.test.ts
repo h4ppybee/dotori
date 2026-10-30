@@ -91,6 +91,13 @@ describe("buildSeries", () => {
     expect(s.months[0]).toBe("2025-09");
   });
 
+  it("all은 id가 올바른 월이 아닌 행을 무시한다", () => {
+    const withBad: LedgerMonthAmounts[] = [{ id: "0000-00", amounts: { "income.side": 100_000 } }, { id: "bad", amounts: { "income.side": 100_000 } }, ...rows];
+    const s = buildSeries(withBad, { endMonth: "2026-02", range: "all", nodeIds: [] });
+    expect(s.months).toHaveLength(6);
+    expect(s.months[0]).toBe("2025-09");
+  });
+
   it("기록이 없으면 all도 6개월 축", () => {
     const s = buildSeries([], { endMonth: "2026-02", range: "all", nodeIds: [] });
     expect(s.months).toHaveLength(6);
@@ -133,17 +140,28 @@ describe("axisLabels", () => {
     ]);
   });
 
-  it("최대 6개, 마지막 달은 항상 포함, 해를 넘으면 첫 라벨과 1월에 연도", () => {
+  it("최대 6개, 마지막 달은 항상 포함, 해를 넘으면 첫 라벨과 해가 바뀐 라벨에 연도", () => {
     const months = ["2025-11", "2025-12", "2026-01", "2026-02", "2026-03", "2026-04", "2026-05", "2026-06", "2026-07", "2026-08", "2026-09", "2026-10"];
     const labels = axisLabels(months);
     expect(labels.length).toBeLessThanOrEqual(6);
     expect(labels[labels.length - 1]).toEqual({ index: 11, text: "10월" });
-    expect(labels.map((l) => l.text)).toEqual(["'25.12", "2월", "4월", "6월", "8월", "10월"]);
+    // 1월이 라벨에서 빠져도 해가 바뀐 첫 라벨(2월)에 연도가 붙는다
+    expect(labels.map((l) => l.text)).toEqual(["'25.12", "'26.2", "4월", "6월", "8월", "10월"]);
   });
 
-  it("라벨이 1월에 걸리면 연도를 붙인다", () => {
+  it("라벨이 1월에 걸리면 1월에 연도를 붙인다", () => {
     const months = ["2025-09", "2025-10", "2025-11", "2025-12", "2026-01", "2026-02"];
     expect(axisLabels(months).map((l) => l.text)).toEqual(["'25.9", "10월", "11월", "12월", "'26.1", "2월"]);
+  });
+
+  it("해를 넘지 않는 축은 첫 라벨도 M월", () => {
+    expect(axisLabels(["2026-01", "2026-02"]).map((l) => l.text)).toEqual(["1월", "2월"]);
+  });
+
+  it("두 번 해를 넘으면 바뀔 때마다 연도를 붙인다", () => {
+    const months = ["2024-11", "2024-12", "2025-01", "2025-02", "2025-03", "2025-04", "2025-05", "2025-06", "2025-07", "2025-08", "2025-09", "2025-10", "2025-11", "2025-12", "2026-01", "2026-02"];
+    // 16개월 → step 3, 끝 달 기준: 2024-11, 2025-02, 05, 08, 11, 2026-02 (6개)
+    expect(axisLabels(months).map((l) => l.text)).toEqual(["'24.11", "'25.2", "5월", "8월", "11월", "'26.2"]);
   });
 
   it("간격은 끝 달 기준으로 맞춘다(7개월이면 2칸씩)", () => {

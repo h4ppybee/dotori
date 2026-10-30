@@ -50,6 +50,19 @@ describe("가계부 저장(ledgerMonths)", () => {
     expect((await db.ledgerMonths.get("2026-10"))?.amounts).toEqual({ "income.salary": 1_000_000 });
   });
 
+  it("유한하지 않은 값은 건너뛰고 상한(1조 원)을 넘으면 자른다", async () => {
+    await saveLedgerAmounts("2026-10", {
+      "income.salary": Infinity,
+      "income.side": NaN,
+      "saving.invest": 5_000_000_000_000,
+      "saving.deposit": 100_000,
+    });
+    expect((await db.ledgerMonths.get("2026-10"))?.amounts).toEqual({
+      "saving.invest": 1_000_000_000_000,
+      "saving.deposit": 100_000,
+    });
+  });
+
   it("금액도 메모도 없으면 행을 지운다", async () => {
     await saveLedgerAmounts("2026-10", { "income.salary": 1_000_000 });
     await saveLedgerAmounts("2026-10", {});

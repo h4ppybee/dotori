@@ -50,4 +50,13 @@ describe("AppNav", () => {
     render(<AppNav><div>본문</div></AppNav>);
     expect(screen.getByText("분석").closest("a")).toHaveAttribute("aria-current", "page");
   });
+  it("가계부에서 메인 경로로 나가도 접히는 동안 가계부 서브탭을 유지한다", () => {
+    setPath("/ledger");
+    const { rerender } = render(<AppNav><div>본문</div></AppNav>);
+    expect(screen.queryByText("주식")).not.toBeInTheDocument();
+    setPath("/");
+    rerender(<AppNav><div>본문</div></AppNav>);
+    expect(screen.getByText("월별")).toBeInTheDocument();
+    expect(screen.queryByText("주식")).not.toBeInTheDocument();
+  });
 });

@@ -8,7 +8,7 @@ import {
   allNodesInOrder,
   leavesUnder,
 } from "@/lib/ledger/categories";
-import { addMonths, monthRange } from "@/lib/ledger/month";
+import { addMonths, isValidMonth, monthRange } from "@/lib/ledger/month";
 
 type Amounts = Record<string, number>;
 
@@ -73,7 +73,7 @@ export function buildSeries(
   let start: string;
   if (range === "all") {
     const oldest = rows
-      .filter((r) => hasLedgerAmounts(r.amounts))
+      .filter((r) => isValidMonth(r.id) && hasLedgerAmounts(r.amounts))
       .map((r) => r.id)
       .sort()[0];
     start = oldest != null && oldest < sixStart ? oldest : sixStart;
@@ -126,7 +126,8 @@ const MAX_AXIS_LABELS = 6;
 
 /**
  * 차트 월 라벨. 최대 6개, step = ceil(n/6)으로 건너뛰되 끝 달 기준으로 맞춰 마지막 달은 항상 표시한다.
- * 축이 해를 넘으면 1월과 첫 라벨에 연도를 붙인다("'25.10"), 아니면 "10월".
+ * 축이 해를 넘으면 첫 라벨과, 직전 라벨과 해가 달라진 라벨에 연도를 붙인다("'25.10") — 1월이 라벨에서
+ * 빠져도 해가 바뀐 것이 보인다. 나머지는 "10월".
  */
 export function axisLabels(months: string[]): { index: number; text: string }[] {
   const n = months.length;
@@ -139,10 +140,13 @@ export function axisLabels(months: string[]): { index: number; text: string }[] 
     indices.unshift(i);
   }
   const crossesYear = months[0].slice(0, 4) !== months[n - 1].slice(0, 4);
-  return indices.map((index, k) => {
+  let prevYear: string | null = null;
+  return indices.map((index) => {
     const [y, m] = months[index].split("-");
     const month = Number(m);
-    if (crossesYear && (k === 0 || month === 1)) {
+    const yearChanged = y !== prevYear;
+    prevYear = y;
+    if (crossesYear && yearChanged) {
       return { index, text: `'${y.slice(2)}.${month}` };
     }
     return { index, text: `${month}월` };

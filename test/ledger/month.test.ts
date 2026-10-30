@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { addMonths, currentMonth, formatMonthTitle, monthRange } from "@/lib/ledger/month";
+import { addMonths, currentMonth, formatMonthTitle, isValidMonth, monthRange } from "@/lib/ledger/month";
 
 describe("월 헬퍼", () => {
   it("addMonths는 연도 경계를 넘는다", () => {
@@ -13,6 +13,26 @@ describe("월 헬퍼", () => {
     expect(monthRange("2025-11", "2026-02")).toEqual(["2025-11", "2025-12", "2026-01", "2026-02"]);
     expect(monthRange("2026-03", "2026-03")).toEqual(["2026-03"]);
     expect(monthRange("2026-04", "2026-03")).toEqual([]);
+  });
+
+  it("monthRange는 형식이 잘못된 월이면 빈 배열", () => {
+    expect(monthRange("2026-13", "2026-12")).toEqual([]);
+    expect(monthRange("2026-00", "2026-02")).toEqual([]);
+    expect(monthRange("2026-1", "2026-02")).toEqual([]);
+    expect(monthRange("abc", "2026-02")).toEqual([]);
+    expect(monthRange("2026-01", "")).toEqual([]);
+  });
+
+  it("monthRange는 지나치게 긴 범위를 상한에서 끊는다", () => {
+    const r = monthRange("0001-01", "9999-12");
+    expect(r.length).toBeLessThanOrEqual(1200);
+    expect(r[0]).toBe("0001-01");
+  });
+
+  it("isValidMonth", () => {
+    expect(isValidMonth("2026-10")).toBe(true);
+    expect(isValidMonth("2026-13")).toBe(false);
+    expect(isValidMonth("legacy")).toBe(false);
   });
 
   it("formatMonthTitle", () => {
