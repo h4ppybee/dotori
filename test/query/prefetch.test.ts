@@ -30,6 +30,7 @@ describe("prefetchAppData", () => {
       ["biometric"],
       ["biometric-available"],
       ["sheet-export-config"],
+      ["ledgerMonths"],
     ];
     for (const key of keys) {
       expect(qc.getQueryState(key)?.status, JSON.stringify(key)).toBe("success");

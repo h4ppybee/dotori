@@ -10,6 +10,7 @@ import { assetSnapshotsQueryOptions, RECENT_SNAPSHOT_LIMIT } from "@/lib/query/u
 import { settingsQueryOptions } from "@/lib/query/use-settings";
 import { biometricConfigQueryOptions, biometricAvailableQueryOptions } from "@/lib/query/use-biometric";
 import { sheetExportConfigQueryOptions } from "@/lib/query/use-sheet-export";
+import { ledgerMonthsQueryOptions } from "@/lib/query/use-ledger";
 
 /**
  * 잠금 해제 직후 모든 메인 탭이 첫 렌더에 쓰는 쿼리를 한 번에 미리 읽는다.
@@ -31,5 +32,6 @@ export async function prefetchAppData(queryClient: QueryClient): Promise<void> {
     queryClient.prefetchQuery(biometricConfigQueryOptions),
     queryClient.prefetchQuery(biometricAvailableQueryOptions),
     queryClient.prefetchQuery(sheetExportConfigQueryOptions),
+    queryClient.prefetchQuery(ledgerMonthsQueryOptions),
   ]);
 }
