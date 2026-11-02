@@ -7,7 +7,7 @@ import {
   encodeSyncPayload, decodeSyncPayload, SyncVersionError, isEffectivelyEmpty, emptySyncData,
 } from "@/lib/device-sync/collect";
 import {
-  member, manualConnection, apiConnection, holding, savings, coin, pension, syncDataWith,
+  member, manualConnection, apiConnection, holding, savings, coin, pension, ledgerMonth, syncDataWith,
 } from "@/test/device-sync/fixtures";
 
 afterEach(async () => {
@@ -28,6 +28,7 @@ describe("collectSyncData", () => {
     await db.snapshots.put({ date: "2026-01-01", totalCostKrw: 0, totalValueKrw: 0, totalPnlKrw: 0,
       returnPct: 0, bySectorJson: "{}", byHoldingJson: "{}" });
     await db.sectorOverrides.put({ symbol: "000001", sector: "반도체" });
+    await db.ledgerMonths.put(ledgerMonth("2026-01", 300_000));
 
     const data = await collectSyncData();
 
@@ -37,7 +38,12 @@ describe("collectSyncData", () => {
     expect(data.savings.map((s) => s.id)).toEqual(["s-man"]);
     expect(data.coin.map((c) => c.id)).toEqual(["c-man"]);
     expect(data.sectorOverrides).toEqual([{ symbol: "000001", sector: "반도체" }]);
+    expect(data.ledgerMonths).toEqual([ledgerMonth("2026-01", 300_000)]);
     expect("snapshots" in data).toBe(false);
+  });
+
+  it("가계부(ledgerMonths)도 동기화 대상이다", () => {
+    expect(SYNC_TABLES).toContain("ledgerMonths");
   });
 });
 
@@ -75,6 +81,13 @@ describe("canonicalize", () => {
     const a = syncDataWith({ savings: [savings("s1", 1_000_000)] });
     const b = syncDataWith({ savings: [savings("s1", 1_000_001)] });
     expect(canonicalize(b)).not.toBe(canonicalize(a));
+  });
+
+  it("가계부는 금액·회고가 바뀌면 달라지고, updatedAt만 바뀌면 같다", () => {
+    const base = canonicalize(syncDataWith({ ledgerMonths: [ledgerMonth("2026-01", 300_000)] }));
+    expect(canonicalize(syncDataWith({ ledgerMonths: [{ ...ledgerMonth("2026-01", 300_000), updatedAt: 999 }] }))).toBe(base);
+    expect(canonicalize(syncDataWith({ ledgerMonths: [ledgerMonth("2026-01", 400_000)] }))).not.toBe(base);
+    expect(canonicalize(syncDataWith({ ledgerMonths: [ledgerMonth("2026-01", 300_000, "회고")] }))).not.toBe(base);
   });
 
   it("빠진 테이블은 빈 배열과 같다", () => {
@@ -128,6 +141,18 @@ describe("동기화 평문", () => {
     const decoded = decodeSyncPayload(encodeSyncPayload(data, 42));
     expect(decoded.sentAt).toBe(42);
     expect(decoded.data).toEqual(data);
+    expect(decoded.missingTables).toEqual([]);
+  });
+
+  it("syncVersion은 2다(v2: 가계부 ledgerMonths 추가)", () => {
+    expect(SYNC_VERSION).toBe(2);
+  });
+
+  it("예전 버전(v1) payload처럼 테이블이 빠져 있으면 missingTables로 알린다", () => {
+    const legacy = JSON.stringify({ syncVersion: 1, data: { ...emptySyncData(), ledgerMonths: undefined }, sentAt: 1 });
+    const decoded = decodeSyncPayload(legacy);
+    expect(decoded.missingTables).toEqual(["ledgerMonths"]);
+    expect(decoded.data.ledgerMonths).toEqual([]);
   });
 
   it("앱보다 높은 syncVersion이면 SyncVersionError", () => {

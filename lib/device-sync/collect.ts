@@ -2,7 +2,7 @@ import { readManualTables, type ManualTables } from "@/lib/backup/backup";
 
 /**
  * 기기 동기화 데이터 수집·정규화·해시.
- * - 범위: 백업과 같은 수동 데이터(readManualTables)에서 snapshots(과거 일일 스냅샷)만 뺀 12개 테이블.
+ * - 범위: 백업과 같은 수동 데이터(readManualTables)에서 snapshots(과거 일일 스냅샷)만 뺀 13개 테이블(가계부 ledgerMonths 포함).
  * - canonicalize: 순수·동기. 테이블 이름순, 테이블 안에서는 기본 키순, 객체 키는 사전순으로 정렬하고
  *   HASH_EXCLUDED_FIELDS(와 행 조건부 제외 — symbol 있는 연금의 currentPrice)를 뺀 JSON 문자열. 트랜잭션 안에서도 부를 수 있다(await 없음).
  * - 변경 판단은 hashCanonical(canonical) != lastSyncedHash. payload에는 모든 필드를 그대로 보내고
@@ -10,14 +10,16 @@ import { readManualTables, type ManualTables } from "@/lib/backup/backup";
  * ⚠️ 동기화 대상 테이블에 새 휘발성 필드(시세·자동 갱신 시각 등)를 추가하면 HASH_EXCLUDED_FIELDS도 갱신한다.
  */
 
-export const SYNC_VERSION = 1;
+// 평문 형식 버전. v2: 가계부(ledgerMonths) 추가 — 예전 앱(v1)은 v2 payload를 적용하지 않고 새로고침을 안내한다
+// (모르는 테이블을 버린 채 올려 다른 기기의 가계부를 지우지 않게). v1 payload는 계속 받는다(빠진 테이블은 missingTables).
+export const SYNC_VERSION = 2;
 
-export type SyncData = Omit<ManualTables, "snapshots" | "ledgerMonths">;
+export type SyncData = Omit<ManualTables, "snapshots">;
 export type SyncTable = keyof SyncData;
 
 export const SYNC_TABLES: readonly SyncTable[] = [
   "members", "connections", "holdings", "savings", "coin", "pension", "debts",
-  "assetSnapshots", "goal", "envelopeItems", "envelopeConfig", "sectorOverrides",
+  "assetSnapshots", "goal", "envelopeItems", "envelopeConfig", "sectorOverrides", "ledgerMonths",
 ];
 
 // 정렬 기준 = Dexie 기본 키(lib/db/schema.ts). sectorOverrides만 symbol.
@@ -34,6 +36,7 @@ const PRIMARY_KEY: Record<SyncTable, string> = {
   envelopeItems: "id",
   envelopeConfig: "id",
   sectorOverrides: "symbol",
+  ledgerMonths: "id",
 };
 
 /** 해시 정규화에서 항상 빼는 행 필드. "*"는 모든 테이블. 테스트로 고정한다. */
@@ -60,7 +63,7 @@ function conditionalExcluded(table: SyncTable, row: Record<string, unknown>): re
 export function emptySyncData(): SyncData {
   return {
     members: [], connections: [], holdings: [], savings: [], coin: [], pension: [], debts: [],
-    assetSnapshots: [], goal: [], envelopeItems: [], envelopeConfig: [], sectorOverrides: [],
+    assetSnapshots: [], goal: [], envelopeItems: [], envelopeConfig: [], sectorOverrides: [], ledgerMonths: [],
   };
 }
 
@@ -78,6 +81,7 @@ export function pickSyncData(t: ManualTables): SyncData {
     envelopeItems: t.envelopeItems,
     envelopeConfig: t.envelopeConfig,
     sectorOverrides: t.sectorOverrides,
+    ledgerMonths: t.ledgerMonths,
   };
 }
 
@@ -143,7 +147,11 @@ export function encodeSyncPayload(data: SyncData, sentAt: number): string {
   return JSON.stringify({ syncVersion: SYNC_VERSION, data, sentAt });
 }
 
-export function decodeSyncPayload(text: string): { data: SyncData; sentAt: number } {
+/**
+ * 평문 해석. missingTables = payload에 아예 없는 테이블(보낸 앱이 그 테이블을 모르는 예전 버전).
+ * 빈 배열로 채워 두되, 엔진은 이 테이블을 이 기기 값으로 채워 적용한다(모르는 쪽이 지우지 않게).
+ */
+export function decodeSyncPayload(text: string): { data: SyncData; sentAt: number; missingTables: SyncTable[] } {
   const parsed = JSON.parse(text) as { syncVersion?: unknown; data?: unknown; sentAt?: unknown };
   if (typeof parsed.syncVersion !== "number" || parsed.data === null || typeof parsed.data !== "object") {
     throw new Error("SYNC_PAYLOAD_INVALID");
@@ -153,13 +161,18 @@ export function decodeSyncPayload(text: string): { data: SyncData; sentAt: numbe
   }
   const raw = parsed.data as Record<string, unknown>;
   const data = emptySyncData();
+  const missingTables: SyncTable[] = [];
   for (const table of SYNC_TABLES) {
+    if (!(table in raw)) {
+      missingTables.push(table);
+      continue;
+    }
     const rows = raw[table];
     if (Array.isArray(rows)) {
       (data as unknown as Record<SyncTable, unknown[]>)[table] = rows;
     }
   }
-  return { data, sentAt: typeof parsed.sentAt === "number" ? parsed.sentAt : 0 };
+  return { data, sentAt: typeof parsed.sentAt === "number" ? parsed.sentAt : 0, missingTables };
 }
 
 /** "이 기기에 수동 데이터가 없다" 판단. setup이 만든 멤버 1명만 있는 상태는 비어 있다고 본다. */

@@ -10,7 +10,12 @@ import {
 } from "@/lib/device-sync/engine";
 import { createFakeSyncServer } from "@/test/device-sync/fake-server";
 import { seedSyncedDevice, localHash, makeSessionKey, TEST_SECRET } from "@/test/device-sync/helpers";
-import { member, apiConnection, savings, syncDataWith } from "@/test/device-sync/fixtures";
+import { member, apiConnection, savings, ledgerMonth, syncDataWith } from "@/test/device-sync/fixtures";
+import { QueryClient } from "@tanstack/react-query";
+import { ledgerMonthsQueryOptions, LEDGER_KEY } from "@/lib/query/use-ledger";
+import { savingsQueryOptions } from "@/lib/query/use-savings";
+import { biometricAvailableQueryOptions } from "@/lib/query/use-biometric";
+import { emptySyncData } from "@/lib/device-sync/collect";
 
 let server: ReturnType<typeof createFakeSyncServer>;
 
@@ -333,6 +338,23 @@ describe("startDeviceSync", () => {
     stop();
   });
 
+  it("잠금 해제할 때마다 정확히 한 번 받기를 시작한다(PIN·Face ID·세션 복원 모두 unlock을 거친다)", async () => {
+    const { sessionKey } = await seedSyncedDevice();
+    useAppStore.setState({ locked: true, sessionKey: null });
+    const stop = startDeviceSync(fakeQueryClient());
+
+    useAppStore.getState().unlock(sessionKey);
+    useAppStore.getState().unlock(sessionKey); // 이미 열린 상태에서 다시 불러도 새 받기는 없다
+    await awaitPendingPull();
+    expect(server.calls.filter((c) => c === "sync.meta")).toHaveLength(1);
+
+    useAppStore.getState().lock();
+    useAppStore.getState().unlock(sessionKey);
+    await awaitPendingPull();
+    expect(server.calls.filter((c) => c === "sync.meta")).toHaveLength(2);
+    stop();
+  });
+
   it("세션 키 교체(PIN 변경)는 받기를 시작하지 않는다", async () => {
     await seedSyncedDevice();
     const stop = startDeviceSync(fakeQueryClient());
@@ -341,5 +363,84 @@ describe("startDeviceSync", () => {
     useAppStore.getState().unlock(await makeSessionKey());
     expect(pendingPullPromise()).toBeNull();
     stop();
+  });
+});
+
+describe("가계부 동기화", () => {
+  it("받으면 가계부도 원격으로 교체한다", async () => {
+    const key = generateSyncKey();
+    await server.remotePut(key, syncDataWith({ ledgerMonths: [ledgerMonth("2026-02", 250_000, "회고")] }));
+    await db.ledgerMonths.put(ledgerMonth("2026-01", 100_000));
+    await seedSyncedDevice({ key, lastSyncedHash: await localHash() });
+
+    expect((await pullIfNewer()).status).toBe("applied");
+    expect(await db.ledgerMonths.toArray()).toEqual([ledgerMonth("2026-02", 250_000, "회고")]);
+  });
+
+  it("가계부만 바꿔도 올린다", async () => {
+    await seedSyncedDevice({ lastSyncedHash: await localHash() });
+    await db.ledgerMonths.put(ledgerMonth("2026-01", 100_000));
+    expect((await pushIfChanged()).status).toBe("pushed");
+  });
+
+  it("예전 버전(v1) payload에는 가계부가 없으니 이 기기 가계부를 지우지 않는다", async () => {
+    const key = generateSyncKey();
+    const legacyData = { ...emptySyncData(), savings: [savings("s1", 5_000_000)], ledgerMonths: undefined };
+    await server.remotePutPlaintext(key, JSON.stringify({ syncVersion: 1, data: legacyData, sentAt: 1 }));
+    await db.ledgerMonths.put(ledgerMonth("2026-01", 100_000));
+    await seedSyncedDevice({ key, lastSyncedHash: await localHash() });
+
+    expect((await pullIfNewer()).status).toBe("applied");
+    expect((await db.savings.get("s1"))?.amount).toBe(5_000_000);
+    expect(await db.ledgerMonths.toArray()).toEqual([ledgerMonth("2026-01", 100_000)]);
+    expect((await getSyncConfig())?.lastSyncedHash).toBe(await localHash());
+  });
+});
+
+describe("받은 뒤 화면 갱신", () => {
+  it("적용하면 화면에 없는(비활성) 미리 읽은 쿼리까지 다시 읽어 캐시를 받은 데이터로 바꾼다", async () => {
+    const key = generateSyncKey();
+    await server.remotePut(key, syncDataWith({
+      savings: [savings("s1", 5_000_000)],
+      ledgerMonths: [ledgerMonth("2026-02", 250_000)],
+    }));
+    await seedSyncedDevice({ key, lastSyncedHash: await localHash() });
+    // 잠금 해제 직후 AppDataGate처럼 미리 읽어 둔다(구독자 없음, gcTime Infinity).
+    const client = new QueryClient({ defaultOptions: { queries: { gcTime: Infinity, retry: false } } });
+    await client.prefetchQuery(ledgerMonthsQueryOptions);
+    await client.prefetchQuery(savingsQueryOptions);
+    expect(client.getQueryData(LEDGER_KEY)).toEqual([]);
+    setDeviceSyncQueryClient(client);
+
+    expect((await pullIfNewer()).status).toBe("applied");
+
+    await vi.waitFor(() => {
+      expect(client.getQueryData(LEDGER_KEY)).toEqual([ledgerMonth("2026-02", 250_000)]);
+      expect(client.getQueryState(LEDGER_KEY)?.isInvalidated).toBe(false);
+      expect(client.getQueryState(savingsQueryOptions.queryKey)?.isInvalidated).toBe(false);
+      expect(JSON.stringify(client.getQueryData(savingsQueryOptions.queryKey))).toContain("5000000");
+    });
+    client.clear();
+  });
+
+  it("기기 특성 쿼리(Face ID 지원 여부)는 다시 묻지 않는다", async () => {
+    const key = generateSyncKey();
+    await server.remotePut(key, syncDataWith({ savings: [savings("s1", 5_000_000)] }));
+    await seedSyncedDevice({ key, lastSyncedHash: await localHash() });
+    const client = new QueryClient({ defaultOptions: { queries: { gcTime: Infinity, retry: false } } });
+    const available = vi.fn(async () => true);
+    await client.prefetchQuery({ ...biometricAvailableQueryOptions, queryFn: available });
+    await client.prefetchQuery(ledgerMonthsQueryOptions);
+    setDeviceSyncQueryClient(client);
+
+    expect((await pullIfNewer()).status).toBe("applied");
+
+    await vi.waitFor(() => {
+      expect(client.getQueryState(LEDGER_KEY)?.isInvalidated).toBe(false);
+      expect(client.getQueryState(LEDGER_KEY)?.dataUpdateCount).toBe(2);
+    });
+    expect(available).toHaveBeenCalledTimes(1);
+    expect(client.getQueryState(biometricAvailableQueryOptions.queryKey)?.isInvalidated).toBe(false);
+    client.clear();
   });
 });

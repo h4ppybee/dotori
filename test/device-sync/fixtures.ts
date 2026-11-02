@@ -1,4 +1,4 @@
-import type { Connection, Holding, SavingsAccount, CoinHolding, PensionAccount, Member } from "@/lib/types";
+import type { Connection, Holding, SavingsAccount, CoinHolding, PensionAccount, Member, LedgerMonth } from "@/lib/types";
 import { emptySyncData, type SyncData } from "@/lib/device-sync/collect";
 
 // 기기 동기화 테스트 공용 가상 행. 실제 이름·금액·코드를 쓰지 않는다(AGENTS.md 개인정보 금지).
@@ -30,6 +30,10 @@ export const coin = (id: string, source: "AUTO" | "MANUAL" = "MANUAL"): CoinHold
 export const pension = (id: string, currentPrice = 10_000): PensionAccount => ({
   id, category: "PERSONAL", name: "연금ETF", symbol: "000002", quantity: 10, buyPrice: 10_000, currentPrice,
   sortOrder: 0, updatedAt: 1,
+});
+
+export const ledgerMonth = (id: string, amount: number, memo = ""): LedgerMonth => ({
+  id, amounts: { "leaf-a": amount }, memo, updatedAt: 1,
 });
 
 export const syncDataWith = (patch: Partial<SyncData>): SyncData => ({ ...emptySyncData(), ...patch });

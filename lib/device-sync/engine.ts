@@ -9,7 +9,7 @@ import { seal, open, SyncKeyError } from "@/lib/device-sync/envelope";
 import {
   collectSyncData, canonicalize, hashCanonical, encodeSyncPayload, decodeSyncPayload, SyncVersionError,
   isEffectivelyEmpty,
-  type SyncData,
+  type SyncData, type SyncTable,
 } from "@/lib/device-sync/collect";
 import { applySyncPayload, ConflictDuringApply } from "@/lib/device-sync/apply";
 import { syncMeta, syncGet, syncPut, type SyncConn } from "@/lib/device-sync/client";
@@ -58,6 +58,27 @@ let queryClientRef: QueryInvalidator | null = null;
 /** 적용 후 무효화할 QueryClient. startDeviceSync가 등록한다(테스트에서 직접 주입 가능). */
 export function setDeviceSyncQueryClient(client: QueryInvalidator | null): void {
   queryClientRef = client;
+}
+
+/**
+ * 데이터가 아니라 기기 특성을 읽는 쿼리(받기와 무관). Face ID 지원 여부는 다시 물으면 iOS 홈 화면 앱에서
+ * 일시적으로 false가 나올 수 있어(lib/query/use-biometric) 한 번 읽은 값을 유지한다.
+ */
+const DEVICE_TRAIT_QUERY_ROOTS: ReadonlySet<string> = new Set(["biometric-available"]);
+
+/**
+ * 받은 데이터를 적용한 뒤 화면을 맞춘다. 쿼리 키를 하나씩 나열하지 않고 **전체**를 무효화한다 —
+ * 적용이 여러 테이블(자산·부채·스냅샷·목표·통장 쪼개기·가계부·섹터·멤버…)을 한꺼번에 바꾸고, 그 위의 파생 쿼리
+ * (순자산·포트폴리오 등)도 함께 바뀌기 때문. 모든 쿼리가 로컬 IndexedDB 조회라 다시 읽는 비용이 작다.
+ * refetchType "all": gcTime Infinity + AppDataGate 미리 읽기로 캐시에만 남은(화면에 없는) 쿼리도 바로 다시 읽는다.
+ * 기본값("active")이면 그 탭을 열 때 옛 값이 한 번 그려졌다가 바뀌고, 진행 중이던 미리 읽기가 적용 전 값을
+ * 들고 늦게 끝나면 그 값이 "신선한" 캐시로 남는다(재조회가 진행 중인 요청을 취소하고 다시 읽어 이를 막는다).
+ */
+function refreshQueriesAfterApply(): void {
+  void queryClientRef?.invalidateQueries({
+    refetchType: "all",
+    predicate: (query) => !DEVICE_TRAIT_QUERY_ROOTS.has(String(query.queryKey[0])),
+  });
 }
 
 // ── 실행 큐·single-flight ────────────────────────────────────────────────
@@ -192,8 +213,9 @@ async function fetchRemote(ctx: SyncContext): Promise<RemoteFetch> {
     return { ok: false, outcome: { status: "error", message: DEVICE_SYNC_MESSAGES.keyMismatch } };
   }
   let data: SyncData;
+  let missingTables: SyncTable[];
   try {
-    data = decodeSyncPayload(await open(ctx.key, got.blob)).data;
+    ({ data, missingTables } = decodeSyncPayload(await open(ctx.key, got.blob)));
   } catch (err) {
     if (err instanceof SyncVersionError) {
       return { ok: false, outcome: { status: "error", message: DEVICE_SYNC_MESSAGES.newerVersion } };
@@ -202,6 +224,14 @@ async function fetchRemote(ctx: SyncContext): Promise<RemoteFetch> {
       return { ok: false, outcome: { status: "error", message: DEVICE_SYNC_MESSAGES.keyMismatch } };
     }
     return { ok: false, outcome: { status: "error", message: DEVICE_SYNC_MESSAGES.badPayload } };
+  }
+  if (missingTables.length > 0) {
+    // 보낸 앱이 모르는 테이블(예: v1 payload의 가계부)은 이 기기 값을 그대로 둔다 — 빈 배열로 교체하면 지워진다.
+    const local = await collectSyncData();
+    const filled = data as unknown as Record<SyncTable, unknown[]>;
+    for (const table of missingTables) {
+      filled[table] = local[table];
+    }
   }
   return { ok: true, remote: got.remote, data, remoteHash: await hashCanonical(canonicalize(data)) };
 }
@@ -259,7 +289,7 @@ async function pullCore(ctx: SyncContext, flag: { deferred: boolean }): Promise<
     throw err;
   }
   await updateSyncState({ lastRevision: remote.revision, lastSyncedHash: await hashCanonical(canonicalAfter) });
-  void queryClientRef?.invalidateQueries();
+  refreshQueriesAfterApply();
   return { status: "applied", remote };
 }
 
@@ -271,7 +301,7 @@ async function receiveRemote(ctx: SyncContext): Promise<SyncOutcome> {
   }
   const { canonicalAfter } = await applySyncPayload(fetched.data);
   await updateSyncState({ lastRevision: fetched.remote.revision, lastSyncedHash: await hashCanonical(canonicalAfter) });
-  void queryClientRef?.invalidateQueries();
+  refreshQueriesAfterApply();
   return { status: "applied", remote: fetched.remote };
 }
 

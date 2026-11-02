@@ -16,7 +16,7 @@ const withSource = <T extends { source?: HoldingSource }>(rows: readonly T[]): T
 /**
  * 받은 동기화 데이터를 단일 트랜잭션으로 적용한다(docs/device-sync.md "적용 규칙").
  * - connections: MANUAL만 교체(API 연결 보존). holdings·savings·coin: MANUAL만 교체(AUTO 보존).
- * - pension·debts·assetSnapshots·goal·envelopeItems·envelopeConfig·sectorOverrides: 전체 교체(삭제 전파).
+ * - pension·debts·assetSnapshots·goal·envelopeItems·envelopeConfig·sectorOverrides·ledgerMonths: 전체 교체(삭제 전파).
  * - members: 원격 members + 로컬 non-MANUAL 연결이 참조하는 로컬 멤버(원격에 같은 id가 없을 때) 보존.
  * - expectedCanonical: 트랜잭션 안에서 현재 상태를 다시 읽어 **동기 계산한** canonical과 비교, 다르면 롤백.
  *   트랜잭션 안에서는 Dexie 읽기·쓰기와 동기 계산만 한다(crypto.subtle 등 IDB 밖 await 금지 — 트랜잭션이 커밋돼 버린다).
@@ -70,6 +70,8 @@ export async function applySyncPayload(
     await db.envelopeConfig.bulkPut(remote.envelopeConfig);
     await db.sectorOverrides.clear();
     await db.sectorOverrides.bulkPut(remote.sectorOverrides);
+    await db.ledgerMonths.clear();
+    await db.ledgerMonths.bulkPut(remote.ledgerMonths);
 
     return { canonicalAfter: canonicalize(await collectSyncData()) };
   });

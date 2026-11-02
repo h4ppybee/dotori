@@ -77,7 +77,12 @@ export function createFakeSyncServer(secret: string) {
 
   /** 다른 기기가 올린 것처럼 서버에 직접 저장한다(현재 revision 기준, keyId는 key에서 계산). */
   async function remotePut(key: SyncKeyBytes, data: SyncData, deviceName = "다른 기기"): Promise<void> {
-    const blob = await seal(key, encodeSyncPayload(data, 1));
+    await remotePutPlaintext(key, encodeSyncPayload(data, 1), deviceName);
+  }
+
+  /** 평문을 그대로 봉인해 저장한다 — 예전 버전 앱이 올린 payload(테이블 누락 등)를 흉내 낼 때 쓴다. */
+  async function remotePutPlaintext(key: SyncKeyBytes, plaintext: string, deviceName = "다른 기기"): Promise<void> {
+    const blob = await seal(key, plaintext);
     const res = handle({
       action: "sync.put", secret, baseRevision: meta?.revision ?? 0, keyId: await keyIdOf(key), deviceName, blob,
     });
@@ -91,6 +96,7 @@ export function createFakeSyncServer(secret: string) {
     calls,
     hooks,
     remotePut,
+    remotePutPlaintext,
     revision: () => meta?.revision ?? 0,
     keyId: () => meta?.keyId ?? null,
   };

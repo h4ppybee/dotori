@@ -3,7 +3,7 @@ import { db } from "@/lib/db/schema";
 import { collectSyncData, canonicalize } from "@/lib/device-sync/collect";
 import { applySyncPayload, ConflictDuringApply } from "@/lib/device-sync/apply";
 import {
-  member, manualConnection, apiConnection, holding, savings, coin, syncDataWith,
+  member, manualConnection, apiConnection, holding, savings, coin, ledgerMonth, syncDataWith,
 } from "@/test/device-sync/fixtures";
 
 afterEach(async () => {
@@ -35,6 +35,12 @@ describe("applySyncPayload", () => {
     expect(ids(await db.savings.toArray())).toEqual(["s-auto", "s-new"]);
     expect(ids(await db.coin.toArray())).toEqual(["c-auto", "c-new"]);
     expect(await db.debts.count()).toBe(0); // 전체 교체 테이블은 원격에 없으면 지워진다
+  });
+
+  it("가계부(ledgerMonths)는 전체 교체한다(삭제 전파)", async () => {
+    await db.ledgerMonths.bulkPut([ledgerMonth("2026-01", 100_000), ledgerMonth("2026-02", 200_000)]);
+    await applySyncPayload(syncDataWith({ ledgerMonths: [ledgerMonth("2026-02", 250_000, "회고")] }));
+    expect(await db.ledgerMonths.toArray()).toEqual([ledgerMonth("2026-02", 250_000, "회고")]);
   });
 
   it("sectorOverrides 삭제를 전파한다", async () => {
