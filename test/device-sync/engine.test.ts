@@ -393,7 +393,34 @@ describe("가계부 동기화", () => {
     expect((await pullIfNewer()).status).toBe("applied");
     expect((await db.savings.get("s1"))?.amount).toBe(5_000_000);
     expect(await db.ledgerMonths.toArray()).toEqual([ledgerMonth("2026-01", 100_000)]);
+  });
+
+  it("예전 버전(v1) payload를 받은 뒤에는 다음 올리기가 가계부를 담은 v2로 다시 올린다", async () => {
+    const key = generateSyncKey();
+    const legacyData = { ...emptySyncData(), savings: [savings("s1", 5_000_000)], ledgerMonths: undefined };
+    await server.remotePutPlaintext(key, JSON.stringify({ syncVersion: 1, data: legacyData, sentAt: 1 }));
+    await db.ledgerMonths.put(ledgerMonth("2026-01", 100_000));
+    await seedSyncedDevice({ key, lastSyncedHash: await localHash() });
+
+    expect((await pullIfNewer()).status).toBe("applied");
+    // 이 기기 값으로 채운 해시를 "동기화됨"으로 기록하지 않는다 — 서버에는 아직 가계부가 없다.
+    expect((await getSyncConfig())?.lastSyncedHash).not.toBe(await localHash());
+
+    expect((await pushIfChanged()).status).toBe("pushed");
+    expect(server.revision()).toBe(2);
     expect((await getSyncConfig())?.lastSyncedHash).toBe(await localHash());
+  });
+
+  it("예전 버전(v1) payload와 내용이 같아 자동 해소돼도 다음 올리기가 v2로 다시 올린다", async () => {
+    const key = generateSyncKey();
+    const legacyData = { ...emptySyncData(), savings: [savings("s1", 5_000_000)], ledgerMonths: undefined };
+    await server.remotePutPlaintext(key, JSON.stringify({ syncVersion: 1, data: legacyData, sentAt: 1 }));
+    await db.savings.put(savings("s1", 5_000_000));
+    await db.ledgerMonths.put(ledgerMonth("2026-01", 100_000));
+    await seedSyncedDevice({ key, lastSyncedHash: "old-hash" });
+
+    expect((await pullIfNewer()).status).toBe("autoResolved");
+    expect((await pushIfChanged()).status).toBe("pushed");
   });
 });
 

@@ -8,6 +8,12 @@ import {
   putSettings, getSettings, saveBiometricConfig, getBiometricConfig, saveSyncConfig, getSyncConfig,
 } from "@/lib/db/local-store";
 
+import { createFakeSyncServer } from "@/test/device-sync/fake-server";
+import { seedSyncedDevice, localHash, TEST_SECRET } from "@/test/device-sync/helpers";
+import { savings, syncDataWith } from "@/test/device-sync/fixtures";
+import { generateSyncKey } from "@/lib/device-sync/key";
+import { pullIfNewer } from "@/lib/device-sync/engine";
+
 const SYNC_KEY_TEXT = "TEST-SYNC-KEY-TEXT";
 const seedSyncConfig = (key: CryptoKey) => saveSyncConfig(key, {
   syncKeyText: SYNC_KEY_TEXT, keyId: "0011223344556677", deviceName: "테스트 기기", lastRevision: 1, lastSyncedHash: "h",
@@ -115,6 +121,32 @@ describe("SettingsPage — 섹션 제목 렌더링", () => {
     fireEvent.click(await screen.findByRole("button", { name: "삭제하기" }));
     await waitFor(() => expect(useAppStore.getState().lastDeviceSync).toBeNull());
     expect(await getSyncConfig()).toBeUndefined();
+  });
+
+  it("모든 데이터 삭제는 진행 중인 동기화가 끝나길 기다린다 — 늦게 끝난 결과가 기록을 되살리지 않는다", async () => {
+    const server = createFakeSyncServer(TEST_SECRET);
+    vi.stubGlobal("fetch", server.fetch);
+    const key = generateSyncKey();
+    await server.remotePut(key, syncDataWith({ savings: [savings("s1", 5_000_000)] }));
+    await seedSyncedDevice({ key, lastSyncedHash: await localHash() });
+    let releaseGet!: () => void;
+    server.hooks.beforeGet = () => new Promise<void>((resolve) => {
+      releaseGet = resolve;
+    });
+    const pull = pullIfNewer();
+    await waitFor(() => expect(server.calls).toContain("sync.get"));
+
+    await renderSettings();
+    fireEvent.click(screen.getByRole("button", { name: "모든 데이터 삭제" }));
+    fireEvent.click(await screen.findByRole("button", { name: "삭제하기" }));
+    releaseGet();
+    await pull;
+
+    await waitFor(() => expect(useAppStore.getState().locked).toBe(true));
+    expect(useAppStore.getState().lastDeviceSync).toBeNull();
+    expect(await getSyncConfig()).toBeUndefined();
+    expect(await db.savings.count()).toBe(0);
+    vi.unstubAllGlobals();
   });
 
   it("모든 데이터를 삭제하면 Face ID 등록 제안 기록(dotori.biometricOffered)도 지운다", async () => {

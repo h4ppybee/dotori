@@ -48,7 +48,7 @@
 
 - 32바이트 랜덤 키(`generateSyncKey`)를 Crockford base32 4자 그룹(`XXXX-XXXX-…`, 13그룹)으로 표기한다(`lib/device-sync/key.ts`). 입력은 관대하게 파싱한다 — 공백·하이픈·대소문자를 무시하고 헷갈리는 글자를 바로잡는다(`O` → `0`, `I`·`L` → `1`).
 - 봉투(`SyncEnvelope`)는 `{ v: 1, alg: "A256GCM", iv, ct, keyId }`(AES-GCM 256, 96비트 랜덤 IV, `iv`·`ct`는 base64). 평문은 `{ syncVersion: 2, data, sentAt }` JSON이다(`lib/device-sync/collect.ts`의 `encodeSyncPayload`/`decodeSyncPayload`).
-- `syncVersion` 2 = 가계부(`ledgerMonths`) 추가. 예전 앱(v1)은 v2 평문을 적용하지 않고 "새로고침"을 안내한다 — 모르는 테이블을 버린 채 올려 다른 기기의 가계부를 지우지 않게. 반대로 v1 평문(가계부 키가 아예 없음)을 받으면 `decodeSyncPayload`가 빠진 테이블을 `missingTables`로 알리고, 엔진이 그 테이블을 이 기기 값으로 채운 뒤 비교·적용한다(빈 배열로 교체해 지우지 않는다). 동기화 대상 테이블을 더 늘릴 때도 같은 방식(`SYNC_VERSION` 올림 + 빠진 테이블은 로컬 유지)을 따른다.
+- `syncVersion` 2 = 가계부(`ledgerMonths`) 추가. 예전 앱(v1)은 v2 평문을 적용하지 않고 "새로고침"을 안내한다 — 모르는 테이블을 버린 채 올려 다른 기기의 가계부를 지우지 않게. 반대로 v1 평문(가계부 키가 아예 없음)을 받으면 `decodeSyncPayload`가 빠진 테이블을 `missingTables`로 알리고, 엔진이 그 테이블을 이 기기 값으로 채운 뒤 비교·적용한다(빈 배열로 교체해 지우지 않는다). 이때 `lastSyncedHash`에는 채운 해시가 아니라 받은 그대로의 해시를 기록해, 다음 올리기가 빠진 테이블까지 담은 새 형식으로 서버를 다시 채우게 한다. 동기화 대상 테이블을 더 늘릴 때도 같은 방식(`SYNC_VERSION` 올림 + 빠진 테이블은 로컬 유지)을 따른다.
 - `syncConfig`(Dexie v13) 단일 행에 `syncKeyEnc`(동기화 키를 세션 키로 암호화한 문자열)·`keyId`·`deviceName`·`lastRevision`·`lastSyncedHash`를 둔다. 기기별 민감 설정이라 백업·동기화 대상이 아니다. PIN·비밀번호 변경 시 `rekeyVault`(`lib/crypto/rekey.ts`)가 `syncKeyEnc`를 새 키로 재암호화하는데, 복호화·재암호화에 실패하면(예전 키로 암호화된 값이 손상됐거나 깨졌을 때) 행을 통째로 지운다 — 사용자가 설정에서 동기화 키를 다시 입력하면 된다.
 
 ## 흐름
@@ -60,6 +60,8 @@
 - **충돌 선택**(`resolveConflict`): "다른 기기 내용 받기" = 기대값 비교 없이 원격으로 교체(`receiveRemote`). "이 기기 내용으로 덮기" = `force: true`로 올려 서버 값을 그대로 덮어쓴다.
 - **충돌 닫기(보류)**(`dismissConflict`): 그 원격 revision을 `app-store.dismissedConflictRevision`(비영속)에 기억한다. 같은 revision의 충돌은 자동 동기화(잠금 해제 받기·통합 갱신 후)에서 다시 띄우지 않고 `lastDeviceSync`에만 남긴다 — meta의 revision이 닫은 revision과 같으면 `sync.get`·복호화도 건너뛴다(설정 패널에 "다른 기기에서 바꾼 내용과 달라요" 표시). 새 revision이 오거나, 사용자가 설정에서 "지금 동기화하기"를 누르면(`syncNow({ reopenDismissedConflict: true })`) 다시 묻는다. 받는 도중 잠긴 경우(`sessionKey === null`)에도 다이얼로그 없이 기록만 남긴다.
 - **설정 흐름**(설정 패널): "처음 시작하기"(`startFirstDevice`)는 빈 서버일 때만 새 키로 설정을 저장하고 첫 올리기를 직접 실행한다 — 결과가 `pushed`가 아니면(그사이 다른 기기가 먼저 시작해 `KEY_MISMATCH`, 네트워크 오류 등) 설정을 지우고 오류를 보여준다. "새 키로 다시 시작하기"(`restartWithNewKey`)는 reset put이 `pushed`가 아니면 이전 설정(키·revision·해시)을 그대로 되돌린다. 두 흐름 모두 되돌리기 전에 `sync.meta`를 한 번 더 보고, 서버 `keyId`가 방금 만든 키와 같으면(서버에는 저장됐고 응답만 유실) 새 설정을 유지하고 성공으로 처리한다 — `lastSyncedHash`가 비어 있으므로 다음 받기에서 내용 비교로 자동 해소된다. "다른 기기에서 연결하기"(`connectExistingDevice`)는 받기에 실패하면 설정을 지운다. 모든 설정 흐름은 throw하지 않고 결과(`status: "error"` 포함)를 돌려준다.
+- **PIN 변경·전체 삭제**: PIN 변경은 `rekeyVault` → 설정 저장 → 세션 키 교체를 `runWithDeviceSyncQueue`로 동기화 큐 안에서 실행한다 — 진행 중인 설정 흐름(예: "새 키로 다시 시작" 실패 복원)이 이전 키 암호문을 저장·복원해 새 PIN으로 열 수 없게 되는 경합을 막는다. 로컬 데이터 전체 삭제는 먼저 `disableDeviceSync()`로 진행 중인 동기화가 끝나길 기다리며 설정·기록을 지운 뒤 DB를 지운다(늦게 끝난 결과가 기록을 되살리지 않게).
+- **가계부 회고 화면**: 월간 회고 입력칸은 저장하지 않은 입력이 없을 때만 받은 회고로 다시 시드한다(입력 중이면 사용자 글 우선). 금액 편집 draft는 편집 시작 때 값으로 고정돼, 편집 중 받은 금액은 저장하면 draft로 덮어쓴다.
 - **single-flight**: 모듈 큐(`enqueue`/`exclusive`)로 모든 동기화 작업을 한 번에 하나씩만 실행한다. 받기·올리기는 이미 진행 중이면 그 프로미스를 그대로 돌려준다(탭 안에서만 — 탭 간 동시 실행 방지는 2단계 `navigator.locks` 몫). `syncConfig`를 바꾸는 설정 흐름(처음 시작·연결·새 키·끄기)도 같은 큐에서 실행하므로, 진행 중인 받기가 끈 뒤에 적용·기록되지 않고, 설정 저장 전에 시작된 올리기(`skipped`)를 첫 올리기로 착각하지 않는다.
 
 ## 잠금 해제·갱신 순서

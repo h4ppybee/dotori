@@ -132,6 +132,15 @@ function enqueue<T>(task: () => Promise<T>): Promise<T> {
   return run;
 }
 
+/**
+ * 동기화 큐 밖에서 동기화 설정(syncConfig)·세션 키를 바꾸는 작업을 큐에 넣어 실행한다.
+ * PIN 변경(rekeyVault → 세션 키 교체)이 진행 중인 설정 흐름과 섞이면, 그 흐름이 이전 세션 키로 암호화한
+ * 설정을 저장·복원해 새 PIN 키로 열 수 없게 된다 — 큐에서 차례로 실행해 이를 막는다. task의 예외는 그대로 전달한다.
+ */
+export function runWithDeviceSyncQueue<T>(task: () => Promise<T>): Promise<T> {
+  return enqueue(task);
+}
+
 /** 예외를 error 결과로 바꾼다(기록하지 않음). 큐 안에서 다른 동기화 작업을 직접 실행할 때 쓴다. */
 async function settle(task: () => Promise<SyncOutcome>): Promise<SyncOutcome> {
   try {
@@ -197,7 +206,9 @@ function withContext(task: (ctx: SyncContext) => Promise<SyncOutcome>): Promise<
 
 // ── 받기 ────────────────────────────────────────────────────────────────
 type RemoteFetch =
-  | { ok: true; remote: SyncRemoteMeta; data: SyncData; remoteHash: string }
+  // legacyHash: 예전 버전 payload(빠진 테이블 있음)였을 때 받은 그대로의 해시. 있으면 lastSyncedHash로 이 값을 기록해
+  // 다음 올리기가 빠진 테이블까지 담은 새 형식으로 다시 올리게 한다(로컬로 채운 해시를 "동기화됨"으로 기록하지 않는다).
+  | { ok: true; remote: SyncRemoteMeta; data: SyncData; remoteHash: string; legacyHash: string | null }
   | { ok: false; outcome: SyncOutcome };
 
 /** sync.get → 봉투 열기 → 평문 해석 → 원격 해시. 이후 revision은 항상 get 응답 값을 쓴다. */
@@ -225,7 +236,9 @@ async function fetchRemote(ctx: SyncContext): Promise<RemoteFetch> {
     }
     return { ok: false, outcome: { status: "error", message: DEVICE_SYNC_MESSAGES.badPayload } };
   }
+  let legacyHash: string | null = null;
   if (missingTables.length > 0) {
+    legacyHash = await hashCanonical(canonicalize(data));
     // 보낸 앱이 모르는 테이블(예: v1 payload의 가계부)은 이 기기 값을 그대로 둔다 — 빈 배열로 교체하면 지워진다.
     const local = await collectSyncData();
     const filled = data as unknown as Record<SyncTable, unknown[]>;
@@ -233,7 +246,7 @@ async function fetchRemote(ctx: SyncContext): Promise<RemoteFetch> {
       filled[table] = local[table];
     }
   }
-  return { ok: true, remote: got.remote, data, remoteHash: await hashCanonical(canonicalize(data)) };
+  return { ok: true, remote: got.remote, data, remoteHash: await hashCanonical(canonicalize(data)), legacyHash };
 }
 
 async function pullCore(ctx: SyncContext, flag: { deferred: boolean }): Promise<SyncOutcome> {
@@ -268,7 +281,7 @@ async function pullCore(ctx: SyncContext, flag: { deferred: boolean }): Promise<
   const second = decideAfterGet({ remoteHash: fetched.remoteHash, localHash, lastSyncedHash: ctx.lastSyncedHash });
   if (second.kind === "autoResolve") {
     // 내용이 같으므로 로컬 해시로 기록한다(멤버 병합 때문에 원격 해시와 다를 수 있음).
-    await updateSyncState({ lastRevision: remote.revision, lastSyncedHash: localHash });
+    await updateSyncState({ lastRevision: remote.revision, lastSyncedHash: fetched.legacyHash ?? localHash });
     return { status: "autoResolved", remote };
   }
   if (second.kind === "conflict") {
@@ -288,7 +301,10 @@ async function pullCore(ctx: SyncContext, flag: { deferred: boolean }): Promise<
     }
     throw err;
   }
-  await updateSyncState({ lastRevision: remote.revision, lastSyncedHash: await hashCanonical(canonicalAfter) });
+  await updateSyncState({
+    lastRevision: remote.revision,
+    lastSyncedHash: fetched.legacyHash ?? await hashCanonical(canonicalAfter),
+  });
   refreshQueriesAfterApply();
   return { status: "applied", remote };
 }
@@ -300,7 +316,10 @@ async function receiveRemote(ctx: SyncContext): Promise<SyncOutcome> {
     return fetched.outcome;
   }
   const { canonicalAfter } = await applySyncPayload(fetched.data);
-  await updateSyncState({ lastRevision: fetched.remote.revision, lastSyncedHash: await hashCanonical(canonicalAfter) });
+  await updateSyncState({
+    lastRevision: fetched.remote.revision,
+    lastSyncedHash: fetched.legacyHash ?? await hashCanonical(canonicalAfter),
+  });
   refreshQueriesAfterApply();
   return { status: "applied", remote: fetched.remote };
 }

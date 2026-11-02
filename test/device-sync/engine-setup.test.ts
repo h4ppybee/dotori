@@ -6,8 +6,10 @@ import { generateSyncKey, formatSyncKey, keyIdOf, parseSyncKey } from "@/lib/dev
 import { DEVICE_SYNC_MESSAGES } from "@/lib/device-sync/messages";
 import {
   startFirstDevice, prepareConnect, connectExistingDevice, restartWithNewKey, disableDeviceSync,
-  revealConnectionInfo, setDeviceSyncQueryClient, pullIfNewer,
+  revealConnectionInfo, setDeviceSyncQueryClient, pullIfNewer, runWithDeviceSyncQueue,
 } from "@/lib/device-sync/engine";
+import { rekeyVault } from "@/lib/crypto/rekey";
+import { decrypt } from "@/lib/crypto/crypto";
 import { createFakeSyncServer } from "@/test/device-sync/fake-server";
 import {
   seedSheetOnly, seedSyncedDevice, localHash, makeSessionKey, TEST_SECRET, TEST_WEB_APP_URL,
@@ -200,6 +202,48 @@ describe("restartWithNewKey", () => {
     expect(await getSyncConfig()).toEqual(before);
     expect(server.keyId()).toBe(await keyIdOf(oldKey));
     expect(await revealConnectionInfo()).toMatchObject({ keyText: formatSyncKey(oldKey) });
+  });
+});
+
+describe("runWithDeviceSyncQueue (PIN 변경)", () => {
+  it("진행 중인 '새 키로 다시 시작'이 실패해 이전 설정을 되돌린 뒤에 재암호화하므로 동기화 키가 새 PIN 키로 열린다", async () => {
+    const oldKey = generateSyncKey();
+    await server.remotePut(oldKey, syncDataWith({}));
+    const { sessionKey: oldSessionKey } = await seedSyncedDevice({ key: oldKey, lastRevision: 1, lastSyncedHash: await localHash() });
+    let releasePut!: () => void;
+    const putGate = new Promise<void>((resolve) => {
+      releasePut = resolve;
+    });
+    let putStarted!: () => void;
+    const putStartedP = new Promise<void>((resolve) => {
+      putStarted = resolve;
+    });
+    vi.stubGlobal("fetch", vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body)) as { action?: string };
+      if (body.action === "sync.put") {
+        putStarted();
+        await putGate;
+        throw new TypeError("Failed to fetch");
+      }
+      return server.fetch(url, init);
+    }));
+
+    const restart = restartWithNewKey();
+    await putStartedP;
+    const newSessionKey = await makeSessionKey();
+    // 설정 화면의 PIN 변경과 같은 순서: 재암호화 → 세션 키 교체를 동기화 큐 안에서 한다.
+    const pinChange = runWithDeviceSyncQueue(async () => {
+      await rekeyVault(oldSessionKey, newSessionKey);
+      useAppStore.getState().unlock(newSessionKey);
+    });
+    // 큐가 없다면 PIN 변경이 여기서 먼저 끝난다 — 그 뒤 실패한 흐름이 이전 키 암호문을 되돌리는 경합을 재현한다.
+    await Promise.race([pinChange, new Promise((resolve) => setTimeout(resolve, 100))]);
+    releasePut();
+
+    expect((await restart).status).toBe("error");
+    await pinChange;
+    const cfg = await getSyncConfig();
+    expect(await decrypt(newSessionKey, cfg!.syncKeyEnc)).toBe(formatSyncKey(oldKey));
   });
 });
 
