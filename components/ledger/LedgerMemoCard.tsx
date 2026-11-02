@@ -57,6 +57,10 @@ export function LedgerMemoCard({ month, initialMemo }: LedgerMemoCardProps) {
       const memo = latestRef.current;
       const previous = lastSavedRef.current;
       if (memo === previous) {
+        // 입력했다가 원래 값으로 되돌린 경우 — 저장할 건 없지만 동기화로 받은 회고가 다시 반영되도록 dirty를 푼다.
+        if (mountedRef.current) {
+          setDirty(false);
+        }
         return;
       }
       lastSavedRef.current = memo;

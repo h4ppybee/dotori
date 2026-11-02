@@ -55,6 +55,18 @@ describe("LedgerMemoCard — 기기 동기화로 회고가 바뀔 때", () => {
     await waitFor(() => expect(saveLedgerMemo).toHaveBeenCalledWith(MONTH, "내가 쓰는 중"));
   });
 
+  it("입력했다가 원래 값으로 되돌리고 blur하면, 이후 받은 회고를 반영한다", async () => {
+    const { rerenderWith } = renderCard("이전 회고");
+    fireEvent.change(textarea(), { target: { value: "잠깐 고침" } });
+    fireEvent.change(textarea(), { target: { value: "이전 회고" } });
+    fireEvent.blur(textarea());
+    expect(saveLedgerMemo).not.toHaveBeenCalled();
+
+    rerenderWith("다른 기기 회고");
+
+    expect(textarea().value).toBe("다른 기기 회고");
+  });
+
   it("저장한 뒤 받은 회고는 다시 반영한다", async () => {
     const { rerenderWith } = renderCard("이전 회고");
     fireEvent.change(textarea(), { target: { value: "저장할 글" } });
