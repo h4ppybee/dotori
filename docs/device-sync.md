@@ -13,7 +13,7 @@
 
 ## 동기화 대상
 
-대상은 백업과 같은 수동 데이터(`readManualTables`)에서 `snapshots`(과거 일간 자동 스냅샷, 이미 폐기된 레거시 테이블)만 뺀 12개 테이블이다(`SYNC_TABLES`, `lib/device-sync/collect.ts`). `pension`·`debts`·`assetSnapshots`는 자동/수동 구분이 없어 통째로 동기화 대상이다.
+대상은 백업과 같은 수동 데이터(`readManualTables`)에서 `snapshots`(과거 일간 자동 스냅샷, 이미 폐기된 레거시 테이블)만 뺀 13개 테이블이다(`SYNC_TABLES`, `lib/device-sync/collect.ts`). `pension`·`debts`·`assetSnapshots`·`ledgerMonths`(가계부)는 자동/수동 구분이 없어 통째로 동기화 대상이다.
 
 | 테이블 | 대상 행 | 적용 방식 |
 | --- | --- | --- |
@@ -29,12 +29,13 @@
 | `envelopeItems` | 전체 | 전체 교체 |
 | `envelopeConfig` | 전체 | 전체 교체 |
 | `sectorOverrides` | 전체 | 전체 교체 |
+| `ledgerMonths` | 전체 | 전체 교체(가계부 — 월 하나 = 행 하나) |
 
 **members 병합 규칙**: 이 기기의 setup이 만든 "나" 멤버를 이 기기의 API 연동(`connections`, `type !== "MANUAL"`)이 참조하고 있을 수 있다. `members`를 원격 값으로 통째로 바꾸면 그 참조가 고아가 되므로, 원격 `members` + "이 기기의 API 연동이 참조하면서 원격에는 같은 id가 없는 로컬 멤버"만 함께 남긴다(`lib/device-sync/apply.ts`).
 
 > 알려진 1단계 동작: 각 기기의 setup이 만든 "나" 멤버는 id가 기기마다 다르다. API 연동이 있는 기기는 위 규칙으로 자기 "나"를 남기고, 그 멤버가 다음 올리기에 실려 다른 기기에도 퍼지므로 다른 기기에서는 "나"가 두 번 이상 보일 수 있다. 데이터가 사라지지는 않는다. 필요하면 남는 멤버를 직접 정리하고, 기기별 멤버 매핑은 이후 단계에서 다룬다.
 
-동기화 대상이 아닌 것: `snapshots`(백업에는 포함되지만 동기화에서는 제외), 그리고 기기별 설정 `sheetExport`·`syncConfig`·`session`·`settings`·`tokenCache`(모두 기기마다 다르거나 민감한 값이라 공유하지 않는다).
+동기화 대상이 아닌 것: `snapshots`(백업에는 포함되지만 동기화에서는 제외), 그리고 기기별 설정 `sheetExport`·`syncConfig`·`biometric`·`session`·`settings`·`tokenCache`(모두 기기마다 다르거나 민감한 값이라 공유하지 않는다).
 
 ## 변경 판단 — 내용 해시
 
@@ -46,12 +47,14 @@
 ## 암호화와 키
 
 - 32바이트 랜덤 키(`generateSyncKey`)를 Crockford base32 4자 그룹(`XXXX-XXXX-…`, 13그룹)으로 표기한다(`lib/device-sync/key.ts`). 입력은 관대하게 파싱한다 — 공백·하이픈·대소문자를 무시하고 헷갈리는 글자를 바로잡는다(`O` → `0`, `I`·`L` → `1`).
-- 봉투(`SyncEnvelope`)는 `{ v: 1, alg: "A256GCM", iv, ct, keyId }`(AES-GCM 256, 96비트 랜덤 IV, `iv`·`ct`는 base64). 평문은 `{ syncVersion: 1, data, sentAt }` JSON이다(`lib/device-sync/collect.ts`의 `encodeSyncPayload`/`decodeSyncPayload`).
+- 봉투(`SyncEnvelope`)는 `{ v: 1, alg: "A256GCM", iv, ct, keyId }`(AES-GCM 256, 96비트 랜덤 IV, `iv`·`ct`는 base64). 평문은 `{ syncVersion: 2, data, sentAt }` JSON이다(`lib/device-sync/collect.ts`의 `encodeSyncPayload`/`decodeSyncPayload`).
+- `syncVersion` 2 = 가계부(`ledgerMonths`) 추가. 예전 앱(v1)은 v2 평문을 적용하지 않고 "새로고침"을 안내한다 — 모르는 테이블을 버린 채 올려 다른 기기의 가계부를 지우지 않게. 반대로 v1 평문(가계부 키가 아예 없음)을 받으면 `decodeSyncPayload`가 빠진 테이블을 `missingTables`로 알리고, 엔진이 그 테이블을 이 기기 값으로 채운 뒤 비교·적용한다(빈 배열로 교체해 지우지 않는다). 동기화 대상 테이블을 더 늘릴 때도 같은 방식(`SYNC_VERSION` 올림 + 빠진 테이블은 로컬 유지)을 따른다.
 - `syncConfig`(Dexie v13) 단일 행에 `syncKeyEnc`(동기화 키를 세션 키로 암호화한 문자열)·`keyId`·`deviceName`·`lastRevision`·`lastSyncedHash`를 둔다. 기기별 민감 설정이라 백업·동기화 대상이 아니다. PIN·비밀번호 변경 시 `rekeyVault`(`lib/crypto/rekey.ts`)가 `syncKeyEnc`를 새 키로 재암호화하는데, 복호화·재암호화에 실패하면(예전 키로 암호화된 값이 손상됐거나 깨졌을 때) 행을 통째로 지운다 — 사용자가 설정에서 동기화 키를 다시 입력하면 된다.
 
 ## 흐름
 
-- **받기 `pullIfNewer`**: `sync.meta` 호출 → (meta 기준으로 받을 게 없으면 noop | `meta.keyId`가 이 기기 키와 다르면 오류 | 받을 게 있으면 `sync.get`으로 이어감) → 로컬을 수집해 해시를 내고 → `sync.get` 응답을 받아(이후 모든 revision은 이 응답 값을 쓴다 — meta와 get 사이에 다른 기기가 먼저 올렸을 수 있으므로) → 봉투를 열어 → (원격 해시 == 로컬 해시면 자동 해소 | 로컬이 마지막 동기화 이후 그대로면 적용 | 둘 다 바뀌었으면 충돌). 적용은 `applySyncPayload`가 단일 트랜잭션 안에서 "받기 시작 시점의 canonical과 지금이 같은지"(`expectedCanonical`)까지 검사하며 성공하면 엔진이 트랜잭션 밖에서 `invalidateQueries()`를 부른다.
+- **받기 `pullIfNewer`**: `sync.meta` 호출 → (meta 기준으로 받을 게 없으면 noop | `meta.keyId`가 이 기기 키와 다르면 오류 | 받을 게 있으면 `sync.get`으로 이어감) → 로컬을 수집해 해시를 내고 → `sync.get` 응답을 받아(이후 모든 revision은 이 응답 값을 쓴다 — meta와 get 사이에 다른 기기가 먼저 올렸을 수 있으므로) → 봉투를 열어 → (원격 해시 == 로컬 해시면 자동 해소 | 로컬이 마지막 동기화 이후 그대로면 적용 | 둘 다 바뀌었으면 충돌). 적용은 `applySyncPayload`가 단일 트랜잭션 안에서 "받기 시작 시점의 canonical과 지금이 같은지"(`expectedCanonical`)까지 검사하며 성공하면 엔진이 트랜잭션 밖에서 쿼리를 무효화한다(아래 "적용 후 화면 갱신").
+- **적용 후 화면 갱신**(`refreshQueriesAfterApply`): 적용이 여러 테이블을 한꺼번에 바꾸고 순자산·포트폴리오 같은 파생 쿼리도 함께 바뀌므로, 키를 나열하지 않고 기기 특성 쿼리(`biometric-available` — 다시 물으면 iOS 홈 화면 앱에서 일시적으로 false가 나올 수 있음)만 뺀 **전체**를 `invalidateQueries({ refetchType: "all" })`로 무효화한다. QueryClient가 `gcTime: Infinity`이고 잠금 해제 직후 `AppDataGate`가 모든 탭 쿼리를 미리 읽어 두므로, 화면에 없는(비활성) 쿼리도 바로 다시 읽어야 그 탭을 열 때 옛 값이 한 번 그려지지 않는다. 진행 중이던 미리 읽기가 적용 전 값을 들고 늦게 끝나 "신선한" 캐시로 남는 경합도 재조회가 그 요청을 취소하고 다시 읽어 막는다. 모든 쿼리가 로컬 IndexedDB 조회라 비용은 작다.
 - **올리기 `pushIfChanged`**: 로컬 해시가 `lastSyncedHash`와 같으면 noop. 다르면 `sync.put`. 서버가 `CONFLICT`를 돌려주면(다른 기기가 먼저 올림) 바로 받기 경로(`pullCore`)로 넘어간다.
 - **지금 동기화 `syncNow`**: 받기 → (충돌·오류·보류·꺼짐이 아니면) 올리기. 설정의 "지금 동기화하기"와 통합 갱신 성공 후 둘 다 이 경로를 쓴다 — 받기가 먼저라, 갱신 대기 타임아웃으로 보류된 받기도 여기서 다시 시도된다 — 진행 중이던 그 받기에 합류해 `deferred`를 받으면 새 받기를 한 번 더 시작한 뒤 올린다.
 - **충돌 선택**(`resolveConflict`): "다른 기기 내용 받기" = 기대값 비교 없이 원격으로 교체(`receiveRemote`). "이 기기 내용으로 덮기" = `force: true`로 올려 서버 값을 그대로 덮어쓴다.
