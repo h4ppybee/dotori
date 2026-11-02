@@ -24,7 +24,7 @@ export interface PortfolioVM {
   returnPct: number;
   totalDailyPnlKrw?: number;
   bySector: { sector: string; valueKrw: number; pct: number }[];
-  byHolding: { symbol: string; name: string; valueKrw: number; pct: number }[];
+  byHolding: { symbol: string; name: string; valueKrw: number; costKrw: number; pnlKrw: number; pct: number }[];
 }
 
 /**
@@ -119,7 +119,9 @@ export function buildPortfolio(input: {
     totalDailyPnlKrw,
     bySector: bySector(rows.map((r) => ({ sector: r.sector, valueKrw: r.valueKrw }))),
     byHolding: byHolding(
-      rows.map((r) => ({ symbol: r.holding.symbol, name: r.holding.name, valueKrw: r.valueKrw })),
+      rows.map((r) => ({
+        symbol: r.holding.symbol, name: r.holding.name, valueKrw: r.valueKrw, costKrw: r.costKrw,
+      })),
     ),
   };
 }

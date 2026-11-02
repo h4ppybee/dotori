@@ -34,17 +34,21 @@ interface HoldingsTableProps {
 
 interface RowProps {
   row: PortfolioRow;
-  label: string;
   usdKrwRate?: number;
   onSelectHolding?: (row: PortfolioRow) => void;
 }
 
+/** 보유 수량 — 소수 첫째 자리까지(반올림), 천 단위 콤마. */
+function formatQuantity(q: number): string {
+  return q.toLocaleString("ko-KR", { maximumFractionDigits: 1 });
+}
+
 /**
- * 모바일 우선 스택 행. 종목명·평가금·수익률을 크게,
- * 시장/증권사/수량/매수가/현재가는 보조로.
+ * 모바일 우선 스택 행. 왼쪽은 섹터·종목명만, 오른쪽은 평가금 아래에
+ * 수량·현재가를 보조로 두고 맨 아래에 수익을 둔다(계좌 라벨은 그룹 제목으로 뺐다).
  * 행을 탭하면 종목 상세 화면으로 이동한다.
  */
-function HoldingItem({ row, label, usdKrwRate, onSelectHolding }: RowProps) {
+function HoldingItem({ row, usdKrwRate, onSelectHolding }: RowProps) {
   const { holding } = row;
   const isUsd = holding.currency === "USD";
 
@@ -73,53 +77,57 @@ function HoldingItem({ row, label, usdKrwRate, onSelectHolding }: RowProps) {
               {holding.name}
             </span>
           </div>
-          <span className="text-[13px] font-normal leading-[1.45] text-muted">
-            {holding.symbol} · {holding.market} · {label}
-          </span>
-          <div className="flex items-center gap-x-2 gap-y-[2px] mt-1 flex-wrap">
-          <span className="text-[13px] font-normal text-body-soft tabular-nums">
-            {holding.quantity.toLocaleString("ko-KR")}주
-          </span>
-          {isUsd && usdKrwRate ? (
-            <>
-              <span className="text-[13px] text-muted-soft">·</span>
-              <span className="text-[13px] font-normal text-body-soft tabular-nums">
-                현재 {formatUsd(nativePrice)}
-              </span>
-            </>
-          ) : (
-            <>
-              <span className="text-[13px] text-muted-soft">·</span>
-              <span className="text-[13px] font-normal text-body-soft tabular-nums">
-                현재 {formatKrw(row.priceKrw)}
-              </span>
-            </>
-          )}
         </div>
-      </div>
 
-      <div className="flex flex-col items-end shrink-0">
-        <span className="text-[15px] font-semibold leading-[1.4] tabular-nums text-ink">
-          {formatKrw(row.valueKrw)}
-        </span>
-        {isUsd && usdKrwRate && (
-          <span className="text-[12px] font-normal leading-[1.4] tabular-nums text-muted mt-[2px]">
-            {formatUsd(nativeValue)}
+        <div className="flex flex-col items-end shrink-0">
+          <span className="text-[15px] font-semibold leading-[1.4] tabular-nums text-ink">
+            {formatKrw(row.valueKrw)}
           </span>
-        )}
-        <PnlText
-          amountKrw={row.pnlKrw}
-          returnPct={row.returnPct}
-          className="mt-auto pt-1 text-[13px] font-semibold leading-[1.4]"
-        />
-      </div>
+          {isUsd && usdKrwRate && (
+            <span className="text-[12px] font-normal leading-[1.4] tabular-nums text-muted mt-[2px]">
+              {formatUsd(nativeValue)}
+            </span>
+          )}
+          <span className="mt-1 text-[13px] font-normal leading-[1.45] text-body-soft tabular-nums">
+            {formatQuantity(holding.quantity)}주 · 현재{" "}
+            {isUsd && usdKrwRate ? formatUsd(nativePrice) : formatKrw(row.priceKrw)}
+          </span>
+          <PnlText
+            amountKrw={row.pnlKrw}
+            returnPct={row.returnPct}
+            className="mt-auto pt-1 text-[13px] font-semibold leading-[1.4]"
+          />
+        </div>
       </button>
     </li>
   );
 }
 
+/** 같은 계좌 라벨의 행 묶음. */
+interface HoldingGroup {
+  label: string;
+  totalKrw: number;
+  rows: PortfolioRow[];
+}
+
+/** 계좌 라벨별로 묶는다. 그룹·그룹 안 행 모두 평가금(원화) 내림차순. */
+function groupByLabel(rows: PortfolioRow[], connectionLabels: Record<string, string>): HoldingGroup[] {
+  const groups = new Map<string, HoldingGroup>();
+  for (const row of rows) {
+    const label = connectionLabels[row.holding.connectionId] ?? "직접 추가";
+    const group = groups.get(label) ?? { label, totalKrw: 0, rows: [] };
+    group.totalKrw += row.valueKrw;
+    group.rows.push(row);
+    groups.set(label, group);
+  }
+  for (const group of groups.values()) {
+    group.rows.sort((a, b) => b.valueKrw - a.valueKrw);
+  }
+  return [...groups.values()].sort((a, b) => b.totalKrw - a.totalKrw);
+}
+
 /**
- * 보유 종목 리스트. 모바일에서 스택 행 레이아웃으로 읽기 쉽게.
+ * 보유 종목 리스트. 계좌(연동) 라벨별 그룹으로 나눠 그룹 제목 + 그룹 평가금 아래에 종목을 나열한다.
  * USD 종목은 원화 평가금 + 원통화 금액을 보조로 함께 보여준다.
  */
 export function HoldingsTable({
@@ -132,15 +140,12 @@ export function HoldingsTable({
     return null;
   }
 
-  // 평가금(원화) 내림차순 정렬.
-  const sorted = [...rows].sort((a, b) => b.valueKrw - a.valueKrw);
+  const groups = groupByLabel(rows, connectionLabels);
 
   return (
     <Card className="flex flex-col gap-1">
-      <div className="flex items-center justify-between mb-1">
-        <h2 className="text-[19px] font-bold leading-[1.4] tracking-[-0.2px] text-ink">
-          보유 종목
-        </h2>
+      {/* 제목 없이 "종목 추가" 버튼만 오른쪽에 둔다. */}
+      <div className="flex items-center justify-end">
         <Link
           href="/holdings/new"
           aria-label="종목 추가"
@@ -149,17 +154,29 @@ export function HoldingsTable({
           <PlusIcon />
         </Link>
       </div>
-      <ul className="flex flex-col">
-        {sorted.map((row) => (
-          <HoldingItem
-            key={row.holding.id}
-            row={row}
-            label={connectionLabels[row.holding.connectionId] ?? "직접 추가"}
-            usdKrwRate={usdKrwRate}
-            onSelectHolding={onSelectHolding}
-          />
+      <div className="flex flex-col gap-6" role="group" aria-label="보유 종목">
+        {groups.map((group) => (
+          <section key={group.label} className="flex flex-col">
+            {/* 그룹 제목 아래 구분선 — 제목을 소제목처럼 세워 그룹 경계를 드러낸다. */}
+            <div className="flex items-baseline justify-between border-b border-hairline px-3 pb-2 mb-1">
+              <h3 className="text-[15px] font-semibold leading-[1.4] text-body">{group.label}</h3>
+              <span className="text-[13px] font-normal leading-[1.45] tabular-nums text-muted">
+                {formatKrw(group.totalKrw)}
+              </span>
+            </div>
+            <ul className="flex flex-col">
+              {group.rows.map((row) => (
+                <HoldingItem
+                  key={row.holding.id}
+                  row={row}
+                  usdKrwRate={usdKrwRate}
+                  onSelectHolding={onSelectHolding}
+                />
+              ))}
+            </ul>
+          </section>
         ))}
-      </ul>
+      </div>
     </Card>
   );
 }

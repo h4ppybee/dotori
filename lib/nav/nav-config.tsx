@@ -1,4 +1,12 @@
 import type { ReactNode } from "react";
+import {
+  isAssetsRoute,
+  isLedgerRoute,
+  isPlanRoute,
+  resolveActiveLedgerSub,
+  resolveActivePlanSub,
+  resolveActiveSub,
+} from "@/lib/nav/active";
 
 // 참고: spec의 TabDef에는 선택적 match? 예측자가 있었으나, 활성 판정 로직을
 // lib/nav/active.ts 한 곳으로 단일화하기 위해 여기선 match를 두지 않는다(의도된 단순화).
@@ -119,6 +127,27 @@ function RealtyIcon(active: boolean): ReactNode {
   );
 }
 
+// 가계부 월별 — 달력
+function MonthlyIcon(active: boolean): ReactNode {
+  const w = active ? 2.4 : 2;
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <rect x="4" y="5" width="16" height="15" rx="2" stroke="currentColor" strokeWidth={w} strokeLinejoin="round" />
+      <path d="M4 10h16M8 3v4M16 3v4" stroke="currentColor" strokeWidth={w} strokeLinecap="round" />
+    </svg>
+  );
+}
+// 가계부 분석 — 막대 + 선
+function AnalysisIcon(active: boolean): ReactNode {
+  const w = active ? 2.4 : 2;
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M6 20v-6M12 20v-9M18 20v-4" stroke="currentColor" strokeWidth={w} strokeLinecap="round" />
+      <path d="M5 9l5-4 4 3 5-4" stroke="currentColor" strokeWidth={w} strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 // ── 탭 정의 (key는 lib/nav/active.ts 반환값과 일치) ────────────────────
 export const mainTabs: TabDef[] = [
   { key: "home", href: "/", label: "홈", icon: HomeIcon },
@@ -143,3 +172,29 @@ export const planSubTabs: TabDef[] = [
   { key: "envelope", href: "/plan", label: "통장 쪼개기", icon: EnvelopeIcon },
   { key: "realty", href: "/plan/realty", label: "부동산", icon: RealtyIcon },
 ];
+
+// 가계부 서브탭 — 플로팅 바에서 아이콘 + 라벨로 표시한다.
+export const ledgerSubTabs: TabDef[] = [
+  { key: "monthly", href: "/ledger", label: "월별", icon: MonthlyIcon },
+  { key: "analysis", href: "/ledger/analysis", label: "분석", icon: AnalysisIcon },
+];
+
+/** 플로팅 중첩 바를 쓰는 섹션. key는 메인 탭 key와 같다. */
+export interface NestedSection {
+  key: string;
+  match: (pathname: string) => boolean;
+  subTabs: TabDef[];
+  resolveActive: (pathname: string) => string | null;
+}
+
+// 경로 판정은 active.ts가 맡고, 여기선 섹션별 서브탭과 짝지어 둔다(active.ts는 이 파일을 import하지 않음).
+export const nestedSections: NestedSection[] = [
+  { key: "assets", match: isAssetsRoute, subTabs: assetSubTabs, resolveActive: resolveActiveSub },
+  { key: "plan", match: isPlanRoute, subTabs: planSubTabs, resolveActive: resolveActivePlanSub },
+  { key: "ledger", match: isLedgerRoute, subTabs: ledgerSubTabs, resolveActive: resolveActiveLedgerSub },
+];
+
+/** 경로가 속한 중첩 섹션. 중첩 경로가 아니면 undefined. */
+export function findNestedSection(pathname: string): NestedSection | undefined {
+  return nestedSections.find((s) => s.match(pathname));
+}

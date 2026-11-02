@@ -47,7 +47,7 @@
 
 - 32바이트 랜덤 키(`generateSyncKey`)를 Crockford base32 4자 그룹(`XXXX-XXXX-…`, 13그룹)으로 표기한다(`lib/device-sync/key.ts`). 입력은 관대하게 파싱한다 — 공백·하이픈·대소문자를 무시하고 헷갈리는 글자를 바로잡는다(`O` → `0`, `I`·`L` → `1`).
 - 봉투(`SyncEnvelope`)는 `{ v: 1, alg: "A256GCM", iv, ct, keyId }`(AES-GCM 256, 96비트 랜덤 IV, `iv`·`ct`는 base64). 평문은 `{ syncVersion: 1, data, sentAt }` JSON이다(`lib/device-sync/collect.ts`의 `encodeSyncPayload`/`decodeSyncPayload`).
-- `syncConfig`(Dexie v11) 단일 행에 `syncKeyEnc`(동기화 키를 세션 키로 암호화한 문자열)·`keyId`·`deviceName`·`lastRevision`·`lastSyncedHash`를 둔다. 기기별 민감 설정이라 백업·동기화 대상이 아니다. PIN·비밀번호 변경 시 `rekeyVault`(`lib/crypto/rekey.ts`)가 `syncKeyEnc`를 새 키로 재암호화하는데, 복호화·재암호화에 실패하면(예전 키로 암호화된 값이 손상됐거나 깨졌을 때) 행을 통째로 지운다 — 사용자가 설정에서 동기화 키를 다시 입력하면 된다.
+- `syncConfig`(Dexie v13) 단일 행에 `syncKeyEnc`(동기화 키를 세션 키로 암호화한 문자열)·`keyId`·`deviceName`·`lastRevision`·`lastSyncedHash`를 둔다. 기기별 민감 설정이라 백업·동기화 대상이 아니다. PIN·비밀번호 변경 시 `rekeyVault`(`lib/crypto/rekey.ts`)가 `syncKeyEnc`를 새 키로 재암호화하는데, 복호화·재암호화에 실패하면(예전 키로 암호화된 값이 손상됐거나 깨졌을 때) 행을 통째로 지운다 — 사용자가 설정에서 동기화 키를 다시 입력하면 된다.
 
 ## 흐름
 

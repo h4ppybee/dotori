@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatKrw, formatUsd, formatPct, signClass, formatKoreanUnit, formatDateTime, toLocalYmd } from "@/lib/format";
+import { formatKrw, formatUsd, formatPct, signClass, formatKoreanUnit, formatDateTime, toLocalYmd, parseAmount } from "@/lib/format";
 
 describe("formatKoreanUnit", () => {
   it("만 단위로 읽기 쉽게 표기한다", () => {
@@ -103,5 +103,21 @@ describe("formatDateTime", () => {
 describe("toLocalYmd", () => {
   it("로컬 날짜를 YYYY-MM-DD로 만든다", () => {
     expect(toLocalYmd(new Date(2026, 9, 4, 23, 59).getTime())).toBe("2026-10-04");
+  });
+});
+
+describe("parseAmount", () => {
+  it("숫자 외 문자(쉼표·₩·공백·부호)는 모두 지운다", () => {
+    expect(parseAmount("1,234")).toBe(1234);
+    expect(parseAmount("₩ 50 000")).toBe(50000);
+    expect(parseAmount("-300")).toBe(300);
+  });
+  it("빈 문자열·숫자 없음은 0", () => {
+    expect(parseAmount("")).toBe(0);
+    expect(parseAmount("abc")).toBe(0);
+  });
+  it("상한 1조 원으로 자른다", () => {
+    expect(parseAmount("1000000000000")).toBe(1_000_000_000_000);
+    expect(parseAmount("99999999999999999999")).toBe(1_000_000_000_000);
   });
 });

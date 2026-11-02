@@ -4,9 +4,9 @@ import Link from "next/link";
 import { Card } from "@/components/ui/Card";
 import { SnapshotTrendChart } from "@/components/snapshot/SnapshotTrendChart";
 import { SnapshotListItem } from "@/components/snapshot/SnapshotListItem";
-import { useAssetSnapshots, useSnapshotMutations } from "@/lib/query/use-asset-snapshots";
+import { useAssetSnapshots, useSnapshotMutations, RECENT_SNAPSHOT_LIMIT } from "@/lib/query/use-asset-snapshots";
 
-const CHART_COUNT = 20;
+const CHART_COUNT = RECENT_SNAPSHOT_LIMIT - 1;
 const LIST_COUNT = 10;
 
 /**
@@ -22,7 +22,7 @@ function errorMessage(error: unknown): string {
 }
 
 export function SnapshotSection({ takeDisabled }: { takeDisabled: boolean }) {
-  const { data: snapshots, isLoading, isError } = useAssetSnapshots(CHART_COUNT + 1);
+  const { data: snapshots, isLoading, isError } = useAssetSnapshots(RECENT_SNAPSHOT_LIMIT);
   const { take } = useSnapshotMutations();
 
   // 로딩 중 빈 상태 깜빡임 방지 (DebtSection과 동일 패턴)

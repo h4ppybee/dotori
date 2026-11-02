@@ -12,11 +12,14 @@ import { ConnectionForm } from "@/components/settings/ConnectionForm";
 import { BackupPanel } from "@/components/settings/BackupPanel";
 import { SheetExportPanel } from "@/components/settings/SheetExportPanel";
 import { DeviceSyncPanel } from "@/components/settings/DeviceSyncPanel";
-import { getSettings, putSettings } from "@/lib/db/local-store";
+import { BiometricPanel } from "@/components/settings/BiometricPanel";
+import { getSettings, putSettings, getBiometricConfig } from "@/lib/db/local-store";
 import { useSettings } from "@/lib/query/use-settings";
+import { BIOMETRIC_CONFIG_KEY } from "@/lib/query/use-biometric";
 import { useQueryClient } from "@tanstack/react-query";
 import { deriveKey, makeSalt, makeVerifier, checkVerifier } from "@/lib/crypto/crypto";
 import { rekeyVault } from "@/lib/crypto/rekey";
+import { disableBiometric, clearBiometricOffered } from "@/lib/biometric/biometric-unlock";
 import { db } from "@/lib/db/schema";
 import { useAppStore } from "@/stores/app-store";
 
@@ -78,7 +81,7 @@ function PinSection() {
   const [next, setNext] = useState("");
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   // lockType 없음(undefined)은 기존 문자 비밀번호 사용자로 간주한다
@@ -92,7 +95,7 @@ function PinSection() {
 
   async function handleSubmit() {
     setError(null);
-    setSuccess(false);
+    setSuccessMessage(null);
 
     if (!current.trim()) {
       setError(isPinLock ? "현재 PIN을 입력해 주세요." : "현재 비밀번호를 입력해 주세요.");
@@ -122,6 +125,17 @@ function PinSection() {
         return;
       }
 
+      // Face ID에 저장된 PIN은 이전 값이 된다 — 새 PIN 저장 전에 먼저 지운다(실패하면 변경 중단).
+      const hadBiometric = (await getBiometricConfig()) != null;
+      try {
+        await disableBiometric();
+        // rekeyVault·putSettings가 이어서 실패해도 등록 해제 자체는 반영됐으니 바로 무효화한다.
+        await queryClient.invalidateQueries({ queryKey: BIOMETRIC_CONFIG_KEY });
+      } catch {
+        setError("Face ID 해제에 실패해 PIN을 바꾸지 못했어요. 다시 시도해 주세요.");
+        return;
+      }
+
       const newSalt = makeSalt();
       const newKey = await deriveKey(next, newSalt);
       await rekeyVault(oldKey, newKey);
@@ -136,7 +150,8 @@ function PinSection() {
       unlock(newKey);
 
       clearFields();
-      setSuccess(true);
+      const base = isPinLock ? "PIN을 바꿨어요." : "PIN을 설정했어요.";
+      setSuccessMessage(hadBiometric ? `${base} Face ID는 다시 켜 주세요.` : base);
     } catch {
       setError("PIN 설정 중 문제가 생겼어요. 다시 시도해 주세요.");
     } finally {
@@ -150,8 +165,8 @@ function PinSection() {
         {isPinLock ? "PIN 변경" : "PIN 설정"}
       </h2>
 
-      {success && (
-        <Banner message={isPinLock ? "PIN을 바꿨어요." : "PIN을 설정했어요."} className="mb-4" />
+      {successMessage != null && (
+        <Banner message={successMessage} className="mb-4" />
       )}
       {error != null && (
         <div
@@ -209,6 +224,26 @@ function PinSection() {
   );
 }
 
+// ─── 지금 잠그기 섹션 ─────────────────────────────────────────────────────────
+
+function LockNowSection() {
+  const lock = useAppStore((s) => s.lock);
+
+  return (
+    <Card>
+      <h2 className="text-[19px] font-bold leading-[1.4] tracking-[-0.2px] text-ink mb-2">
+        잠금
+      </h2>
+      <p className="text-[15px] text-body-soft leading-[1.5] mb-4">
+        자리를 비울 때 바로 잠가요. 10분 동안 쓰지 않으면 저절로 잠겨요.
+      </p>
+      <Button variant="weak" onClick={lock} className="w-full">
+        지금 잠그기
+      </Button>
+    </Card>
+  );
+}
+
 // ─── 데이터 전체 삭제 섹션 ────────────────────────────────────────────────────
 
 function DeleteAllSection() {
@@ -216,6 +251,7 @@ function DeleteAllSection() {
   const clearLastSheetExport = useAppStore((s) => s.clearLastSheetExport);
   const clearLastDeviceSync = useAppStore((s) => s.clearLastDeviceSync);
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -228,6 +264,9 @@ function DeleteAllSection() {
       // 시트 내보내기·기기 동기화 설정도 함께 사라졌으니 지난 성공/실패 기록이 남지 않게 지운다.
       clearLastSheetExport();
       clearLastDeviceSync();
+      // Face ID 등록도 함께 사라졌다 — 다시 설치한 것처럼 등록 제안을 한 번 더 보여 준다.
+      clearBiometricOffered();
+      await queryClient.invalidateQueries({ queryKey: BIOMETRIC_CONFIG_KEY });
       router.push("/");
     } catch {
       setDeleting(false);
@@ -286,7 +325,9 @@ export default function SettingsPage() {
           <SheetExportPanel />
           <DeviceSyncPanel />
           <PrivacySection />
+          <LockNowSection />
           <PinSection />
+          <BiometricPanel />
           <DeleteAllSection />
         </div>
       </div>

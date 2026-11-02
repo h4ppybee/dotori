@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Analytics } from "@vercel/analytics/next";
 import { QueryProvider } from "@/lib/query/client";
 import { LockGate } from "@/components/LockGate";
+import { AppDataGate } from "@/components/AppDataGate";
 import { ServiceWorkerRegister } from "@/components/ServiceWorkerRegister";
 import { SyncConflictDialog } from "@/components/sync/SyncConflictDialog";
 import "./globals.css";
@@ -29,7 +30,11 @@ export default function RootLayout({
     <html lang="ko" className="h-full antialiased">
       <body className="min-h-full flex flex-col">
         <QueryProvider>
-          <LockGate>{children}</LockGate>
+          {/* 기기 동기화 엔진은 QueryProvider가 등록한다 — 잠금 해제 순간 받기를 시작하고, 적용하면
+              모든 쿼리를 무효화해 AppDataGate가 미리 읽은 캐시도 받은 데이터로 바뀐다. */}
+          <LockGate>
+            <AppDataGate>{children}</AppDataGate>
+          </LockGate>
           {/* 기기 동기화 충돌 선택 — 화면과 무관하게 한 번만 마운트한다(잠금 중에는 그리지 않음). */}
           <SyncConflictDialog />
         </QueryProvider>

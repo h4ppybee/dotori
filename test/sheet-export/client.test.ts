@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import {
-  postSheetExport, isValidWebAppUrl, SHEET_EXPORT_MESSAGES,
+  postSheetExport, postSheetRead, isValidWebAppUrl, SHEET_EXPORT_MESSAGES,
 } from "@/lib/sheet-export/client";
 
 const WEB_APP_URL = "https://script.google.com/macros/s/AKfy-abc_123/exec";
@@ -66,6 +66,44 @@ describe("postSheetExport", () => {
       init.signal!.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")));
     }));
     expect(await postSheetExport(WEB_APP_URL, body, { fetchImpl: fetchImpl as unknown as typeof fetch, timeoutMs: 10 }))
+      .toEqual({ status: "error", message: SHEET_EXPORT_MESSAGES.network });
+  });
+});
+
+describe("postSheetRead", () => {
+  const readBody = { version: 1 as const, secret: "s", action: "readEnvelope" as const };
+
+  it("readEnvelope 본문을 보내고 values를 돌려준다", async () => {
+    const values = [["태그", "금액"], ["저축", 70]];
+    const fetchImpl = vi.fn().mockResolvedValue(res(JSON.stringify({ ok: true, values })));
+    expect(await postSheetRead(WEB_APP_URL, readBody, { fetchImpl })).toEqual({ status: "ok", values });
+    expect(JSON.parse(fetchImpl.mock.calls[0][1].body)).toEqual(readBody);
+  });
+
+  it("NO_SOURCE_TAB → 원본 탭 없음 메시지", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(res(JSON.stringify({ ok: false, error: "NO_SOURCE_TAB" })));
+    expect(await postSheetRead(WEB_APP_URL, readBody, { fetchImpl }))
+      .toEqual({ status: "error", message: SHEET_EXPORT_MESSAGES.noSourceTab });
+  });
+
+  it("예전 스크립트(BAD_REQUEST)·values 없음·JSON 아님 → 응답 해석 실패 메시지", async () => {
+    for (const r of [
+      res(JSON.stringify({ ok: false, error: "BAD_REQUEST" })),
+      res(JSON.stringify({ ok: true })),
+      res("<html>"),
+    ]) {
+      const fetchImpl = vi.fn().mockResolvedValue(r);
+      expect(await postSheetRead(WEB_APP_URL, readBody, { fetchImpl }))
+        .toEqual({ status: "error", message: SHEET_EXPORT_MESSAGES.badResponse });
+    }
+  });
+
+  it("UNAUTHORIZED·네트워크 오류는 내보내기와 같은 메시지", async () => {
+    const unauthorized = vi.fn().mockResolvedValue(res(JSON.stringify({ ok: false, error: "UNAUTHORIZED" })));
+    expect(await postSheetRead(WEB_APP_URL, readBody, { fetchImpl: unauthorized }))
+      .toEqual({ status: "error", message: SHEET_EXPORT_MESSAGES.unauthorized });
+    const offline = vi.fn().mockRejectedValue(new TypeError("Failed to fetch"));
+    expect(await postSheetRead(WEB_APP_URL, readBody, { fetchImpl: offline }))
       .toEqual({ status: "error", message: SHEET_EXPORT_MESSAGES.network });
   });
 });

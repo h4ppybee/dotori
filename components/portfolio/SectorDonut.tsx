@@ -8,7 +8,7 @@ interface SectorDonutProps {
 }
 
 /**
- * 섹터 비중 도넛 차트. 공용 DonutChart 프리미티브를 감싸 카드/헤딩을 입힌다.
+ * 섹터 비중 도넛 차트. 공용 DonutChart 프리미티브를 카드로 감싼다(제목 없이 차트만 — 차트 ariaLabel로 이름을 준다).
  * 빈 상태(bySector 없음)에서는 카드를 그리지 않는다.
  */
 export function SectorDonut({ vm }: SectorDonutProps) {
@@ -26,9 +26,6 @@ export function SectorDonut({ vm }: SectorDonutProps) {
 
   return (
     <Card className="flex flex-col gap-5">
-      <h2 className="text-[19px] font-bold leading-[1.4] tracking-[-0.2px] text-ink">
-        섹터 비중
-      </h2>
       <DonutChart
         segments={segments}
         centerLabel="총평가금"

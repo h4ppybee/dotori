@@ -57,7 +57,7 @@ function makeVm(over: Partial<PortfolioVM> = {}): PortfolioVM {
     totalPnlKrw: 100000,
     returnPct: 14.29,
     bySector: [{ sector: "반도체", valueKrw: 800000, pct: 100 }],
-    byHolding: [{ symbol: "005930", name: "삼성전자", valueKrw: 800000, pct: 100 }],
+    byHolding: [{ symbol: "005930", name: "삼성전자", valueKrw: 800000, costKrw: 700000, pnlKrw: 100000, pct: 100 }],
     ...over,
   };
 }
@@ -122,6 +122,18 @@ describe("SectorDonut", () => {
     expect(screen.getByText("37.5%")).toBeInTheDocument();
   });
 
+  it("종목별 손익을 수익은 빨강·손실은 파랑 금액으로 보여준다", () => {
+    const vm = makeVm({
+      byHolding: [
+        { symbol: "005930", name: "삼성전자", valueKrw: 625000, costKrw: 500000, pnlKrw: 125000, pct: 62.5 },
+        { symbol: "000660", name: "SK하이닉스", valueKrw: 375000, costKrw: 400000, pnlKrw: -25000, pct: 37.5 },
+      ],
+    });
+    render(<HoldingWeightBars vm={vm} />);
+    expect(screen.getByText(/\+₩125,000/)).toHaveClass("text-up");
+    expect(screen.getByText(/-₩25,000/)).toHaveClass("text-down");
+  });
+
   it("섹터가 없으면 아무것도 렌더링하지 않는다", () => {
     const { container } = render(<SectorDonut vm={makeVm({ bySector: [] })} />);
     expect(container).toBeEmptyDOMElement();
@@ -132,8 +144,8 @@ describe("HoldingWeightBars", () => {
   it("종목명과 비중(부호 없이), 평가금을 보여준다", () => {
     const vm = makeVm({
       byHolding: [
-        { symbol: "005930", name: "삼성전자", valueKrw: 625000, pct: 62.5 },
-        { symbol: "000660", name: "SK하이닉스", valueKrw: 375000, pct: 37.5 },
+        { symbol: "005930", name: "삼성전자", valueKrw: 625000, costKrw: 500000, pnlKrw: 125000, pct: 62.5 },
+        { symbol: "000660", name: "SK하이닉스", valueKrw: 375000, costKrw: 400000, pnlKrw: -25000, pct: 37.5 },
       ],
     });
     render(<HoldingWeightBars vm={vm} />);
@@ -160,8 +172,9 @@ describe("HoldingsTable", () => {
       />,
     );
     expect(screen.getByText("삼성전자")).toBeInTheDocument();
-    expect(screen.getByText("₩800,000")).toBeInTheDocument();
-    expect(screen.getByText(/토스증권/)).toBeInTheDocument();
+    // 그룹 평가금과 행 평가금(종목 1개라 같음)
+    expect(screen.getAllByText("₩800,000")).toHaveLength(2);
+    expect(screen.getByRole("heading", { level: 3, name: "토스증권" })).toBeInTheDocument();
   });
 
   it("USD 종목은 원화 평가금과 원통화 보조 금액을 함께 보여준다", () => {
@@ -185,11 +198,33 @@ describe("HoldingsTable", () => {
         usdKrwRate={1350}
       />,
     );
-    expect(screen.getByText("₩864,000")).toBeInTheDocument();
+    expect(screen.getAllByText("₩864,000")).toHaveLength(2);
     // 보조 평가금: 2주 × $320 = $640.00
     expect(screen.getByText("$640.00")).toBeInTheDocument();
     // 현재가 per-share: $320.00
     expect(screen.getByText(/현재 \$320\.00/)).toBeInTheDocument();
+  });
+
+  it("종목코드·시장은 표시하지 않고, 수량은 소수 첫째 자리까지만 보여준다", () => {
+    const row = makeRow({ holding: makeHolding({ quantity: 1.2345 }) });
+    render(<HoldingsTable rows={[row]} connectionLabels={{ c1: "토스증권" }} />);
+    expect(screen.queryByText(/005930/)).toBeNull();
+    expect(screen.getByText(/1\.2주/)).toBeInTheDocument();
+  });
+
+  it("계좌(연동) 라벨별로 묶어 그룹 제목과 그룹 평가금을 보여준다(평가금 큰 그룹 먼저)", () => {
+    const rows = [
+      makeRow({ holding: makeHolding({ id: "a", connectionId: "c1", name: "삼성전자" }), valueKrw: 300000 }),
+      makeRow({ holding: makeHolding({ id: "b", connectionId: "c2", symbol: "AAPL", name: "애플" }), valueKrw: 500000 }),
+      makeRow({ holding: makeHolding({ id: "c", connectionId: "c1", symbol: "000660", name: "SK하이닉스" }), valueKrw: 400000 }),
+    ];
+    render(<HoldingsTable rows={rows} connectionLabels={{ c1: "계좌A", c2: "계좌B" }} />);
+    const groups = screen.getAllByRole("heading", { level: 3 });
+    expect(groups.map((g) => g.textContent)).toEqual(["계좌A", "계좌B"]);
+    expect(screen.getByText("₩700,000")).toBeInTheDocument();
+    // 그룹 안 종목은 평가금 내림차순
+    const names = screen.getAllByText(/삼성전자|애플|SK하이닉스/).map((e) => e.textContent);
+    expect(names).toEqual(["SK하이닉스", "삼성전자", "애플"]);
   });
 
   it("행이 없으면 아무것도 렌더링하지 않는다", () => {

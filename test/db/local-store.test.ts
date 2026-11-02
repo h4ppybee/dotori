@@ -94,3 +94,29 @@ describe("asset snapshot CRUD", () => {
     expect(await store.getAssetSnapshot("a")).toBeUndefined();
   });
 });
+
+describe("replaceEnvelopeItems", () => {
+  it("기존 항목을 지우고 시트 순서대로 넣으며, 프리셋에 없는 태그·통장만 커스텀에 더한다", async () => {
+    await store.upsertEnvelopeItem({ profile: "wife", tag: "저축", account: "토스", name: "지울 항목", amountKrw: 1 });
+    await store.putEnvelopeConfig({ id: "envelope", customTags: ["여행"], customAccounts: ["은행C"] });
+
+    await store.replaceEnvelopeItems([
+      { profile: "wife", tag: "저축", account: "신한", name: "청년도약적금", amountKrw: 500_000 },
+      { profile: "husband", tag: "투자", account: "은행C", name: "적립식", amountKrw: 300_000, note: "메모" },
+      { profile: "wife", tag: "경조사", account: "기타", name: "모임회비", amountKrw: 40_000 },
+    ]);
+
+    const items = (await store.listEnvelopeItems()).sort((a, b) =>
+      a.profile.localeCompare(b.profile) || a.sortOrder - b.sortOrder);
+    expect(items.map((i) => [i.profile, i.name, i.sortOrder, i.note])).toEqual([
+      ["husband", "적립식", 0, "메모"],
+      ["wife", "청년도약적금", 0, undefined],
+      ["wife", "모임회비", 1, undefined],
+    ]);
+    expect(items.every((i) => i.id && i.createdAt > 0)).toBe(true);
+
+    const cfg = await store.getEnvelopeConfig();
+    expect(cfg.customTags).toEqual(["여행", "경조사"]);
+    expect(cfg.customAccounts).toEqual(["은행C", "기타"]);
+  });
+});

@@ -2,10 +2,13 @@ import { db, priceKey } from "@/lib/db/schema";
 import type {
   Connection, Holding, PriceCache, FxRate, Settings, Member, SavingsAccount, SavingsCategory,
   PensionAccount, PensionCategory, CoinHolding, LoanAccount, LoanCategory, AssetSnapshot, Goal,
-  EnvelopeItem, EnvelopeConfig, EnvelopeProfile, SheetExportConfig, SyncConfig,
+  EnvelopeItem, EnvelopeConfig, EnvelopeProfile, SheetExportConfig, BiometricConfig, LedgerMonth,
+  SyncConfig,
 } from "@/lib/types";
-import { toLocalYmd } from "@/lib/format";
+import { MAX_AMOUNT, toLocalYmd } from "@/lib/format";
 import { encrypt } from "@/lib/crypto/crypto";
+import { TAG_PRESETS, ACCOUNT_PRESETS } from "@/lib/envelope/presets";
+import { isLeafId } from "@/lib/ledger/categories";
 
 const now = () => Date.now();
 const uid = () => crypto.randomUUID();
@@ -330,6 +333,46 @@ export const getEnvelopeConfig = async (): Promise<EnvelopeConfig> =>
   (await db.envelopeConfig.get("envelope")) ?? DEFAULT_ENVELOPE_CONFIG;
 export const putEnvelopeConfig = (c: EnvelopeConfig) => db.envelopeConfig.put(c);
 
+/** 시트에서 가져온 항목(id·순서·생성시각은 여기서 붙인다). */
+export type EnvelopeImportRow = Pick<EnvelopeItem, "profile" | "tag" | "account" | "name" | "amountKrw" | "note">;
+
+/**
+ * 통장 쪼개기 항목을 통째로 교체한다(시트 가져오기). 한 트랜잭션에서
+ * 기존 항목 삭제 → 프로필별 입력 순서대로 sortOrder 0..n → 프리셋·기존 커스텀에 없는 태그·통장을 커스텀에 추가.
+ */
+export async function replaceEnvelopeItems(rows: EnvelopeImportRow[]): Promise<void> {
+  await db.transaction("rw", db.envelopeItems, db.envelopeConfig, async () => {
+    const order: Record<EnvelopeProfile, number> = { wife: 0, husband: 0 };
+    const createdAt = now();
+    const items: EnvelopeItem[] = rows.map((r) => ({
+      ...r,
+      id: uid(),
+      sortOrder: order[r.profile]++,
+      createdAt,
+    }));
+    await db.envelopeItems.clear();
+    await db.envelopeItems.bulkAdd(items);
+
+    const cfg = await getEnvelopeConfig();
+    const addMissing = (presets: readonly string[], custom: string[], values: string[]) => {
+      const known = new Set([...presets, ...custom]);
+      const added = [...custom];
+      for (const v of values) {
+        if (!known.has(v)) {
+          known.add(v);
+          added.push(v);
+        }
+      }
+      return added;
+    };
+    await putEnvelopeConfig({
+      ...cfg,
+      customTags: addMissing(TAG_PRESETS, cfg.customTags, rows.map((r) => r.tag)),
+      customAccounts: addMissing(ACCOUNT_PRESETS, cfg.customAccounts, rows.map((r) => r.account)),
+    });
+  });
+}
+
 // ── 구글 시트 내보내기 설정 (기기별, 단일 행) ─────────────────────────────
 export const getSheetExportConfig = () => db.sheetExport.get("sheet");
 
@@ -349,6 +392,70 @@ export async function saveSheetExportConfig(
 }
 
 export const clearSheetExportConfig = () => db.sheetExport.delete("sheet");
+
+// ─── Face ID 잠금 해제 설정 ───
+export const getBiometricConfig = () => db.biometric.get("biometric");
+
+export async function saveBiometricConfig(input: Omit<BiometricConfig, "id">): Promise<void> {
+  await db.biometric.put({ id: "biometric", ...input });
+}
+
+export const clearBiometricConfig = () => db.biometric.delete("biometric");
+
+// ─── 가계부 (한 달 = 행 하나) ───
+/** 전체 달(월 오름차순 — 기본 키 "YYYY-MM" 순서). */
+export const listLedgerMonths = () => db.ledgerMonths.orderBy("id").toArray();
+
+/**
+ * 한 달 행을 하나의 rw 트랜잭션에서 get → 병합 → put. 행이 없으면 새로 만들고,
+ * 결과에 금액도 메모도 없으면 put 대신 delete한다.
+ */
+async function updateLedgerMonth(
+  month: string,
+  merge: (prev: Pick<LedgerMonth, "amounts" | "memo">) => Pick<LedgerMonth, "amounts" | "memo">,
+): Promise<void> {
+  await db.transaction("rw", db.ledgerMonths, async () => {
+    const prev = await db.ledgerMonths.get(month);
+    const next = merge({ amounts: prev?.amounts ?? {}, memo: prev?.memo ?? "" });
+    if (Object.keys(next.amounts).length === 0 && next.memo === "") {
+      await db.ledgerMonths.delete(month);
+      return;
+    }
+    await db.ledgerMonths.put({ id: month, ...next, updatedAt: now() });
+  });
+}
+
+/**
+ * 잎 금액 저장. leafAmounts는 모든 잎의 최종 값(편집 draft 전체)이다.
+ * 잎 키는 통째로 교체(0·빠진 잎은 키 삭제), 잎이 아닌 기존 키(알 수 없는 ID)만 보존한다. 메모는 건드리지 않는다.
+ */
+export async function saveLedgerAmounts(month: string, leafAmounts: Record<string, number>): Promise<void> {
+  await updateLedgerMonth(month, (prev) => {
+    const amounts: Record<string, number> = {};
+    Object.entries(prev.amounts).forEach(([id, v]) => {
+      if (!isLeafId(id)) {
+        amounts[id] = v;
+      }
+    });
+    Object.entries(leafAmounts).forEach(([id, v]) => {
+      // 유한하지 않은 값(NaN·Infinity)은 건너뛰고, 상한(1조 원)을 넘으면 자른다.
+      if (!isLeafId(id) || !Number.isFinite(v)) {
+        return;
+      }
+      const n = Math.min(Math.round(v), MAX_AMOUNT);
+      if (n <= 0) {
+        return;
+      }
+      amounts[id] = n;
+    });
+    return { amounts, memo: prev.memo };
+  });
+}
+
+/** 월간 회고 저장. 금액은 건드리지 않는다. */
+export async function saveLedgerMemo(month: string, memo: string): Promise<void> {
+  await updateLedgerMonth(month, (prev) => ({ amounts: prev.amounts, memo }));
+}
 
 // ── 기기 동기화 설정 (기기별, 단일 행) ─────────────────────────────────────
 export const getSyncConfig = () => db.syncConfig.get("sync");

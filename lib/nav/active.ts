@@ -12,9 +12,13 @@ export function isPlanRoute(pathname: string): boolean {
   return pathname === "/plan" || pathname.startsWith("/plan/");
 }
 
-/** 중첩 서브 네비(플로팅 pill)를 쓰는 라우트 = 자산 ∪ 계획. */
+export function isLedgerRoute(pathname: string): boolean {
+  return pathname === "/ledger" || pathname.startsWith("/ledger/");
+}
+
+/** 중첩 서브 네비(플로팅 pill)를 쓰는 라우트 = 자산 ∪ 계획 ∪ 가계부. */
 export function isNestedRoute(pathname: string): boolean {
-  return isAssetsRoute(pathname) || isPlanRoute(pathname);
+  return isAssetsRoute(pathname) || isPlanRoute(pathname) || isLedgerRoute(pathname);
 }
 
 /** 활성 메인 탭 key. 홈은 정확히 "/", 자산은 /assets 이하 전체, 나머지는 정확 매칭. */
@@ -25,10 +29,10 @@ export function resolveActiveMain(pathname: string): string | null {
   if (isAssetsRoute(pathname)) {
     return "assets";
   }
-  if (pathname === "/plan" || pathname.startsWith("/plan/")) {
+  if (isPlanRoute(pathname)) {
     return "plan";
   }
-  if (pathname === "/ledger" || pathname.startsWith("/ledger/")) {
+  if (isLedgerRoute(pathname)) {
     return "ledger";
   }
   if (pathname === "/settings" || pathname.startsWith("/settings/")) {
@@ -66,4 +70,15 @@ export function resolveActivePlanSub(pathname: string): string | null {
     return "realty";
   }
   return "envelope";
+}
+
+/** 활성 가계부 서브탭 key. 계획과 같이 기본 탭("monthly")이 catch-all이다. */
+export function resolveActiveLedgerSub(pathname: string): string | null {
+  if (!isLedgerRoute(pathname)) {
+    return null;
+  }
+  if (pathname === "/ledger/analysis" || pathname.startsWith("/ledger/analysis/")) {
+    return "analysis";
+  }
+  return "monthly";
 }

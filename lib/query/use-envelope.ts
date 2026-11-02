@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { queryOptions, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAppStore } from "@/stores/app-store";
 import {
   listEnvelopeItems,
@@ -9,32 +9,37 @@ import {
   bulkUpdateEnvelope,
   getEnvelopeConfig,
   putEnvelopeConfig,
+  replaceEnvelopeItems,
 } from "@/lib/db/local-store";
+import { importEnvelopeFromSheet } from "@/lib/envelope/import-from-sheet";
+import type { ImportedEnvelopeItem } from "@/lib/envelope/sheet-import";
 import type { EnvelopeItem, EnvelopeConfig } from "@/lib/types";
 
 const ITEMS_KEY = ["envelopeItems"] as const;
 const CONFIG_KEY = ["envelopeConfig"] as const;
 
+/** 통장 쪼개기 쿼리 설정 — 훅과 잠금 해제 직후 미리 읽기(prefetchAppData)가 함께 쓴다. */
+export const envelopeItemsQueryOptions = queryOptions({
+  queryKey: ITEMS_KEY,
+  staleTime: 30_000,
+  queryFn: listEnvelopeItems,
+});
+export const envelopeConfigQueryOptions = queryOptions({
+  queryKey: CONFIG_KEY,
+  staleTime: 30_000,
+  queryFn: getEnvelopeConfig,
+});
+
 /** 통장 쪼개기 항목 전체. 잠금 상태에서는 비활성. */
 export function useEnvelopeItems() {
   const locked = useAppStore((s) => s.locked);
-  return useQuery({
-    queryKey: ITEMS_KEY,
-    enabled: !locked,
-    staleTime: 30_000,
-    queryFn: listEnvelopeItems,
-  });
+  return useQuery({ ...envelopeItemsQueryOptions, enabled: !locked });
 }
 
 /** 커스텀 태그·은행 config. 잠금 상태에서는 비활성. */
 export function useEnvelopeConfig() {
   const locked = useAppStore((s) => s.locked);
-  return useQuery({
-    queryKey: CONFIG_KEY,
-    enabled: !locked,
-    staleTime: 30_000,
-    queryFn: getEnvelopeConfig,
-  });
+  return useQuery({ ...envelopeConfigQueryOptions, enabled: !locked });
 }
 
 /** 항목 저장·삭제 + 커스텀 태그/은행 추가 뮤테이션. 성공 시 해당 쿼리 무효화. */
@@ -79,4 +84,33 @@ export function useEnvelopeMutations() {
   });
 
   return { save, remove, addCustom, bulkUpdate };
+}
+
+/**
+ * 시트에서 가져오기 — 두 단계.
+ * preview: 시트를 읽어 파싱만 한다(DB 변경 없음, 실패는 { status: "error" }로 반환).
+ * apply: 확인받은 항목으로 통째로 교체하고 항목·config 쿼리를 무효화한다.
+ */
+export function useEnvelopeSheetImport() {
+  const sessionKey = useAppStore((s) => s.sessionKey);
+  const qc = useQueryClient();
+
+  const preview = useMutation({
+    mutationFn: async () => {
+      if (sessionKey === null) {
+        return { status: "error" as const, message: "잠금 해제 후 가져올 수 있어요." };
+      }
+      return importEnvelopeFromSheet({ key: sessionKey });
+    },
+  });
+
+  const apply = useMutation({
+    mutationFn: (items: ImportedEnvelopeItem[]) => replaceEnvelopeItems(items),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ITEMS_KEY });
+      void qc.invalidateQueries({ queryKey: CONFIG_KEY });
+    },
+  });
+
+  return { preview, apply };
 }

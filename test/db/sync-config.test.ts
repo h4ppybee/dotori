@@ -78,12 +78,22 @@ const V10_STORES = {
   sheetExport: "id",
 };
 
-describe("Dexie v11 업그레이드", () => {
-  it("source가 없는 savings·coin 행을 MANUAL로 채워 인덱스 조회에 잡히게 한다", async () => {
+// v12 시점(main 배포본 — Face ID biometric v11·가계부 ledgerMonths v12까지).
+const V12_STORES = {
+  ...V10_STORES,
+  biometric: "id",
+  ledgerMonths: "id",
+};
+
+describe("Dexie v13 업그레이드", () => {
+  it.each([
+    { from: 10, stores: V10_STORES },
+    { from: 12, stores: V12_STORES },
+  ])("v$from에서 열면 source가 없는 savings·coin 행을 MANUAL로 채워 인덱스 조회에 잡히게 한다", async ({ from, stores }) => {
     db.close();
     await Dexie.delete("dotori");
     const legacy = new Dexie("dotori");
-    legacy.version(10).stores(V10_STORES);
+    legacy.version(from).stores(stores);
     await legacy.open();
     await legacy.table("savings").bulkPut([
       { id: "s-legacy", category: "CHECKING", name: "파킹통장", amount: 1_000_000, sortOrder: 0, updatedAt: 1 },
@@ -101,5 +111,24 @@ describe("Dexie v11 업그레이드", () => {
     expect((await db.savings.get("s-auto"))?.source).toBe("AUTO");
     expect((await db.coin.where("source").equals("MANUAL").toArray()).map((r) => r.id)).toEqual(["c-legacy"]);
     expect(await db.syncConfig.count()).toBe(0);
+    expect(db.verno).toBe(13);
+  });
+
+  it("v12의 가계부·Face ID 행은 업그레이드 후에도 그대로 남는다", async () => {
+    db.close();
+    await Dexie.delete("dotori");
+    const legacy = new Dexie("dotori");
+    legacy.version(12).stores(V12_STORES);
+    await legacy.open();
+    await legacy.table("ledgerMonths").put({ id: "2026-01", amounts: { a: 1 }, memo: "", updatedAt: 1 });
+    await legacy.table("biometric").put({
+      id: "biometric", credentialId: "cred", prfSalt: "salt", secretEnc: "iv.ct", createdAt: 1,
+    });
+    legacy.close();
+
+    await db.open();
+
+    expect((await db.ledgerMonths.get("2026-01"))?.amounts).toEqual({ a: 1 });
+    expect((await db.biometric.get("biometric"))?.credentialId).toBe("cred");
   });
 });

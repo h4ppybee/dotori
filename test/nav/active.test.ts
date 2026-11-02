@@ -7,6 +7,8 @@ import {
   isPlanRoute,
   isNestedRoute,
   resolveActivePlanSub,
+  isLedgerRoute,
+  resolveActiveLedgerSub,
 } from "@/lib/nav/active";
 
 describe("resolveActiveMain", () => {
@@ -76,5 +78,25 @@ describe("plan nav", () => {
     expect(resolveActivePlanSub("/plan")).toBe("envelope");
     expect(resolveActivePlanSub("/plan/realty")).toBe("realty");
     expect(resolveActivePlanSub("/plan/anything")).toBe("envelope");
+  });
+});
+
+describe("ledger nav", () => {
+  it("isLedgerRoute는 세그먼트 경계를 지킨다", () => {
+    expect(isLedgerRoute("/ledger")).toBe(true);
+    expect(isLedgerRoute("/ledger/analysis")).toBe(true);
+    expect(isLedgerRoute("/ledgers")).toBe(false);
+  });
+  it("가계부도 중첩 경로다", () => {
+    expect(isNestedRoute("/ledger")).toBe(true);
+    expect(isNestedRoute("/ledger/analysis")).toBe(true);
+  });
+  it("가계부 경로의 메인 탭은 ledger", () => {
+    expect(resolveActiveMain("/ledger/analysis")).toBe("ledger");
+  });
+  it("resolveActiveLedgerSub", () => {
+    expect(resolveActiveLedgerSub("/ledger")).toBe("monthly");
+    expect(resolveActiveLedgerSub("/ledger/analysis")).toBe("analysis");
+    expect(resolveActiveLedgerSub("/plan")).toBeNull();
   });
 });

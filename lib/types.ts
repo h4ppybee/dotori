@@ -227,6 +227,27 @@ export interface SheetExportConfig {
   updatedAt: number;
 }
 
+/** Face ID 잠금 해제 설정(단일 행). 기기·도메인에 묶임 → 백업 제외. */
+export interface BiometricConfig {
+  id: "biometric";      // 고정 키
+  credentialId: string; // 패스키 ID (base64url)
+  prfSalt: string;      // PRF eval 입력 32바이트 (base64)
+  secretEnc: string;    // PRF 파생 키로 암호화한 PIN/비밀번호 (iv.ct)
+  createdAt: number;
+}
+
+/**
+ * 가계부 한 달(한 달 = 행 하나). 사용자가 직접 입력 → 백업 대상.
+ * amounts는 잎 카테고리 ID → 원(0 이상 정수). 0·미입력은 키를 두지 않는다.
+ * 현재 트리에 없는 ID(과거 버전 데이터 등)는 보존하되 합계·화면에서는 무시한다.
+ */
+export interface LedgerMonth {
+  id: string;                      // "YYYY-MM"
+  amounts: Record<string, number>;
+  memo: string;                    // 월간 회고(빈 문자열 허용)
+  updatedAt: number;
+}
+
 /** 기기 동기화 설정(단일 행). 기기별 민감 설정 → 백업·동기화 대상 아님. */
 export interface SyncConfig {
   id: "sync";                    // 고정 키

@@ -42,8 +42,8 @@ describe("bySector", () => {
 describe("byHolding", () => {
   it("computes pct of total and sorts desc", () => {
     const out = byHolding([
-      { symbol: "005930", name: "삼성전자", valueKrw: 720000 },
-      { symbol: "AAPL", name: "Apple", valueKrw: 432000 },
+      { symbol: "005930", name: "삼성전자", valueKrw: 720000, costKrw: 600000 },
+      { symbol: "AAPL", name: "Apple", valueKrw: 432000, costKrw: 450000 },
     ]);
     expect(out[0].symbol).toBe("005930");
     expect(out[0].pct).toBeCloseTo(62.5, 6);
@@ -53,14 +53,25 @@ describe("byHolding", () => {
 
   it("같은 symbol은 한 행으로 합산한다", () => {
     const out = byHolding([
-      { symbol: "000660", name: "SK하이닉스", valueKrw: 300000 },
-      { symbol: "005930", name: "삼성전자", valueKrw: 400000 },
-      { symbol: "000660", name: "SK하이닉스", valueKrw: 100000 },
+      { symbol: "000660", name: "SK하이닉스", valueKrw: 300000, costKrw: 250000 },
+      { symbol: "005930", name: "삼성전자", valueKrw: 400000, costKrw: 400000 },
+      { symbol: "000660", name: "SK하이닉스", valueKrw: 100000, costKrw: 120000 },
     ]);
     expect(out).toHaveLength(2);
     const skh = out.find((r) => r.symbol === "000660");
     expect(skh?.valueKrw).toBe(400000);
     expect(skh?.pct).toBeCloseTo(50, 6);
+    // 매수금액·손익도 합산한다
+    expect(skh?.costKrw).toBe(370000);
+    expect(skh?.pnlKrw).toBe(30000);
+  });
+
+  it("종목별 손익 = 평가금 − 매수금액", () => {
+    const out = byHolding([
+      { symbol: "005930", name: "삼성전자", valueKrw: 720000, costKrw: 600000 },
+      { symbol: "AAPL", name: "Apple", valueKrw: 432000, costKrw: 450000 },
+    ]);
+    expect(out.map((r) => r.pnlKrw)).toEqual([120000, -18000]);
   });
 
   it("returns [] for empty input", () => {

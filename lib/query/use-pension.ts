@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { queryOptions, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAppStore } from "@/stores/app-store";
 import { listPension, upsertPension, deletePension, bulkUpdatePension } from "@/lib/db/local-store";
 import { buildPensionVM } from "@/lib/pension/pension-service";
@@ -8,15 +8,17 @@ import type { PensionAccount } from "@/lib/types";
 
 const PENSION_KEY = ["pension"] as const;
 
+/** 연금 쿼리 설정 — 훅과 잠금 해제 직후 미리 읽기(prefetchAppData)가 함께 쓴다. */
+export const pensionQueryOptions = queryOptions({
+  queryKey: PENSION_KEY,
+  staleTime: 30_000,
+  queryFn: async () => buildPensionVM(await listPension()),
+});
+
 /** 연금 뷰모델을 로컬 DB에서 읽어 계산해 반환한다. 잠금 상태에서는 비활성. */
 export function usePension() {
   const locked = useAppStore((s) => s.locked);
-  return useQuery({
-    queryKey: PENSION_KEY,
-    enabled: !locked,
-    staleTime: 30_000,
-    queryFn: async () => buildPensionVM(await listPension()),
-  });
+  return useQuery({ ...pensionQueryOptions, enabled: !locked });
 }
 
 /** 연금 계좌 추가/수정·삭제·일괄저장 뮤테이션. 성공 시 pension 쿼리 무효화. */

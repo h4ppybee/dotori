@@ -12,7 +12,7 @@ import { readManualTables, type ManualTables } from "@/lib/backup/backup";
 
 export const SYNC_VERSION = 1;
 
-export type SyncData = Omit<ManualTables, "snapshots">;
+export type SyncData = Omit<ManualTables, "snapshots" | "ledgerMonths">;
 export type SyncTable = keyof SyncData;
 
 export const SYNC_TABLES: readonly SyncTable[] = [

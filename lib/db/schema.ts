@@ -2,7 +2,7 @@ import Dexie, { type Table } from "dexie";
 import type {
   Member, Connection, TokenCache, Holding, PriceCache, FxRate, DailySnapshot, Settings, SavingsAccount,
   PensionAccount, CoinHolding, LoanAccount, AssetSnapshot, Goal, EnvelopeItem, EnvelopeConfig, SheetExportConfig,
-  SyncConfig,
+  BiometricConfig, LedgerMonth, SyncConfig,
 } from "@/lib/types";
 
 /**
@@ -35,6 +35,8 @@ export class DotoriDB extends Dexie {
   envelopeItems!: Table<EnvelopeItem, string>;    // key: id (통장 쪼개기 항목)
   envelopeConfig!: Table<EnvelopeConfig, string>; // key: id (커스텀 태그·은행)
   sheetExport!: Table<SheetExportConfig, string>; // key: id (구글 시트 내보내기 설정, 단일 행)
+  biometric!: Table<BiometricConfig, string>; // key: id (Face ID 잠금 해제, 단일 행)
+  ledgerMonths!: Table<LedgerMonth, string>; // key: id ("YYYY-MM", 가계부 한 달 = 행 하나)
   syncConfig!: Table<SyncConfig, string>; // key: id (기기 동기화 설정, 단일 행)
 
   constructor() {
@@ -89,10 +91,18 @@ export class DotoriDB extends Dexie {
     this.version(10).stores({
       sheetExport: "id",
     });
-    // v11: 기기 동기화 설정 테이블 추가 (기기별, 백업 제외).
+    // v11: Face ID 잠금 해제 설정 테이블 추가 (기기별, 백업 제외)
+    this.version(11).stores({
+      biometric: "id",
+    });
+    // v12: 가계부(월·카테고리 금액 + 회고) 테이블 추가 (수동 데이터, 백업 포함)
+    this.version(12).stores({
+      ledgerMonths: "id",
+    });
+    // v13: 기기 동기화 설정 테이블 추가 (기기별, 백업 제외).
     // savings·coin 중 source가 없는 예전 행을 MANUAL로 채운다 — 인덱스 조회
     // where("source").equals("MANUAL")에서 빠지면 동기화 수집·교체가 어긋난다.
-    this.version(11).stores({
+    this.version(13).stores({
       syncConfig: "id",
     }).upgrade(async (tx) => {
       const backfill = (row: { source?: string }) => {

@@ -1,7 +1,9 @@
 /**
- * dotori Apps Script 웹앱 — 구글 시트 내보내기 + 기기 동기화 저장소.
+ * dotori Apps Script 웹앱 — 구글 시트 내보내기·통장쪼개기 읽기 + 기기 동기화 저장소.
  * - 시트 내보내기(action 없음 또는 "sheet.export"): { version: 1, secret, tabs: [{ name, rows }] }를 받아
  *   dotori_* 탭을 통째로 덮어쓴다(기존 동작 그대로 — 하위 호환).
+ * - 통장쪼개기 읽기(action "readEnvelope"): { version: 1, secret, action: "readEnvelope" }이면 통장쪼개기
+ *   원본 탭(ENVELOPE_SOURCE_TAB)의 값을 { ok: true, values }로 그대로 돌려준다(표 해석은 앱이 한다).
  * - 기기 동기화(action "sync.meta" | "sync.get" | "sync.put"): 앱이 암호화한 봉투(blob)를 배포자 드라이브
  *   dotori-sync/ 폴더에 current.json + 최근 10개 버전(v-<revision>.json)으로 보관한다.
  *   스크립트는 봉투를 해독하지 못한다(키는 기기에만 있다). 메타(revision·저장 시각·기기 이름·keyId·버전 파일 id)는
@@ -26,6 +28,8 @@ const SYNC_KEEP_VERSIONS = 10;
 const SYNC_VERSION_FILE_RE = /^v-(\d+)\.json$/;
 const KEY_ID_RE = /^[0-9a-f]{16}$/;
 const JSON_MIME = "application/json";
+// 통장 쪼개기 원본 탭 이름. 시트에서 탭 이름을 바꾸면 여기만 고친다.
+const ENVELOPE_SOURCE_TAB = "통장쪼개기";
 
 function doPost(e) {
   const contents = e && e.postData ? e.postData.contents : "";
@@ -53,6 +57,9 @@ function doPost(e) {
   const action = body.action;
   if (action === undefined || action === "sheet.export") {
     return handleSheetExport_(body);
+  }
+  if (action === "readEnvelope") {
+    return json_(readEnvelope_());
   }
   if (action === "sync.meta") {
     return handleSyncMeta_();
@@ -86,6 +93,15 @@ function handleSheetExport_(body) {
     lock.releaseLock();
   }
   return json_({ ok: true, writtenAt: new Date().toISOString() });
+}
+
+/** 통장쪼개기 원본 탭의 값을 그대로 돌려준다. 읽기만 하므로 쓰기 락을 잡지 않는다(내보내기는 dotori_* 탭만 쓴다). */
+function readEnvelope_() {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(ENVELOPE_SOURCE_TAB);
+  if (!sheet) {
+    return { ok: false, error: "NO_SOURCE_TAB" };
+  }
+  return { ok: true, values: sheet.getDataRange().getValues() };
 }
 
 function isValidBody_(body) {

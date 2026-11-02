@@ -9,6 +9,7 @@ import { ProfileSegment } from "@/components/envelope/ProfileSegment";
 import { RollupCard } from "@/components/envelope/RollupCard";
 import { EnvelopeItemRow } from "@/components/envelope/EnvelopeItemRow";
 import { EnvelopeItemDialog } from "@/components/envelope/EnvelopeItemDialog";
+import { EnvelopeSheetImport } from "@/components/envelope/EnvelopeSheetImport";
 import {
   useEnvelopeItems,
   useEnvelopeConfig,
@@ -18,7 +19,7 @@ import { buildEnvelopeView } from "@/lib/envelope/envelope-service";
 import type { EnvelopeItemRow as EnvelopeItemRowData } from "@/lib/envelope/envelope-service";
 import { TAG_PRESETS, ACCOUNT_PRESETS, mergePresets } from "@/lib/envelope/presets";
 import { tagColor } from "@/lib/envelope/tag-color";
-import { formatKrw } from "@/lib/format";
+import { formatKrw, parseAmount } from "@/lib/format";
 import type { EnvelopeItem, EnvelopeProfile } from "@/lib/types";
 
 // scope 라벨 — 통합/아내/남편.
@@ -33,16 +34,6 @@ const PROFILE_LABEL: Record<EnvelopeProfile, string> = {
   wife: "아내",
   husband: "남편",
 };
-
-/** 편집 모드에서 금액 문자열을 정수로. 빈 문자열이나 숫자 아님은 0. */
-function parseAmount(s: string): number {
-  const digits = s.replace(/[^\d]/g, "");
-  if (digits === "") {
-    return 0;
-  }
-  const n = Number(digits);
-  return Number.isFinite(n) ? n : 0;
-}
 
 export default function PlanPage() {
   // 현재 보고 있는 프로필(통합/아내/남편).
@@ -179,13 +170,23 @@ export default function PlanPage() {
     );
   }
 
+  // 항목을 불러오기 전에는 그리지 않는다 — 0원·"아직 항목이 없어요"가 잠깐 보였다가 바뀌며 깜박이지 않게.
+  // 보통은 잠금 해제 직후 미리 읽어 두므로(AppDataGate) 이 분기에 머물지 않는다.
+  if (itemsData === undefined) {
+    return <main className="min-h-screen bg-canvas" />;
+  }
+
   return (
     <main className="min-h-screen bg-canvas">
       <div className="mx-auto w-full max-w-[480px] px-4 pt-6 pb-28 flex flex-col gap-4">
-        {/* 헤딩 */}
-        <h1 className="text-[22px] font-bold leading-[1.3] tracking-[-0.3px] text-ink">
-          통장 쪼개기
-        </h1>
+        {/* 헤딩 + 시트에서 가져오기(시트 연결 시) */}
+        <EnvelopeSheetImport
+          heading={
+            <h1 className="text-[22px] font-bold leading-[1.3] tracking-[-0.3px] text-ink">
+              통장 쪼개기
+            </h1>
+          }
+        />
 
         {/* 프로필 세그먼트 */}
         <ProfileSegment value={scope} onChange={handleScopeChange} />

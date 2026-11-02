@@ -82,3 +82,22 @@ export function toLocalYmd(ms: number): string {
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
+
+/** 입력 금액 상한(1조 원). */
+export const MAX_AMOUNT = 1_000_000_000_000;
+
+/**
+ * 금액 입력 문자열을 0 이상 정수(원)로. 쉼표·₩·공백·부호 등 숫자 외 문자는 모두 지우고,
+ * 빈 문자열은 0, 상한(1조 원)을 넘으면 상한으로 자른다.
+ */
+export function parseAmount(s: string): number {
+  const digits = s.replace(/[^\d]/g, "");
+  if (digits === "") {
+    return 0;
+  }
+  const n = Number(digits);
+  if (!Number.isFinite(n) || n > MAX_AMOUNT) {
+    return MAX_AMOUNT;
+  }
+  return n;
+}
