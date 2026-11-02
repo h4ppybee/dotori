@@ -2,9 +2,16 @@ import { describe, it, expect, afterEach, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { useAppStore } from "@/stores/app-store";
 import { db } from "@/lib/db/schema";
-import { deriveKey, makeSalt, makeVerifier, checkVerifier, encrypt } from "@/lib/crypto/crypto";
+import { deriveKey, makeSalt, makeVerifier, checkVerifier, encrypt, decrypt } from "@/lib/crypto/crypto";
 import { QueryWrapper } from "@/test/utils/query";
-import { putSettings, getSettings, saveBiometricConfig, getBiometricConfig } from "@/lib/db/local-store";
+import {
+  putSettings, getSettings, saveBiometricConfig, getBiometricConfig, saveSyncConfig, getSyncConfig,
+} from "@/lib/db/local-store";
+
+const SYNC_KEY_TEXT = "TEST-SYNC-KEY-TEXT";
+const seedSyncConfig = (key: CryptoKey) => saveSyncConfig(key, {
+  syncKeyText: SYNC_KEY_TEXT, keyId: "0011223344556677", deviceName: "테스트 기기", lastRevision: 1, lastSyncedHash: "h",
+});
 
 // next/navigation mock
 vi.mock("next/navigation", () => ({
@@ -100,6 +107,16 @@ describe("SettingsPage — 섹션 제목 렌더링", () => {
     await waitFor(() => expect(useAppStore.getState().lastSheetExport).toBeNull());
   });
 
+  it("모든 데이터를 삭제하면 기기 동기화 설정과 마지막 동기화 기록도 지운다", async () => {
+    await seedSyncConfig(useAppStore.getState().sessionKey!);
+    useAppStore.setState({ lastDeviceSync: { at: 1, status: "ok" } });
+    await renderSettings();
+    fireEvent.click(screen.getByRole("button", { name: "모든 데이터 삭제" }));
+    fireEvent.click(await screen.findByRole("button", { name: "삭제하기" }));
+    await waitFor(() => expect(useAppStore.getState().lastDeviceSync).toBeNull());
+    expect(await getSyncConfig()).toBeUndefined();
+  });
+
   it("모든 데이터를 삭제하면 Face ID 등록 제안 기록(dotori.biometricOffered)도 지운다", async () => {
     localStorage.setItem("dotori.biometricOffered", "1");
     await renderSettings();
@@ -188,6 +205,7 @@ describe("SettingsPage — 섹션 제목 렌더링", () => {
     await saveBiometricConfig({
       credentialId: "cred-1", prfSalt: "salt", secretEnc: "iv.ct", createdAt: 1,
     });
+    await seedSyncConfig(oldKey);
 
     await renderSettings();
 
@@ -201,6 +219,9 @@ describe("SettingsPage — 섹션 제목 렌더링", () => {
       await screen.findByText(/Face ID는 다시 켜 주세요/, {}, { timeout: 15000 }),
     ).toBeInTheDocument();
     expect(await getBiometricConfig()).toBeUndefined();
+    // Face ID 해제 뒤 rekeyVault가 동기화 키도 새 PIN 키로 다시 암호화했다
+    const newKey = await deriveKey("246810", (await getSettings())!.kdfSalt);
+    expect(await decrypt(newKey, (await getSyncConfig())!.syncKeyEnc)).toBe(SYNC_KEY_TEXT);
   });
 
   it("Face ID 해제에 실패하면 PIN 변경 자체를 중단한다", async () => {
@@ -215,6 +236,7 @@ describe("SettingsPage — 섹션 제목 렌더링", () => {
     await saveBiometricConfig({
       credentialId: "cred-1", prfSalt: "salt", secretEnc: "iv.ct", createdAt: 1,
     });
+    const syncBefore = await seedSyncConfig(oldKey);
     const deleteSpy = vi.spyOn(db.biometric, "delete").mockRejectedValueOnce(new Error("boom"));
 
     await renderSettings();
@@ -235,6 +257,8 @@ describe("SettingsPage — 섹션 제목 렌더링", () => {
     expect(await checkVerifier(oldKey, stillSettings!.verifier)).toBe(true);
     // Face ID 등록도 지워지지 않은 채 남아 있다(삭제 자체가 실패했으므로)
     expect(await getBiometricConfig()).toBeDefined();
+    // rekeyVault 전에 멈췄으니 동기화 키도 이전 키 암호문 그대로다
+    expect((await getSyncConfig())?.syncKeyEnc).toBe(syncBefore.syncKeyEnc);
 
     deleteSpy.mockRestore();
   });
