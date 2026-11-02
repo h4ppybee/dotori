@@ -11,6 +11,7 @@ import { Switch } from "@/components/ui/Switch";
 import { ConnectionForm } from "@/components/settings/ConnectionForm";
 import { BackupPanel } from "@/components/settings/BackupPanel";
 import { SheetExportPanel } from "@/components/settings/SheetExportPanel";
+import { DeviceSyncPanel } from "@/components/settings/DeviceSyncPanel";
 import { BiometricPanel } from "@/components/settings/BiometricPanel";
 import { getSettings, putSettings, getBiometricConfig } from "@/lib/db/local-store";
 import { useSettings } from "@/lib/query/use-settings";
@@ -18,6 +19,7 @@ import { BIOMETRIC_CONFIG_KEY } from "@/lib/query/use-biometric";
 import { useQueryClient } from "@tanstack/react-query";
 import { deriveKey, makeSalt, makeVerifier, checkVerifier } from "@/lib/crypto/crypto";
 import { rekeyVault } from "@/lib/crypto/rekey";
+import { runWithDeviceSyncQueue, disableDeviceSync } from "@/lib/device-sync/engine";
 import { disableBiometric, clearBiometricOffered } from "@/lib/biometric/biometric-unlock";
 import { db } from "@/lib/db/schema";
 import { useAppStore } from "@/stores/app-store";
@@ -137,16 +139,20 @@ function PinSection() {
 
       const newSalt = makeSalt();
       const newKey = await deriveKey(next, newSalt);
-      await rekeyVault(oldKey, newKey);
-      await putSettings({
-        ...stored,
-        kdfSalt: newSalt,
-        verifier: await makeVerifier(newKey),
-        lockType: "pin",
+      // 재암호화부터 세션 키 교체까지 기기 동기화 큐 안에서 한다 — 진행 중인 동기화 설정 흐름이
+      // 이전 키로 암호화한 동기화 키를 저장·복원해 새 PIN으로 열 수 없게 되는 일을 막는다.
+      await runWithDeviceSyncQueue(async () => {
+        await rekeyVault(oldKey, newKey);
+        await putSettings({
+          ...stored,
+          kdfSalt: newSalt,
+          verifier: await makeVerifier(newKey),
+          lockType: "pin",
+        });
+        // 세션 키를 새 키로 교체 — 잠금 해제 상태를 유지한다
+        unlock(newKey);
       });
       await queryClient.invalidateQueries({ queryKey: ["settings"] });
-      // 세션 키를 새 키로 교체 — 잠금 해제 상태를 유지한다
-      unlock(newKey);
 
       clearFields();
       const base = isPinLock ? "PIN을 바꿨어요." : "PIN을 설정했어요.";
@@ -248,6 +254,7 @@ function LockNowSection() {
 function DeleteAllSection() {
   const lock = useAppStore((s) => s.lock);
   const clearLastSheetExport = useAppStore((s) => s.clearLastSheetExport);
+  const clearLastDeviceSync = useAppStore((s) => s.clearLastDeviceSync);
   const router = useRouter();
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -256,11 +263,15 @@ function DeleteAllSection() {
   async function handleDeleteAll() {
     setDeleting(true);
     try {
+      // 진행 중인 기기 동기화가 끝나길 기다리며 설정·기록을 먼저 지운다 — 늦게 끝난 결과가 삭제 뒤에
+      // 적용되거나 마지막 동기화 기록을 되살리지 않게(이후 시작되는 동기화는 설정이 없어 건너뛴다).
+      await disableDeviceSync();
       await db.delete();
       await db.open();
       lock();
-      // 시트 내보내기 설정도 함께 사라졌으니 지난 성공/실패 기록이 남지 않게 지운다.
+      // 시트 내보내기·기기 동기화 설정도 함께 사라졌으니 지난 성공/실패 기록이 남지 않게 지운다.
       clearLastSheetExport();
+      clearLastDeviceSync();
       // Face ID 등록도 함께 사라졌다 — 다시 설치한 것처럼 등록 제안을 한 번 더 보여 준다.
       clearBiometricOffered();
       await queryClient.invalidateQueries({ queryKey: BIOMETRIC_CONFIG_KEY });
@@ -320,6 +331,7 @@ export default function SettingsPage() {
           <ConnectionForm />
           <BackupPanel />
           <SheetExportPanel />
+          <DeviceSyncPanel />
           <PrivacySection />
           <LockNowSection />
           <PinSection />

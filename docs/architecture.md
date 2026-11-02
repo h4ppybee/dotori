@@ -40,7 +40,7 @@ npm run test:watch # vitest watch
 
 ```
 app/                       App Router 라우트 (모두 "use client")
-  layout.tsx               QueryProvider + LockGate + AppNav + ServiceWorker 등록
+  layout.tsx               QueryProvider + LockGate + AppNav + ServiceWorker 등록, SyncConflictDialog(기기 동기화 충돌 선택) 1회 마운트
   page.tsx                 홈 — 순자산 요약 + 목표 자산(GoalCard/GoalForm/GoalProgressRing)
   assets/page.tsx          자산 개요 — 순자산 = 자산 합계 − 부채, 자산별 카드 + DebtSection + SnapshotSection
   assets/stocks/page.tsx   주식 대시보드 (구 홈 — 포트폴리오/섹터/보유)
@@ -59,7 +59,7 @@ app/                       App Router 라우트 (모두 "use client")
   globals.css, manifest.json
 
 integrations/
-  apps-script/             구글 시트 내보내기 Apps Script 원본(sheet-export.gs)과 설치 안내(README.md) — 저장소 버전 관리, 시트에서 직접 고치지 않음
+  apps-script/             구글 시트 내보내기 + 기기 동기화 저장소 겸용 Apps Script 원본(sheet-export.gs)과 설치 안내(README.md) — 저장소 버전 관리, 시트에서 직접 고치지 않음
 
 components/
   ui/                      디자인 시스템 프리미티브
@@ -77,7 +77,8 @@ components/
                            SeriesLine(기록 없는 달에서 끊기는 점 있는 선), ledger-constants(차트 색·슬롯 팔레트·금액 보기 라벨)
   holdings/HoldingForm.tsx 종목 추가/편집 폼
   nav/                     AppNav, MainTabBar, NestedTabBar(자산·계획·가계부 공용 플로팅 서브탭), DummyPage
-  settings/                ConnectionForm, BackupPanel, SheetExportPanel(구글 시트 내보내기 연결/해제/지금 내보내기), BiometricPanel(Face ID 잠금 해제 켜기/끄기)
+  sync/                    SyncConflictDialog(기기 동기화 충돌 선택 — app/layout.tsx에서 1회 마운트)
+  settings/                ConnectionForm, BackupPanel, SheetExportPanel(구글 시트 내보내기 연결/해제/지금 내보내기), DeviceSyncPanel(기기 동기화 설정), BiometricPanel(Face ID 잠금 해제 켜기/끄기)
   LockGate, AppDataGate(잠금 해제 직후 탭 데이터 미리 읽기), ServiceWorkerRegister
 
 lib/
@@ -128,7 +129,7 @@ docs/                      본 문서 + superpowers/(스펙·플랜)
      ▼
 [IndexedDB]  holdings · priceCache · fxRates · sectorOverrides · snapshots · settings
              · savings · pension · coin · debts · assetSnapshots · goal · session
-             · envelopeItems · envelopeConfig · sheetExport · biometric · ledgerMonths
+             · envelopeItems · envelopeConfig · sheetExport · biometric · ledgerMonths · syncConfig
      │
 [use-* 훅]   DB 로드 → 자산별 순수 서비스로 VM 빌드
      │   주식: buildPortfolio(merge+pnl+fx+ratios+resolveSector)
@@ -142,6 +143,14 @@ docs/                      본 문서 + superpowers/(스펙·플랜)
 [app-store.lastSheetExport]  자동·수동 공용 결과({ at, status, message? }) — RefreshBar·SheetExportPanel이 여기서 읽음
 ```
 
+```
+[unlock()] → useAppStore.subscribe(sessionKey null→값) → pullIfNewer()  (동기 시작, pendingPull)
+[useAssetsRefresh·useRefresh mutationFn] → awaitPendingPull(10s, 타임아웃이면 그 받기 보류) → 갱신
+[useAssetsRefresh 성공] → runSheetExport + syncNow (fire-and-forget, 받기 → 올리기)
+[설정 "지금 동기화"] → syncNow = pullIfNewer → pushIfChanged
+[결과] → app-store.lastDeviceSync(persist) · syncConflict(비영속 → SyncConflictDialog)
+```
+
 - **순수 계산 레이어**: `lib/portfolio/`(및 `savings/`·`pension/`·`coin/`·`debt/`·`envelope/`)의 서비스 함수들은 DB·비동기·`Date` 없이 입력만으로 결과를 낸다 ([portfolio-service.ts](../lib/portfolio/portfolio-service.ts) 헤더 주석 참고). 테스트가 쉽고 결정적이다.
 - **직접 추가(MANUAL)**: 주식은 [HoldingForm](../components/holdings/HoldingForm.tsx)이 `upsertManualHolding` + `sectorOverride`를 기록한다(추가는 `holdings/new`, 수정·삭제는 `holdings/[id]`). 저축·연금·코인·부채는 각 자산 화면의 `manage`/다이얼로그에서 직접 입력·수정한다.
 - **자산 소스**: AUTO(연동)는 토스(주식·연금 시세·환율)와 업비트(코인·예수금), MANUAL(직접 입력)은 저축·부채 및 직접 추가분. 연동·수동을 합쳐 보여준다.
@@ -149,6 +158,7 @@ docs/                      본 문서 + superpowers/(스펙·플랜)
 - **예적금 자동 증가**: 저축 계좌는 금액 기준일 `balanceAsOf`("YYYY-MM-DD")를 가진다. 새 계좌이거나 금액이 바뀔 때만 `upsertSavings`/`bulkUpdateSavings`가 오늘로 찍는다. 통합 갱신 때 [refreshSavingsAccrual](../lib/sync/refresh-savings.ts)이 MANUAL 예적금(`DEPOSIT`·KRW·월 불입액·만기일 있음)에 순수 함수 [accrueDeposit](../lib/savings/deposit-accrual.ts)을 적용한다. 납입일은 만기일 다음 날의 일자(만기 07-24 → 매월 25일, 만기가 말일이면 1일, 그 달에 없는 일자는 말일로 보정)이고, `기준일 < 납입일 ≤ min(오늘, 만기일)`인 횟수만큼 월 불입액을 더한 뒤 기준일을 오늘로 옮긴다. 기준일이 없는 기존 행은 소급하지 않고 기준일만 초기화한다.
 - **자산 스냅샷(수동 전체)**: 자동 갱신 흐름과 별개로, 자산 탭 하단 [SnapshotSection](../components/snapshot/SnapshotSection.tsx)의 "+ 지금 기록" 버튼을 누르면 [captureAssetSnapshot](../lib/snapshot/capture.ts)이 DB 상태를 화면과 동일한 VM 5종(주식·저축·연금·코인·부채)으로 계산해 순수 빌더 [buildAssetSnapshot](../lib/snapshot/asset-snapshot.ts)에 넘기고, 결과 1건을 `assetSnapshots` 테이블에 저장한다. 이전의 주식 전용 일별 자동 스냅샷(`snapshots` 테이블, `Settings.lastSnapshotDate`)은 제거되어 이 수동 전체 스냅샷으로 일원화됐다 — `snapshots` 테이블과 과거 데이터는 하위호환을 위해 보존만 되고 더 이상 기록되지 않는다. 추이는 [SnapshotTrendChart](../components/snapshot/SnapshotTrendChart.tsx)가 최신 20건을 [buildTrendData](../lib/snapshot/trend.ts)로 가공해 순자산 선(상단 밴드) + 직전 대비 변화량 막대(하단 밴드)로 보여준다. 목록·상세는 `/assets/snapshots`, `/assets/snapshots/[id]`.
 - **구글 시트 내보내기**: `useAssetsRefresh`의 `onSuccess`에서 설정(`sheetExport` 테이블)이 있으면 [runSheetExport](../lib/query/use-sheet-export.ts)를 기다리지 않고(fire-and-forget) 실행한다 — 갱신 스피너·쿼리 무효화가 내보내기 때문에 늦어지지 않게 하기 위함. [exportToSheet](../lib/sheet-export/export.ts)는 설정 복호화 → DB 읽기 → 화면과 같은 VM 빌더로 [buildSheetPayload](../lib/sheet-export/build-payload.ts) → Apps Script 웹앱에 POST 순으로 조립하며, 어떤 실패도 throw하지 않고 `{ status: "error", message }`로 돌려준다. 결과는 자동·수동(설정 화면의 "지금 내보내기") 공용으로 `stores/app-store.ts`의 `lastSheetExport`에 기록되고, 자산 탭의 [RefreshBar](../components/portfolio/RefreshBar.tsx)와 설정의 [SheetExportPanel](../components/settings/SheetExportPanel.tsx)이 여기서 읽는다. 내보내기 실패는 갱신 실패로 취급하지 않는다. 상세 계약·오류 코드는 [external-api.md](external-api.md).
+- **기기 동기화**: 여러 기기가 같은 수동 데이터(`snapshots` 제외, 가계부 `ledgerMonths` 포함)를 공유한다. 잠금 해제 순간(PIN·비밀번호·Face ID·세션 복원 모두 `unlock()`을 거친다) `startDeviceSync`가 받기(`pullIfNewer`)를 동기적으로 시작하고 — `AppDataGate`의 미리 읽기와 나란히 진행되며 적용 후 기기 특성 쿼리만 뺀 전체 쿼리를 `refetchType: "all"`로 무효화해 미리 읽은 캐시도 받은 데이터로 바꾼다 — 통합 갱신·주식 갱신은 그 받기를 `awaitPendingPull`로 최대 10초 기다린 뒤 진행한다. 통합 갱신 성공 후에는 `syncNow`(받기 → 올리기)를 기다리지 않고 실행해 보류된 받기를 다시 시도하고 바뀐 내용을 올린다. 결과는 `app-store.lastDeviceSync`(설정 패널)와 `syncConflict`(충돌 시 [SyncConflictDialog](../components/sync/SyncConflictDialog.tsx))에 기록된다. 수집·해시·암호화·적용 규칙 상세는 [device-sync.md](device-sync.md).
 - **가계부**: `ledgerMonths` 테이블은 월 하나 = 행 하나(키 `"YYYY-MM"`)이고, 순수 계산 [ledger-service.ts](../lib/ledger/ledger-service.ts)가 카테고리 트리([categories.ts](../lib/ledger/categories.ts))의 잎 합계로 위 노드 값·월 뷰·시계열을 만든다. 저장은 [saveLedgerAmounts](../lib/db/local-store.ts)(편집 draft의 모든 잎 값을 받아 잎 키 전체를 교체 — 0·빠진 잎은 삭제, 현재 트리에 없는 키는 보존)와 [saveLedgerMemo](../lib/db/local-store.ts)(회고만 교체) 둘로 나뉘며, 각각 하나의 rw 트랜잭션에서 get → 병합 → put(결과가 비면 delete)한다. 월별 화면(`app/ledger/page.tsx`)의 금액 편집값은 화면 상태에만 있고 저장 버튼을 눌러야 반영된다 — **서브탭 이동·← 이동·자동 잠금으로 화면이 사라지면 확인 없이 버려진다.** 회고(메모)는 편집 모드와 무관하게 입력 멈춤 1초 뒤(debounce)·blur·`visibilitychange: hidden`·언마운트 시점에 자동 저장된다.
 
 ---
@@ -161,6 +171,7 @@ docs/                      본 문서 + superpowers/(스펙·플랜)
 - **세션 키(CryptoKey)는 평상시 메모리(zustand)에** 둔다. 자동 잠금(10분 유휴 슬라이딩)을 위해 비추출 핸들 + 만료시각을 세션 볼트(IndexedDB)에 동기화한다 ([session-vault.ts](../lib/db/session-vault.ts), [use-session-guard.ts](../lib/auth/use-session-guard.ts)). 만료 또는 잠금 시 폐기된다. 새로고침해도 만료 전이면 비밀번호 없이 자동 잠금 해제되지만, 원본 키 바이트는 평문으로 남지 않는다.
   - 트레이드오프: 만료 전(최대 10분)에는 **같은 기기·브라우저**에서 비밀번호 없이 복호화가 가능하다. 디스크/백업 유출이나 다른 origin·기기로부터는 여전히 보호된다(비추출 키 + same-origin).
 - 암호화 대상: `connections.clientSecretEnc`, `tokenCache.accessTokenEnc`. 형식은 `iv.ciphertext`(base64).
+- 동기화 키는 세션 키로 암호화해 `syncConfig.syncKeyEnc`에 저장하고, 서버(Apps Script·구글 드라이브)에는 AES-GCM 봉투만 올라간다 — dotori 서버와 구글 어느 쪽도 내용을 읽지 못한다. 상세는 [device-sync.md](device-sync.md) "암호화와 키".
 - PIN·비밀번호 변경 시 [rekey.ts](../lib/crypto/rekey.ts)의 `rekeyVault`로 모든 암호값을 재암호화한다.
 - **Face ID 잠금 해제**(보조 수단, [lib/biometric/](../lib/biometric/)): WebAuthn PRF 확장으로 얻은 32바이트 비밀값을 HKDF(SHA-256)로 처리해 **비추출** AES-GCM 키를 파생하고, 이 키로 PIN/비밀번호 문자열 자체를 암호화해 `biometric` 테이블(단일 행)에 둔다. 새 키 체계가 아니다 — Face ID로 복호화한 PIN/비밀번호는 그대로 기존 `deriveKey` → `checkVerifier` → `unlock` 경로를 탄다. 패스키 `user.id`는 localStorage(`dotori.biometricUserId`)의 기기별 고정값이라, **이 값이 남아 있는 동안에는** 재등록해도 같은 키체인 항목을 덮어써 쌓이지 않는다. Safari의 저장소 정리나 사이트 데이터 삭제로 값이 사라지면 새 `user.id`로 만들어져 이전 패스키가 키체인에 남을 수 있다. "한 번 더 확인해 주세요" 단계(create에서 PRF를 못 받은 경우)를 버리거나(잠금 화면 "괜찮아요"·제한 시간 만료, 설정 패널 닫기) 마무리에 실패하면, 이미 만든 패스키를 `PublicKeyCredential.signalUnknownCredential`로 브라우저에 알려 정리를 요청한다(지원 브라우저에서만, 최선 노력). [LockGate](../components/LockGate.tsx)에서 "Face ID로 열기" 버튼이 기본 흐름이고, 잠금 화면 진입·포그라운드 복귀 시 자동 호출은 보조 동작이다(iOS가 사용자 제스처 없는 호출을 `NotAllowedError`로 거부할 수 있어 조용히 버튼 대기로 넘어간다). 자동 시도는 넘버패드·비밀번호 입력을 막지 않고, 응답을 기다리는 사이 PIN·비밀번호 입력을 시작하면 늦게 온 Face ID 결과는 버린다(PIN이 항상 이긴다). Face ID 시도끼리는 결과를 버리지 않는다 — iOS 홈 화면 앱은 제스처 없는 자동 요청을 보이지 않게 보류했다가 다음 탭 때 그 창을 먼저 띄우므로, 어느 시도든 Face ID를 통과하면 연다. 버튼 탭·PIN 입력·잠금 해제 때는 보류 중인 자동 요청을 `AbortController`로 취소해 요청이 겹치지 않게 하고(취소된 요청의 `AbortError`는 취소로 처리), 오류 문구는 가장 최근 시도에서만 띄운다. Face ID 요청 중에 생긴 `hidden`은 Face ID 시트 때문일 수 있어 백그라운드 전환으로 보지 않는다 — 취소 후 다시 뜨는 반복을 막기 위함. iOS 홈 화면 앱은 막 켜질 때 지원 판정(`isBiometricAvailable`)이 일시적으로 false일 수 있어, 잠금 화면은 등록 여부를 지원 판정과 따로 읽어 이미 등록했다면 버튼을 숨기지 않고, 진입 때 미지원이었다면 PIN·비밀번호 검증 직후 지원 여부를 다시 확인한다. PIN·비밀번호로 연 직후 지원 기기·미등록·제안 기록 없음 조건이면 한 번 등록을 제안하고(`offer-biometric` 모드), 검증된 secret은 메모리에만 두며 유휴 10분 또는 백그라운드 전환 시 제안을 버린다. 등록 제안 기록(`dotori.biometricOffered`)은 localStorage와 메모리에 함께 남겨, 사생활 보호 모드처럼 저장이 안 되는 환경에서도 같은 페이지 세션 안에서는 다시 묻지 않는다. 설정 패널에서 "PIN 확인"과 "Face ID 켜기" 사이에 PIN·비밀번호가 바뀌면(설정의 salt·verifier 변경) 켜기 흐름을 닫아 이전 PIN이 등록되지 않게 한다. 기기가 Face ID를 지원하지 않게 됐어도 이미 켜져 있으면 끌 수 있게 스위치는 보여준다. **PIN·비밀번호 변경 시에는 `rekeyVault`보다 먼저 등록을 지운다** — 바뀌기 전 PIN이 담긴 `secretEnc`가 남지 않게 하기 위함이며, 삭제가 실패하면 변경 자체를 중단한다.
   - 트레이드오프: Face ID 인증은 `userVerification: "required"`라 iOS에서는 Face ID에 실패하면 **기기 암호(iPhone 암호)로 대신 인증**할 수 있다. 즉 Face ID를 켜면 "iPhone 암호를 아는 사람"도 dotori를 열 수 있다. 웹에서 이 대체 경로를 막을 방법은 없으므로, 설정 패널 설명에 "Face ID에 실패하면 iPhone 암호로도 열 수 있어요."로 알린다.

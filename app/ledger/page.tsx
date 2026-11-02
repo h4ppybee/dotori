@@ -35,6 +35,8 @@ export default function LedgerPage() {
   const [thisMonth] = useState(() => currentMonth(new Date()));
   const [month, setMonth] = useState(thisMonth);
   const [editing, setEditing] = useState(false);
+  // 편집 draft는 편집을 시작할 때의 값으로 시드하고 그 뒤로는 바깥 변화를 따라가지 않는다 — 편집 중에
+  // 기기 동기화가 이 달 금액을 바꿔도 draft는 그대로이고, 저장하면 draft 값으로 덮어쓴다(편집 중인 입력 우선).
   const [draft, setDraft] = useState<Amounts>({});
   const [saveError, setSaveError] = useState<string | null>(null);
 

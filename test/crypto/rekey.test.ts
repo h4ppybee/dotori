@@ -169,4 +169,33 @@ describe("rekeyVault", () => {
     const deleted = await db.sheetExport.get("sheet");
     expect(deleted).toBeUndefined();
   });
+
+  it("syncConfig의 syncKeyEnc를 새 키로 재암호화한다", async () => {
+    const oldKey = await deriveKey("old", makeSalt());
+    const newKey = await deriveKey("new", makeSalt());
+    await db.syncConfig.put({
+      id: "sync", syncKeyEnc: await encrypt(oldKey, "TEST-KEY0-TEXT"), keyId: "0011223344556677",
+      deviceName: "테스트 기기", lastRevision: 2, lastSyncedHash: "h", updatedAt: 1,
+    });
+
+    await rekeyVault(oldKey, newKey);
+
+    const cfg = await db.syncConfig.get("sync");
+    expect(await decrypt(newKey, cfg!.syncKeyEnc)).toBe("TEST-KEY0-TEXT");
+    await expect(decrypt(oldKey, cfg!.syncKeyEnc)).rejects.toThrow();
+    expect(cfg?.lastRevision).toBe(2);
+  });
+
+  it("syncKeyEnc를 복호화할 수 없으면 행을 지운다(키 재입력으로 복구)", async () => {
+    const otherKey = await deriveKey("other", makeSalt());
+    const oldKey = await deriveKey("old", makeSalt());
+    const newKey = await deriveKey("new", makeSalt());
+    await db.syncConfig.put({
+      id: "sync", syncKeyEnc: await encrypt(otherKey, "TEST-KEY0-TEXT"), keyId: "0011223344556677",
+      deviceName: "테스트 기기", lastRevision: 0, lastSyncedHash: null, updatedAt: 1,
+    });
+
+    await expect(rekeyVault(oldKey, newKey)).resolves.toBeUndefined();
+    expect(await db.syncConfig.get("sync")).toBeUndefined();
+  });
 });

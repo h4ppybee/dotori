@@ -8,12 +8,15 @@ import { db } from "@/lib/db/schema";
  * - db.tokenCache: accessTokenEnc 재암호화. 복호화 실패 시(stale) 행 삭제.
  * - db.sheetExport: secretEnc 재암호화(설정이 있을 때만). 복호화·암호화 실패 시(stale)
  *   행 삭제 — 사용자가 설정에서 다시 연결하면 된다.
- * 실패 시 전체를 중단하지 않는다 — tokenCache·sheetExport는 최선 노력(best-effort).
+ * - db.syncConfig: syncKeyEnc 재암호화(설정이 있을 때만). 실패 시 행 삭제 — 사용자가 설정에서
+ *   동기화 키를 다시 입력하면 된다.
+ * 실패 시 전체를 중단하지 않는다 — tokenCache·sheetExport·syncConfig는 최선 노력(best-effort).
  */
 export async function rekeyVault(oldKey: CryptoKey, newKey: CryptoKey): Promise<void> {
   await rekeyConnections(oldKey, newKey);
   await rekeyTokenCache(oldKey, newKey);
   await rekeySheetExport(oldKey, newKey);
+  await rekeySyncConfig(oldKey, newKey);
 }
 
 async function rekeyConnections(oldKey: CryptoKey, newKey: CryptoKey): Promise<void> {
@@ -53,5 +56,19 @@ async function rekeySheetExport(oldKey: CryptoKey, newKey: CryptoKey): Promise<v
   } catch {
     // stale 설정 — 복호화(또는 재암호화) 불가 → 행 삭제(사용자가 다시 연결하면 된다)
     await db.sheetExport.delete("sheet");
+  }
+}
+
+async function rekeySyncConfig(oldKey: CryptoKey, newKey: CryptoKey): Promise<void> {
+  const cfg = await db.syncConfig.get("sync");
+  if (!cfg) {
+    return;
+  }
+  try {
+    const plain = await decrypt(oldKey, cfg.syncKeyEnc);
+    await db.syncConfig.update("sync", { syncKeyEnc: await encrypt(newKey, plain) });
+  } catch {
+    // stale 설정 — 복호화(또는 재암호화) 불가 → 행 삭제(사용자가 동기화 키를 다시 입력하면 된다)
+    await db.syncConfig.delete("sync");
   }
 }

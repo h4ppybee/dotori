@@ -15,7 +15,6 @@ import {
   getFx,
   getSectorOverrides,
   listPension,
-  bulkUpdatePension,
 } from "@/lib/db/local-store";
 import { buildPortfolio, type PortfolioVM } from "@/lib/portfolio/portfolio-service";
 
@@ -260,6 +259,7 @@ export async function refreshAll(opts: {
  * 연금 현재가 갱신. symbol이 있는 연금 계좌의 현재가를 토스 시세(KRW)로 업데이트한다.
  * KRX 상장 ETF/펀드는 보유 여부와 무관하게 심볼로 조회된다(검증 완료).
  * 토스 연동이 없거나 symbol 가진 항목이 없으면 조용히 0건 반환.
+ * 현재가·updatedAt만 update한다(행 전체를 다시 쓰지 않음 — docs/device-sync.md "갱신 쓰기").
  */
 export async function refreshPensionPrices(opts: {
   key: CryptoKey;
@@ -292,11 +292,16 @@ export async function refreshPensionPrices(opts: {
       opts.key,
     );
     const priceBySymbol = new Map(pricesRes.prices.map((p) => [p.symbol, p.lastPrice]));
-    const toUpdate = withSymbol
-      .filter((a) => priceBySymbol.has(a.symbol!.trim()))
-      .map((a) => ({ ...a, currentPrice: priceBySymbol.get(a.symbol!.trim())! }));
+    const toUpdate = withSymbol.filter((a) => priceBySymbol.has(a.symbol!.trim()));
     if (toUpdate.length > 0) {
-      await bulkUpdatePension(toUpdate);
+      // 시세 필드만 갱신한다(행 전체 bulkPut 금지). 시세를 기다리는 사이 기기 동기화 적용·사용자 편집으로
+      // 다른 필드가 바뀌었거나 행이 지워졌어도 덮거나 되살리지 않는다. currentPrice·updatedAt은 해시 제외 필드다.
+      const updatedAt = Date.now();
+      await db.transaction("rw", db.pension, async () => {
+        for (const a of toUpdate) {
+          await db.pension.update(a.id, { currentPrice: priceBySymbol.get(a.symbol!.trim())!, updatedAt });
+        }
+      });
     }
     return { updated: toUpdate.length, failures };
   } catch (e) {

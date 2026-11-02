@@ -1,15 +1,15 @@
+import { postAppsScript, APPS_SCRIPT_TIMEOUT_MS } from "@/lib/apps-script/request";
 import type { SheetTab } from "@/lib/sheet-export/build-payload";
 
 /**
  * Apps Script 웹앱 클라이언트. 브라우저에서 직접 POST한다.
  * Content-Type을 text/plain으로 보내 CORS preflight를 피한다(Apps Script는 OPTIONS를 처리하지 못한다).
  * Apps Script는 HTTP 상태 코드를 지정할 수 없어 본문 { ok, ... }으로 성공 여부를 판정한다.
+ * 전송·파싱은 lib/apps-script/request.ts.
  */
 
-// Apps Script의 LockService.tryLock은 5초(sheet-export.gs)다. 클라이언트 타임아웃이 그보다
-// 짧으면, 락을 기다리던 스크립트가 아직 응답하기 전에 우리가 먼저 포기해 버려 성공한 쓰기를
-// 네트워크 실패로 오인할 수 있다. 그래서 락 대기(5s) + 실제 쓰기 여유를 넉넉히 둔 30초로 둔다.
-export const SHEET_EXPORT_TIMEOUT_MS = 30_000;
+// 타임아웃 근거는 lib/apps-script/request.ts(락 대기 5초 + 쓰기 여유).
+export const SHEET_EXPORT_TIMEOUT_MS = APPS_SCRIPT_TIMEOUT_MS;
 
 export const SHEET_EXPORT_MESSAGES = {
   network: "시트에 연결하지 못했어요.",
@@ -51,7 +51,7 @@ type WebAppOpts = { fetchImpl?: typeof fetch; timeoutMs?: number };
 type WebAppJson = { ok?: unknown; error?: unknown; [k: string]: unknown };
 
 /**
- * 웹앱 POST 공통부: 전송·타임아웃·JSON 파싱과 ok:false 오류 매핑까지.
+ * 웹앱 POST 공통부: 전송·타임아웃·JSON 파싱(lib/apps-script/request.ts)과 ok:false 오류 매핑까지.
  * ok:true면 json을 돌려주고, 성공 응답의 모양 검증은 호출부가 한다.
  */
 async function postWebApp(
@@ -59,41 +59,18 @@ async function postWebApp(
   body: SheetExportBody | SheetReadBody,
   opts: WebAppOpts,
 ): Promise<{ kind: "ok"; json: WebAppJson } | { kind: "error"; message: string }> {
-  const fetchImpl = opts.fetchImpl ?? fetch;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? SHEET_EXPORT_TIMEOUT_MS);
-
-  let text: string;
-  let httpOk: boolean;
-  try {
-    const res = await fetchImpl(url, {
-      method: "POST",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify(body),
-      redirect: "follow",
-      signal: controller.signal,
-    });
-    httpOk = res.ok;
-    text = await res.text();
-  } catch {
+  const reply = await postAppsScript(url, body, {
+    fetchImpl: opts.fetchImpl,
+    timeoutMs: opts.timeoutMs ?? SHEET_EXPORT_TIMEOUT_MS,
+  });
+  if (reply.kind === "network") {
     return { kind: "error", message: SHEET_EXPORT_MESSAGES.network };
-  } finally {
-    clearTimeout(timer);
   }
-
-  if (!httpOk) {
-    return { kind: "error", message: SHEET_EXPORT_MESSAGES.badResponse };
-  }
-  let json: WebAppJson;
-  try {
-    json = JSON.parse(text);
-  } catch {
-    return { kind: "error", message: SHEET_EXPORT_MESSAGES.badResponse };
-  }
-  if (!json || typeof json !== "object") {
+  if (reply.kind === "badResponse") {
     return { kind: "error", message: SHEET_EXPORT_MESSAGES.badResponse };
   }
 
+  const json: WebAppJson = reply.json;
   if (json.ok === true) {
     return { kind: "ok", json };
   }

@@ -12,7 +12,10 @@ const SAVED_VISIBLE_MS = 2000;
 interface LedgerMemoCardProps {
   /** "YYYY-MM". 호출부가 key={month}로 달마다 리마운트한다. */
   month: string;
-  /** 그 달 저장된 회고 — 데이터 로드 뒤에만 렌더해 시드한다(빈 문자열로 덮어쓰지 않게). */
+  /**
+   * 그 달 저장된 회고 — 데이터 로드 뒤에만 렌더해 시드한다(빈 문자열로 덮어쓰지 않게).
+   * 마운트 뒤 바뀌면(기기 동기화로 받은 회고 등) 저장하지 않은 입력이 없을 때만 다시 시드한다.
+   */
   initialMemo: string;
 }
 
@@ -25,6 +28,16 @@ export function LedgerMemoCard({ month, initialMemo }: LedgerMemoCardProps) {
   const qc = useQueryClient();
   const [value, setValue] = useState(initialMemo);
   const [savedVisible, setSavedVisible] = useState(false);
+  // 저장하지 않은 입력이 있는지(입력 → true, 저장 시작 → false, 저장 실패 → true).
+  const [dirty, setDirty] = useState(false);
+  // 바깥 회고 변화 감지 — 렌더 중 이전 값과 비교해 시드한다(React 문서의 "prop 변화에 맞춰 state 조정" 패턴).
+  const [prevInitial, setPrevInitial] = useState(initialMemo);
+  if (initialMemo !== prevInitial) {
+    setPrevInitial(initialMemo);
+    if (!dirty) {
+      setValue(initialMemo);
+    }
+  }
 
   // 최신 입력값·마지막 저장값은 핸들러에서만 읽고 쓴다(렌더 중 ref 접근 없음).
   const latestRef = useRef(initialMemo);
@@ -44,9 +57,16 @@ export function LedgerMemoCard({ month, initialMemo }: LedgerMemoCardProps) {
       const memo = latestRef.current;
       const previous = lastSavedRef.current;
       if (memo === previous) {
+        // 입력했다가 원래 값으로 되돌린 경우 — 저장할 건 없지만 동기화로 받은 회고가 다시 반영되도록 dirty를 푼다.
+        if (mountedRef.current) {
+          setDirty(false);
+        }
         return;
       }
       lastSavedRef.current = memo;
+      if (mountedRef.current) {
+        setDirty(false);
+      }
       saveLedgerMemo(month, memo)
         .then(() => {
           void qc.invalidateQueries({ queryKey: LEDGER_KEY });
@@ -65,11 +85,24 @@ export function LedgerMemoCard({ month, initialMemo }: LedgerMemoCardProps) {
           // 그 뒤 앱이 종료되면 마찬가지다(로컬 IndexedDB라 실패는 드물다).
           if (lastSavedRef.current === memo) {
             lastSavedRef.current = previous;
+            if (mountedRef.current) {
+              setDirty(true);
+            }
           }
         });
     },
     [month, qc],
   );
+
+  // 바깥 회고가 바뀌었고 저장하지 않은 입력이 없으면(위 렌더 중 시드와 같은 조건) 비교 기준도 맞춘다 —
+  // 안 그러면 다음 blur·hidden 저장이 받은 회고를 옛 값으로 덮어쓴다.
+  useEffect(() => {
+    if (debounceRef.current !== null || latestRef.current !== lastSavedRef.current) {
+      return;
+    }
+    latestRef.current = initialMemo;
+    lastSavedRef.current = initialMemo;
+  }, [initialMemo]);
 
   // effect는 visibilitychange 등록과 언마운트 정리(저장)만 맡는다.
   useEffect(() => {
@@ -108,6 +141,7 @@ export function LedgerMemoCard({ month, initialMemo }: LedgerMemoCardProps) {
         onChange={(e) => {
           const next = e.target.value;
           setValue(next);
+          setDirty(true);
           latestRef.current = next;
           if (debounceRef.current) {
             clearTimeout(debounceRef.current);

@@ -20,6 +20,7 @@
 | 세션 | `session` | ❌ 제외 | 자동 잠금용 휘발 데이터 |
 | 시트 내보내기 설정 | `sheetExport`(웹앱 URL·암호화된 비밀키) | ❌ 제외 | 기기별 민감 설정 — 재연결로 복구 |
 | Face ID 잠금 해제 설정 | `biometric`(패스키 ID·PRF salt·암호화된 PIN) | ❌ 제외 | 기기·도메인(rpId)에 묶인 설정 — 다른 기기에서 쓸 수 없다. 설정에서 다시 켜면 복구 |
+| 기기 동기화 설정 | `syncConfig`(동기화 키 암호문·revision·해시) | ❌ 제외 | 기기별 민감 설정 — 다른 기기에서 키로 다시 연결 |
 
 **왜 `settings`를 제외하나:** 보존된 API 연결의 시크릿은 현재 기기의 `kdfSalt`에서 파생한 키로 암호화돼 있다. 백업으로 `kdfSalt`/`verifier`를 덮으면 그 키를 다시 파생할 수 없어 기존 암호값이 복호화 불능이 된다. 그래서 보안 앵커는 절대 백업·복원 대상이 아니다.
 
@@ -74,6 +75,8 @@
 
 각 테이블을 `MANUAL` 필터로 읽어 payload로 직렬화해 JSON 문자열을 반환한다. `connections`는 `type === "MANUAL"`, `holdings`/`savings`/`coin`은 `source === "MANUAL"`만 담는다. `pension`·`debts`·`snapshots`·`assetSnapshots`·`sectorOverrides`·`members`·`goal`·`envelopeItems`·`envelopeConfig`·`ledgerMonths`은 전량 포함(자동 소스 개념이 없음).
 
+수집은 `readManualTables`로 기기 동기화(`lib/device-sync/collect`)와 공유한다. 동기화는 여기서 `snapshots`만 뺀다.
+
 ## 불러오기 (`importAll`)
 
 `importAll(json, { mode })` — 두 모드.
@@ -102,3 +105,4 @@
 3. `BackupData` 인터페이스에 필드를 추가한다.
 4. payload 형식이 바뀌면 `SCHEMA_VERSION`을 올리고 `SUPPORTED_VERSIONS`·버전 히스토리·이 문서를 갱신한다.
 5. 하위호환: 구버전 백업에 새 필드가 없을 때의 기본값(백필)을 정한다.
+6. 수동 데이터면 기기 동기화 대상(`SYNC_TABLES`·`applySyncPayload` 교체 규칙·`HASH_EXCLUDED_FIELDS`)도 검토한다([docs/device-sync.md](device-sync.md)).

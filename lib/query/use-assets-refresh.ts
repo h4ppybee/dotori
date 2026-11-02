@@ -8,6 +8,7 @@ import { refreshSavingsAccrual } from "@/lib/sync/refresh-savings";
 import { ensureFxFallback } from "@/lib/sync/fx-fallback";
 import { toLocalYmd } from "@/lib/format";
 import { runSheetExport } from "@/lib/query/use-sheet-export";
+import { awaitPendingPull, syncNow } from "@/lib/device-sync/engine";
 
 interface RefreshFailure {
   connectionId: string;
@@ -22,6 +23,7 @@ interface RefreshFailure {
  * 시작 시 오늘자 USDKRW가 없으면 공개 환율 API로 폴백한다(lib/sync/fx-fallback).
  * 성공 시 portfolio·pension·coin·savings 쿼리를 무효화한다.
  * 성공 후 시트 내보내기 설정이 있으면 기다리지 않고 내보낸다(결과는 app-store.lastSheetExport).
+ * 잠금 해제 직후 시작된 기기 동기화 받기가 있으면 먼저 기다리고(최대 10초), 성공 후 기다리지 않고 받기→올리기(syncNow)를 한다.
  */
 export function useAssetsRefresh() {
   const sessionKey = useAppStore((s) => s.sessionKey);
@@ -33,6 +35,10 @@ export function useAssetsRefresh() {
       if (sessionKey === null) {
         throw new Error("잠금 해제 후 새로고침할 수 있어요.");
       }
+      // 진행 중인 기기 동기화 받기를 먼저 기다린다(최대 10초, 실패해도 갱신은 진행).
+      // 받은 데이터 위에서 시세·자동 증가를 다시 계산하고, 갱신의 bulkPut이 받은 값을 덮지 않게 하기 위함.
+      // 타임아웃이 나면 엔진이 그 받기를 보류해 갱신 도중에 적용하지 않는다.
+      await awaitPendingPull();
       // 오늘자 USDKRW가 없으면 먼저 공개 API로 보충한다. refreshAll이 마지막에
       // buildPortfolio를 실행하므로, USD 종목 + 환율 부재 상태로 들어가면 거기서
       // 실패한다(백업 불러오기 직후 등). 토스가 그날 성공하면 뒤에서 덮어쓴다(토스 우선).
@@ -57,6 +63,9 @@ export function useAssetsRefresh() {
       const currentSessionKey = useAppStore.getState().sessionKey;
       if (currentSessionKey !== null) {
         void runSheetExport(currentSessionKey);
+        // 받기 → 올리기. 대기 타임아웃으로 보류된 받기를 다시 시도하고, 납입일 자동 증가 등으로 바뀐 내용을
+        // 바로 올려 다른 기기와의 충돌을 줄인다(받을 것·바뀐 것이 없으면 meta 요청 하나로 끝난다).
+        void syncNow();
       }
     },
   });
