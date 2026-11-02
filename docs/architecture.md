@@ -12,7 +12,7 @@
 
 | 영역 | 사용 |
 | --- | --- |
-| 프레임워크 | **Next.js 16.2.9** (App Router) — ⚠️ 학습 데이터와 다른 버전. [AGENTS.md](../AGENTS.md) 참고, `node_modules/next/dist/docs/` 확인 |
+| 프레임워크 | **Next.js 16.4.3** (App Router) — ⚠️ 학습 데이터와 다른 버전. [AGENTS.md](../AGENTS.md) 참고, `node_modules/next/dist/docs/` 확인 |
 | UI | React 19, TypeScript 5, Tailwind CSS v4 |
 | 비동기 상태 | `@tanstack/react-query` 5 (자산별 쿼리/갱신) |
 | 로컬 저장 | `dexie` 4 (IndexedDB 래퍼) |
