@@ -29,7 +29,7 @@ npm run typecheck  # tsc --noEmit
 npm test           # vitest run
 ```
 
-코드 변경 후 `npm run typecheck && npm run lint && npm test` 통과를 기본으로 한다. 로컬 Node 버전은 **22**로 고정한다(`.nvmrc`, `package.json` `engines`).
+코드 변경 후 `npm run typecheck && npm run lint && npm test` 통과를 기본으로 한다. 로컬 Node 버전은 **22**로 고정한다(`.nvmrc`, `package.json` `engines`). 패키지 매니저는 **pnpm 10**으로 고정한다(`package.json` `packageManager` — corepack이 이 버전을 쓰고, CI `pnpm/action-setup`도 이를 따른다). 하위 의존성 보안 패치는 `pnpm-workspace.yaml`의 `overrides`에 둔다.
 
 ## 배포 / CI·CD
 
